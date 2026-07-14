@@ -110,3 +110,17 @@ Sources branchées :
 - CelesTrak fournit les éléments orbitaux ; le calcul SGP4 des passages reste à ajouter.
 - Il n’existe pas dans cette version de flux RTBA officiel automatiquement interprété.
   La page AZBA du SIA reste la référence opérationnelle.
+
+
+## XavPac 3.1 — Aviation live
+
+- Remplacement d’OpenSky par Airplanes.live.
+- Recherche dans un rayon réel de 20 km autour de la position.
+- Conversion automatique des unités ADS-B :
+  - pieds vers mètres ;
+  - nœuds vers mètres/seconde puis km/h dans l’interface.
+- Affichage de l’indicatif, de l’immatriculation ou du code Mode S.
+- Désactivation du cache Vercel pour les positions aériennes.
+- Délai maximal de neuf secondes pour éviter de bloquer l’interface.
+
+Airplanes.live est utilisé pour un usage non commercial et sans garantie de disponibilité.

@@ -210,7 +210,7 @@ export default function AviationPanel() {
   const [userPosition, setUserPosition] = useState<[number, number]>([46.346, 4.977]);
   const [locationStatus, setLocationStatus] = useState("Position de référence");
   const [liveAircraft, setLiveAircraft] = useState<LiveAircraft[]>([]);
-  const [aircraftSourceStatus, setAircraftSourceStatus] = useState("Connexion OpenSky…");
+  const [aircraftSourceStatus, setAircraftSourceStatus] = useState("Connexion Airplanes.live…");
   const [selectedLiveId, setSelectedLiveId] = useState<string | undefined>();
   const [liveTrail, setLiveTrail] = useState<[number, number][]>([]);
   const [metarReports, setMetarReports] = useState<AirportReport[]>([]);
@@ -274,10 +274,13 @@ export default function AviationPanel() {
           );
 
         setLiveAircraft(sorted);
+        const sourceName =
+          typeof data.source === "string" ? data.source : "Source ADS-B";
+
         setAircraftSourceStatus(
           response.ok
-            ? `OpenSky connecté • ${sorted.length} appareil${sorted.length > 1 ? "s" : ""}`
-            : "OpenSky momentanément indisponible"
+            ? `${sourceName} • ${sorted.length} appareil${sorted.length > 1 ? "s" : ""}`
+            : `${sourceName} momentanément indisponible`
         );
 
         const closest = sorted[0];
@@ -290,7 +293,7 @@ export default function AviationPanel() {
         }
       } catch {
         if (!cancelled) {
-          setAircraftSourceStatus("OpenSky momentanément indisponible");
+          setAircraftSourceStatus("Airplanes.live momentanément indisponible");
         }
       }
     }
@@ -459,7 +462,7 @@ export default function AviationPanel() {
                           lat: userPosition[0] + 0.08,
                           lon: userPosition[1] - 0.04,
                           name: "DÉMO",
-                          detail: "OpenSky indisponible",
+                          detail: "Source ADS-B momentanément indisponible",
                           color: "#8b9aab",
                           icon: "✈"
                         }

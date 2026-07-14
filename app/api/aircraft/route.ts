@@ -1,17 +1,98 @@
 import { NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 function clamp(value: number, minimum: number, maximum: number) {
   return Math.min(Math.max(value, minimum), maximum);
 }
 
-function degreesForRadius(latitude: number, radiusKm: number) {
-  const latitudeDelta = radiusKm / 111;
-  const cosine = Math.max(Math.cos((latitude * Math.PI) / 180), 0.15);
-  const longitudeDelta = radiusKm / (111 * cosine);
+function numberOrNull(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
 
-  return { latitudeDelta, longitudeDelta };
+function altitudeFeetToMeters(value: unknown) {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return null;
+  }
+
+  return value * 0.3048;
+}
+
+function knotsToMetersPerSecond(value: unknown) {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return null;
+  }
+
+  return value * 0.514444;
+}
+
+type AirplanesLiveAircraft = {
+  hex?: string;
+  flight?: string;
+  lat?: number;
+  lon?: number;
+  alt_baro?: number | "ground";
+  alt_geom?: number;
+  gs?: number;
+  track?: number;
+  baro_rate?: number;
+  geom_rate?: number;
+  squawk?: string;
+  seen?: number;
+  seen_pos?: number;
+  r?: string;
+  t?: string;
+  desc?: string;
+  ownOp?: string;
+  category?: string;
+};
+
+function normalizeAircraft(item: AirplanesLiveAircraft) {
+  const latitude = numberOrNull(item.lat);
+  const longitude = numberOrNull(item.lon);
+
+  if (latitude === null || longitude === null) {
+    return null;
+  }
+
+  const onGround = item.alt_baro === "ground";
+  const barometricAltitude =
+    typeof item.alt_baro === "number"
+      ? altitudeFeetToMeters(item.alt_baro)
+      : null;
+
+  return {
+    id: item.hex?.trim() || `${latitude}-${longitude}`,
+    callsign:
+      item.flight?.trim() ||
+      item.r?.trim() ||
+      item.hex?.trim().toUpperCase() ||
+      "Sans indicatif",
+    country:
+      item.ownOp?.trim() ||
+      item.desc?.trim() ||
+      item.t?.trim() ||
+      "Donnée ADS-B",
+    longitude,
+    latitude,
+    barometricAltitude,
+    geometricAltitude: altitudeFeetToMeters(item.alt_geom),
+    onGround,
+    velocity: knotsToMetersPerSecond(item.gs),
+    trueTrack: numberOrNull(item.track),
+    verticalRate: knotsToMetersPerSecond(item.baro_rate ?? item.geom_rate),
+    squawk: item.squawk?.trim() || null,
+    registration: item.r?.trim() || null,
+    aircraftType: item.t?.trim() || null,
+    description: item.desc?.trim() || null,
+    operator: item.ownOp?.trim() || null,
+    category: item.category?.trim() || null,
+    lastContact:
+      typeof item.seen === "number"
+        ? Math.floor(Date.now() / 1000 - item.seen)
+        : null
+  };
 }
 
 export async function GET(request: NextRequest) {
@@ -20,84 +101,89 @@ export async function GET(request: NextRequest) {
   const longitude = Number(params.get("lon") ?? "4.977");
   const radiusKm = clamp(Number(params.get("radius") ?? "20"), 5, 100);
 
-  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+  if (
+    !Number.isFinite(latitude) ||
+    !Number.isFinite(longitude) ||
+    latitude < -90 ||
+    latitude > 90 ||
+    longitude < -180 ||
+    longitude > 180
+  ) {
     return NextResponse.json(
-      { error: "Coordonnées invalides." },
+      { error: "Coordonnées invalides.", aircraft: [] },
       { status: 400 }
     );
   }
 
-  const { latitudeDelta, longitudeDelta } = degreesForRadius(latitude, radiusKm);
-  const query = new URLSearchParams({
-    lamin: String(latitude - latitudeDelta),
-    lamax: String(latitude + latitudeDelta),
-    lomin: String(longitude - longitudeDelta),
-    lomax: String(longitude + longitudeDelta)
-  });
+  // Airplanes.live attend un rayon en milles nautiques.
+  const radiusNm = clamp(Math.ceil(radiusKm / 1.852), 3, 54);
+  const endpoint =
+    `https://api.airplanes.live/v2/point/` +
+    `${latitude.toFixed(5)}/${longitude.toFixed(5)}/${radiusNm}`;
 
   try {
-    const response = await fetch(
-      `https://opensky-network.org/api/states/all?${query.toString()}`,
-      {
-        cache: "no-store",
-        headers: {
-          Accept: "application/json",
-          "User-Agent": "XavPac/3.0"
-        }
+    const response = await fetch(endpoint, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(9000),
+      headers: {
+        Accept: "application/json",
+        "User-Agent": "XavPac/3.1 (non-commercial aviation dashboard)"
       }
-    );
+    });
 
     if (!response.ok) {
       return NextResponse.json(
         {
-          error: `OpenSky indisponible (${response.status}).`,
+          error: `Airplanes.live indisponible (${response.status}).`,
           aircraft: [],
-          source: "OpenSky Network"
+          source: "Airplanes.live"
         },
-        { status: 502 }
+        {
+          status: 502,
+          headers: { "Cache-Control": "no-store" }
+        }
       );
     }
 
     const payload = await response.json();
-    const states = Array.isArray(payload.states) ? payload.states : [];
+    const sourceAircraft = Array.isArray(payload.ac) ? payload.ac : [];
 
-    const aircraft = states
-      .map((state: unknown[]) => ({
-        id: String(state[0] ?? ""),
-        callsign: String(state[1] ?? "").trim() || "Sans indicatif",
-        country: String(state[2] ?? ""),
-        longitude: typeof state[5] === "number" ? state[5] : null,
-        latitude: typeof state[6] === "number" ? state[6] : null,
-        barometricAltitude:
-          typeof state[7] === "number" ? state[7] : null,
-        onGround: Boolean(state[8]),
-        velocity: typeof state[9] === "number" ? state[9] : null,
-        trueTrack: typeof state[10] === "number" ? state[10] : null,
-        verticalRate: typeof state[11] === "number" ? state[11] : null,
-        geometricAltitude:
-          typeof state[13] === "number" ? state[13] : null,
-        squawk: state[14] ? String(state[14]) : null,
-        lastContact: typeof state[4] === "number" ? state[4] : null
-      }))
-      .filter(
-        (aircraft: { latitude: number | null; longitude: number | null }) =>
-          aircraft.latitude !== null && aircraft.longitude !== null
-      );
+    const aircraft = sourceAircraft
+      .map((item: AirplanesLiveAircraft) => normalizeAircraft(item))
+      .filter((item: ReturnType<typeof normalizeAircraft>) => item !== null);
 
-    return NextResponse.json({
-      source: "OpenSky Network",
-      fetchedAt: new Date().toISOString(),
-      center: { latitude, longitude, radiusKm },
-      aircraft
-    });
-  } catch {
     return NextResponse.json(
       {
-        error: "Impossible de joindre OpenSky.",
-        aircraft: [],
-        source: "OpenSky Network"
+        source: "Airplanes.live",
+        fetchedAt: new Date().toISOString(),
+        center: { latitude, longitude, radiusKm, radiusNm },
+        total: aircraft.length,
+        aircraft
       },
-      { status: 502 }
+      {
+        headers: {
+          "Cache-Control": "no-store, max-age=0",
+          "CDN-Cache-Control": "no-store",
+          "Vercel-CDN-Cache-Control": "no-store"
+        }
+      }
+    );
+  } catch (error) {
+    const message =
+      error instanceof Error && error.name === "TimeoutError"
+        ? "La source aérienne a dépassé le délai de réponse."
+        : "Impossible de joindre Airplanes.live.";
+
+    return NextResponse.json(
+      {
+        error: message,
+        aircraft: [],
+        source: "Airplanes.live"
+      },
+      {
+        status: 502,
+        headers: { "Cache-Control": "no-store" }
+      }
     );
   }
 }
