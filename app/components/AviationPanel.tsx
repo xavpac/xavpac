@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLiveGeolocation } from "../hooks/useLiveGeolocation";
+import type { MapVariant } from "./StableMap";
 
 const StableMap = dynamic(() => import("./StableMap"), { ssr: false });
 
@@ -83,7 +84,10 @@ function aircraftVisual(item: LiveAircraft) {
 
 export default function AviationPanel() {
   const { position, status: positionStatus, isLive, error: gpsError } = useLiveGeolocation();
-  const [radius, setRadius] = useState<Radius>(20);
+  const [radius, setRadius] = useState<Radius>(50);
+  const [mapVariant, setMapVariant] = useState<MapVariant>("street");
+  const [showTrails, setShowTrails] = useState(true);
+  const [showRadius, setShowRadius] = useState(true);
   const [aircraft, setAircraft] = useState<AircraftWithDistance[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [manualSelection, setManualSelection] = useState(false);
@@ -238,6 +242,13 @@ export default function AviationPanel() {
               </button>
             ))}
           </div>
+          <div className="toolbar-group aviation-map-controls">
+            <button type="button" className={mapVariant === "street" ? "tool-button active" : "tool-button"} onClick={() => setMapVariant("street")}>Plan lisible</button>
+            <button type="button" className={mapVariant === "satellite" ? "tool-button active" : "tool-button"} onClick={() => setMapVariant("satellite")}>Satellite</button>
+            <button type="button" className={mapVariant === "dark" ? "tool-button active" : "tool-button"} onClick={() => setMapVariant("dark")}>Sombre</button>
+            <button type="button" className={showTrails ? "tool-button active" : "tool-button"} onClick={() => setShowTrails((value) => !value)}>Traces</button>
+            <button type="button" className={showRadius ? "tool-button active" : "tool-button"} onClick={() => setShowRadius((value) => !value)}>Cercle</button>
+          </div>
           <div className="toolbar-group right-tools">
             <span className="source-chip">✈ {aircraft.length}</span>
             <span className={isLive ? "source-chip gps-live" : "source-chip"}>📍 {positionStatus}</span>
@@ -254,11 +265,11 @@ export default function AviationPanel() {
             points={mapPoints}
             center={position}
             radiusKm={radius}
-            showRadius
             selectedId={selected?.id}
-            trails={mapTrails}
+            trails={showTrails ? mapTrails : []}
             onSelect={selectAircraft}
-            mapVariant="layers"
+            showRadius={showRadius}
+            mapVariant={mapVariant}
           />
 
           <div className="map-radar-card">

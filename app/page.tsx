@@ -9,15 +9,15 @@ import WeatherPanel from "./components/WeatherPanel";
 import CenterOperationsPanel from "./components/CenterOperationsPanel";
 import ViewCounter from "./components/ViewCounter";
 
-type Tab = "aviation" | "drone" | "operations" | "center" | "astronomy" | "weather";
+type Tab = "aviation" | "drone" | "center" | "weather" | "astronomy" | "operations";
 
 const tabs = [
-  { id: "aviation" as Tab, icon: "✈", title: "Aviation", subtitle: "Trafic réel autour de vous" },
-  { id: "drone" as Tab, icon: "🚁", title: "Drone SDIS 71", subtitle: "Saône-et-Loire et RTBA" },
-  { id: "operations" as Tab, icon: "🚒", title: "Moyens nationaux", subtitle: "Détection ADS-B sans données fictives" },
-  { id: "center" as Tab, icon: "🚨", title: "CODIS", subtitle: "Vue opérationnelle SDIS 71" },
-  { id: "astronomy" as Tab, icon: "🌌", title: "Astronomie", subtitle: "ISS, Starlink et ciel local" },
-  { id: "weather" as Tab, icon: "🌦️", title: "Météo locale", subtitle: "Conditions selon votre GPS" }
+  { id: "aviation" as Tab, icon: "✈", title: "Aviation", subtitle: "Avions en vol" },
+  { id: "drone" as Tab, icon: "⌖", title: "Drone", subtitle: "Zones & RTBA" },
+  { id: "center" as Tab, icon: "✣", title: "CODIS", subtitle: "Centre opérationnel" },
+  { id: "weather" as Tab, icon: "☀", title: "Météo", subtitle: "Prévisions" },
+  { id: "astronomy" as Tab, icon: "◔", title: "Astronomie", subtitle: "Ciel & étoiles" },
+  { id: "operations" as Tab, icon: "✹", title: "Opérations", subtitle: "Moyens & interventions" }
 ];
 
 export default function Page() {
@@ -35,31 +35,19 @@ export default function Page() {
       <header className="header-v4">
         <div className="brand-v4">
           <span className="brand-plane">✈</span>
-          <div>
-            <h1>XavPac <b>5.1</b></h1>
-            <p>Aviation • Drone SDIS 71 • Moyens nationaux • CODIS • Astronomie • Météo</p>
-          </div>
+          <div><h1>XavPac <b>6.0</b></h1><p>Aviation en temps réel • Drone SDIS 71 • CODIS</p></div>
         </div>
         <div className="header-live-area">
           <ViewCounter />
-          <span className="system-live">● SYSTÈME ACTIF</span>
-          <div className="clock-v4">
-            <strong>{now ? now.toLocaleTimeString("fr-FR") : "--:--:--"}</strong>
-            <span>{now ? now.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" }) : ""}</span>
-          </div>
+          <div className="clock-v4"><strong>{now ? now.toLocaleTimeString("fr-FR") : "--:--:--"}</strong><span>{now ? now.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" }) : ""}</span></div>
+          <span className="system-live">● SYSTÈME ACTIF<small>Données en direct</small></span>
         </div>
       </header>
 
       <nav className="tabs-v4" aria-label="Modules XavPac">
         {tabs.map((tab) => (
-          <button
-            type="button"
-            key={tab.id}
-            className={active === tab.id ? "tab-v4 active" : "tab-v4"}
-            onClick={() => setActive(tab.id)}
-          >
-            <span>{tab.icon}</span>
-            <div><strong>{tab.title}</strong><small>{tab.subtitle}</small></div>
+          <button type="button" key={tab.id} className={active === tab.id ? "tab-v4 active" : "tab-v4"} onClick={() => setActive(tab.id)}>
+            <span>{tab.icon}</span><div><strong>{tab.title}</strong><small>{tab.subtitle}</small></div>
           </button>
         ))}
       </nav>
@@ -71,9 +59,7 @@ export default function Page() {
       {active === "astronomy" && <AstronomyPanel />}
       {active === "weather" && <WeatherPanel />}
 
-      <footer className="footer-v4">
-        XavPac 5.1 • Cartes lisibles • Aviation FlightWall • AZBA officiel • Géolocalisation continue lorsque le site reste ouvert • Les sources officielles restent prioritaires pour toute décision opérationnelle.
-      </footer>
+      <footer className="footer-v4">XavPac 6.0 • Cartes claires par défaut • Données publiques réellement disponibles • Les sources officielles restent prioritaires pour toute décision opérationnelle.</footer>
     </main>
   );
 }

@@ -43,7 +43,7 @@ export type MapZone = {
 };
 
 type Bounds = [[number, number], [number, number]];
-type MapVariant = "layers" | "street" | "satellite" | "dark";
+export type MapVariant = "layers" | "street" | "satellite" | "dark";
 
 function FitMap({
   center,
@@ -140,7 +140,7 @@ function zoneStyle(status: MapZone["status"]) {
   if (status === "inactive") {
     return { color: "#1769d2", fillColor: "#2f80ed", fillOpacity: 0.17, opacity: 0.96, weight: 2.8 };
   }
-  return { color: "#536f8a", fillColor: "#7b93aa", fillOpacity: 0.10, opacity: 0.95, weight: 2.5, dashArray: "8 7" };
+  return { color: "#1769d2", fillColor: "#2f80ed", fillOpacity: 0.18, opacity: 0.96, weight: 2.6, dashArray: "8 6" };
 }
 
 function BaseLayers({ variant }: { variant: MapVariant }) {
@@ -183,7 +183,7 @@ export default function StableMap({
   maxBounds,
   lockBounds = false,
   showZoneLabels = false,
-  mapVariant = "layers"
+  mapVariant = "street"
 }: {
   points: MapPoint[];
   center: [number, number];
@@ -211,7 +211,7 @@ export default function StableMap({
       maxBoundsViscosity={lockBounds ? 1 : 0}
       minZoom={lockBounds ? 7 : 3}
       preferCanvas
-      className="leaflet-map xavpac-modern-map xavpac-readable-map"
+      className={`leaflet-map xavpac-modern-map xavpac-readable-map map-${mapVariant}`}
     >
       <FitMap center={center} zoom={zoom} radiusKm={radiusKm} fixedBounds={fixedBounds} />
       <BaseLayers variant={mapVariant} />

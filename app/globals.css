@@ -736,3 +736,91 @@ a { color: inherit; }
   .azba-live-banner{align-items:flex-start;flex-direction:column}
   .azba-live-frame{height:520px}
 }
+
+/* =========================================================
+   XavPac 6.0 — FlightWall responsive et cartes exploitables
+   ========================================================= */
+.app-v4 { width: min(1900px, calc(100% - 16px)); padding: 8px 0 20px; }
+.header-v4 { min-height: 70px; padding: 10px 14px; border-radius: 14px 14px 5px 5px; }
+.brand-plane { font-size: 34px; }
+.brand-v4 h1 { font-size: clamp(24px, 2.4vw, 36px); letter-spacing: -1px; }
+.brand-v4 p { font-size: 10px; }
+.system-live { display: grid; grid-template-columns: auto 1fr; gap: 1px 6px; border-radius: 10px; }
+.system-live small { grid-column: 2; display: block; color: #75b995; font-size: 7px; font-weight: 600; }
+.clock-v4 { min-width: 125px; }.clock-v4 strong { font-size: 23px; }.clock-v4 span { font-size: 9px; }
+.tabs-v4 { gap: 4px; margin: 4px 0; padding: 4px; border: 1px solid var(--line); background: rgba(4,17,29,.96); }
+.tab-v4 { min-height: 55px; padding: 8px 11px; border-radius: 9px; }.tab-v4 > span { font-size: 21px; }.tab-v4 strong { text-transform: uppercase; font-size: 11px; }.tab-v4 small { font-size: 8px; }
+.tab-v4.active { box-shadow: inset 0 -2px 0 var(--cyan); }
+.footer-v4 { margin-top: 4px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 5px 5px 12px 12px; color: var(--muted); font-size: 8px; }
+
+.aviation-console { grid-template-columns: minmax(0, 1.95fr) minmax(350px, .9fr); gap: 6px; min-height: 0; }
+.aviation-map-shell, .aircraft-focus { border-radius: 11px; }
+.aviation-map-shell { padding: 8px; }
+.aviation-pro-heading { padding: 1px 3px 8px; }.aviation-pro-heading h2 { font-size: 18px; }.aviation-pro-heading p { font-size: 9px; }
+.aviation-toolbar { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 7px; }
+.aviation-map-controls { justify-content: center; }
+.tool-button, .source-chip { min-height: 30px; padding: 6px 9px; border-radius: 8px; font-size: 8px; }
+.aviation-map-stage { height: clamp(570px, 66vh, 820px); border-radius: 9px; background: #e5edf2; }
+.map-street .leaflet-tile-pane, .map-satellite .leaflet-tile-pane { filter: none !important; }
+.map-dark .leaflet-tile-pane { filter: saturate(.9) contrast(1.04) brightness(.92) !important; }
+.map-street .leaflet-control-zoom a, .map-satellite .leaflet-control-zoom a { color: #10283d; background: rgba(255,255,255,.96); }
+.map-street .leaflet-control-attribution, .map-satellite .leaflet-control-attribution { color: #516a7d; background: rgba(255,255,255,.82); }
+.xavpac-aircraft-marker { width: 108px; }
+.xavpac-aircraft-svg { width: 44px; height: 44px; filter: drop-shadow(0 1px 1px rgba(255,255,255,.95)) drop-shadow(0 5px 7px rgba(0,0,0,.5)); }
+.xavpac-aircraft-label { max-width: 104px; padding: 4px 7px; border-radius: 7px; background: rgba(4,17,29,.95); color: #fff; font-size: 9px; box-shadow: 0 5px 12px rgba(0,0,0,.35); }
+.xavpac-aircraft-marker.is-faded { opacity: .72; }
+.xavpac-aircraft-marker.is-selected { transform: scale(1.2); }
+.map-radar-card { left: 10px; bottom: 10px; width: 195px; padding: 9px; border-radius: 11px; }
+.mini-radar { width: 160px; height: 160px; }
+.map-nearest-card { left: 216px; bottom: 10px; width: min(490px, calc(100% - 440px)); padding: 9px; border-radius: 11px; }
+.nearest-row { min-height: 34px; }
+.aircraft-focus { padding: 13px; }
+.focus-title h2 { font-size: 32px; }.focus-plane { font-size: 42px; }
+.focus-grid { grid-template-columns: repeat(2, 1fr); gap: 7px; }
+.focus-grid > div { padding: 10px; border-radius: 9px; }
+.data-honesty { margin-top: 12px; padding: 10px; border: 1px solid rgba(88,212,255,.18); border-radius: 9px; background: rgba(88,212,255,.05); }
+.data-honesty p { color: var(--muted); font-size: 9px; line-height: 1.5; }
+
+.drone-console-v4 { grid-template-columns: minmax(0, 1.85fr) minmax(330px, .8fr); gap: 6px; }
+.drone-map-card-v4, .drone-side-v4 .panel { border-radius: 11px; }
+.drone-map-card-v4 { padding: 10px; }
+.drone-map-locked-v5 { height: clamp(590px, 70vh, 820px); background: #e6edf2; }
+.zone-label-v5 { padding: 3px 6px !important; border-color: rgba(23,105,210,.45) !important; background: rgba(255,255,255,.92) !important; color: #1766bd !important; font-size: 8px !important; box-shadow: 0 4px 9px rgba(0,0,0,.18) !important; }
+.rtba-zone-list-v5 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.rtba-zone-list-v5 article { padding: 8px; border-color: rgba(47,128,237,.22); background: rgba(47,128,237,.06); }
+.rtba-zone-list-v5 strong { color: #69b5ff; }
+.rtba-legend-v4 .unknown { color: #5aa8f2; }
+.azba-live-frame { height: 700px; }
+
+@media (max-width: 1280px) {
+  .tabs-v4 { grid-template-columns: repeat(3, 1fr); }
+  .aviation-console, .drone-console-v4 { grid-template-columns: 1fr; }
+  .aviation-map-stage { height: 650px; }
+  .aircraft-focus { display: grid; grid-template-columns: 1fr; }
+  .drone-side-v4 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .rtba-zone-list-v5 { grid-template-columns: repeat(3, 1fr); }
+}
+@media (max-width: 900px) {
+  .header-live-area { flex-wrap: wrap; }
+  .aviation-toolbar { grid-template-columns: 1fr; }.aviation-map-controls, .right-tools { justify-content: flex-start; }
+  .aviation-map-stage { height: 590px; }
+  .map-nearest-card { width: calc(100% - 230px); }
+  .drone-side-v4 { grid-template-columns: 1fr; }
+  .rtba-zone-list-v5 { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 680px) {
+  .app-v4 { width: 100%; padding: 4px; }
+  .header-v4 { min-height: 56px; padding: 7px; }.brand-plane { font-size: 26px; }.brand-v4 h1 { font-size: 20px; }.brand-v4 p, .view-counter-v5 { display: none; }
+  .clock-v4 { min-width: 72px; padding-left: 7px; }.clock-v4 strong { font-size: 15px; }.clock-v4 span { font-size: 6px; }.system-live { padding: 6px; font-size: 7px; }.system-live small { display: none; }
+  .tabs-v4 { position: sticky; top: 0; z-index: 1200; display: grid; grid-template-columns: repeat(6, minmax(62px, 1fr)); overflow-x: auto; gap: 2px; }
+  .tab-v4 { min-height: 47px; flex-direction: column; justify-content: center; gap: 1px; padding: 4px; text-align: center; }.tab-v4 > span { font-size: 16px; }.tab-v4 strong { font-size: 7px; }.tab-v4 small { display: none; }
+  .aviation-pro-heading { display: none; }
+  .aviation-toolbar { gap: 4px; }.toolbar-group { gap: 3px; }.tool-button, .source-chip { min-height: 27px; padding: 5px 6px; font-size: 7px; }.right-tools .source-chip:nth-child(n+2) { display: none; }
+  .aviation-map-stage { height: 490px; }
+  .map-radar-card { left: 7px; bottom: 7px; width: 135px; }.mini-radar { width: 112px; height: 112px; }.radar-circle.one{width:38px;height:38px}.radar-circle.two{width:70px;height:70px}.radar-circle.three{width:102px;height:102px}
+  .map-nearest-card { left: 148px; right: 7px; bottom: 7px; width: auto; max-height: 145px; overflow: auto; }.nearest-row { grid-template-columns: 20px 1fr auto; }.nearest-row > span:nth-of-type(n+2), .nearest-row em { display: none; }
+  .xavpac-aircraft-marker { width: 88px; }.xavpac-aircraft-svg { width: 35px; height: 35px; }.xavpac-aircraft-label { max-width: 84px; font-size: 7px; padding: 3px 5px; }
+  .focus-grid { grid-template-columns: repeat(2, 1fr); }
+  .drone-map-locked-v5 { height: 510px; }.rtba-mode-switch { width: 100%; }.rtba-mode-switch button { flex: 1; }.rtba-zone-list-v5 { grid-template-columns: 1fr 1fr; }
+  .azba-live-frame { height: 520px; }
+}
