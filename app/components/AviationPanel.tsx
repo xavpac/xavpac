@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useLiveGeolocation } from "../hooks/useLiveGeolocation";
 
 const StableMap = dynamic(() => import("./StableMap"), { ssr: false });
 
@@ -26,7 +27,6 @@ type LiveAircraft = {
 };
 
 type AircraftWithDistance = LiveAircraft & { distance: number };
-
 type Radius = 20 | 50 | 100;
 
 function distanceKm(origin: [number, number], destination: [number, number]) {
@@ -59,27 +59,30 @@ function directionName(track: number | null) {
   return `${directions[Math.round(track / 45) % 8]} • ${Math.round(track)}°`;
 }
 
-function radarCoordinates(
-  home: [number, number],
-  aircraft: AircraftWithDistance,
-  radius: number
-) {
+function radarCoordinates(home: [number, number], aircraft: AircraftWithDistance, radius: number) {
   const latDelta = aircraft.latitude - home[0];
-  const lonDelta =
-    (aircraft.longitude - home[1]) * Math.cos((home[0] * Math.PI) / 180);
+  const lonDelta = (aircraft.longitude - home[1]) * Math.cos((home[0] * Math.PI) / 180);
   const x = Math.max(-1, Math.min(1, (lonDelta * 111) / radius));
   const y = Math.max(-1, Math.min(1, (latDelta * 111) / radius));
   return { left: `${50 + x * 45}%`, top: `${50 - y * 45}%` };
 }
 
-function aircraftKind(item: LiveAircraft) {
-  const text = `${item.aircraftType ?? ""} ${item.description ?? ""} ${item.category ?? ""}`.toLowerCase();
-  return text.includes("heli") || text.includes("rotor") ? "helicopter" : "aircraft";
+function aircraftVisual(item: LiveAircraft) {
+  const text = `${item.aircraftType ?? ""} ${item.description ?? ""} ${item.category ?? ""} ${item.operator ?? ""}`.toLowerCase();
+  if (text.includes("heli") || text.includes("rotor")) {
+    return { category: "helicopter", color: "#4fa8ff" };
+  }
+  if (/(military|armée|air force|fighter|rafale|mirage|trainer)/i.test(text)) {
+    return { category: "military", color: "#ff5e78" };
+  }
+  if (/(cessna|piper|robin|cirrus|ultralight|ulm|glider)/i.test(text)) {
+    return { category: "light", color: "#bc83ff" };
+  }
+  return { category: "commercial", color: "#ffb34d" };
 }
 
 export default function AviationPanel() {
-  const [position, setPosition] = useState<[number, number]>([46.346, 4.977]);
-  const [positionStatus, setPositionStatus] = useState("Position de référence");
+  const { position, status: positionStatus, isLive, error: gpsError } = useLiveGeolocation();
   const [radius, setRadius] = useState<Radius>(20);
   const [aircraft, setAircraft] = useState<AircraftWithDistance[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -89,22 +92,6 @@ export default function AviationPanel() {
   const [error, setError] = useState("");
   const trailsRef = useRef<Record<string, [number, number][]>>({});
   const [trailsVersion, setTrailsVersion] = useState(0);
-
-  useEffect(() => {
-    if (!navigator.geolocation) {
-      setPositionStatus("Géolocalisation indisponible");
-      return;
-    }
-
-    navigator.geolocation.getCurrentPosition(
-      (result) => {
-        setPosition([result.coords.latitude, result.coords.longitude]);
-        setPositionStatus(`GPS • précision ±${Math.round(result.coords.accuracy)} m`);
-      },
-      () => setPositionStatus("Position de référence utilisée"),
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
-    );
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -128,13 +115,7 @@ export default function AviationPanel() {
           .sort((a: AircraftWithDistance, b: AircraftWithDistance) => a.distance - b.distance);
 
         setAircraft(sorted);
-        setLastUpdate(
-          new Date().toLocaleTimeString("fr-FR", {
-            hour: "2-digit",
-            minute: "2-digit",
-            second: "2-digit"
-          })
-        );
+        setLastUpdate(new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
 
         if (sorted.length === 0) {
           setSelectedId(null);
@@ -144,7 +125,7 @@ export default function AviationPanel() {
           setManualSelection(false);
         }
 
-        for (const item of sorted.slice(0, 40)) {
+        for (const item of sorted.slice(0, 60)) {
           const current = trailsRef.current[item.id] ?? [];
           const nextPoint: [number, number] = [item.latitude, item.longitude];
           const previousPoint = current[current.length - 1];
@@ -152,16 +133,12 @@ export default function AviationPanel() {
             !previousPoint ||
             Math.abs(previousPoint[0] - nextPoint[0]) > 0.00005 ||
             Math.abs(previousPoint[1] - nextPoint[1]) > 0.00005;
-          trailsRef.current[item.id] = isNew ? [...current, nextPoint].slice(-30) : current;
+          trailsRef.current[item.id] = isNew ? [...current, nextPoint].slice(-40) : current;
         }
         setTrailsVersion((value) => value + 1);
 
         const source = typeof payload.source === "string" ? payload.source : "Airplanes.live";
-        setSourceStatus(
-          response.ok
-            ? `${source} • ${sorted.length} appareil${sorted.length > 1 ? "s" : ""}`
-            : `${source} indisponible`
-        );
+        setSourceStatus(response.ok ? `${source} • ${sorted.length} appareil${sorted.length > 1 ? "s" : ""}` : `${source} indisponible`);
         if (!response.ok) setError(payload.error ?? "Source aérienne indisponible.");
       } catch {
         if (!cancelled) {
@@ -174,7 +151,7 @@ export default function AviationPanel() {
     }
 
     refresh();
-    const timer = window.setInterval(refresh, 15000);
+    const timer = window.setInterval(refresh, 12000);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
@@ -197,35 +174,36 @@ export default function AviationPanel() {
         color: "#3aa7ff",
         category: "home"
       },
-      ...aircraft.slice(0, 60).map((item) => ({
-        id: item.id,
-        lat: item.latitude,
-        lon: item.longitude,
-        name: item.callsign,
-        detail: `${item.aircraftType ?? "Type inconnu"} • ${formatFlightLevel(item.barometricAltitude)} • ${formatSpeed(item.velocity)}`,
-        color: item.id === selected?.id ? "#63ddff" : "#41c9ff",
-        category: aircraftKind(item),
-        heading: item.trueTrack
-      }))
+      ...aircraft.slice(0, 80).map((item) => {
+        const visual = aircraftVisual(item);
+        return {
+          id: item.id,
+          lat: item.latitude,
+          lon: item.longitude,
+          name: item.callsign,
+          detail: `${item.aircraftType ?? "Type inconnu"} • ${formatFlightLevel(item.barometricAltitude)} • ${formatSpeed(item.velocity)}`,
+          color: item.id === selected?.id ? "#63ddff" : visual.color,
+          category: visual.category,
+          heading: item.trueTrack
+        };
+      })
     ],
     [aircraft, position, positionStatus, selected]
   );
 
   const mapTrails = useMemo(
     () =>
-      aircraft.slice(0, 20).flatMap((item) => {
+      aircraft.slice(0, 30).flatMap((item) => {
         const positions = trailsRef.current[item.id] ?? [];
         if (positions.length < 2) return [];
-        return [
-          {
-            id: item.id,
-            positions,
-            color: item.id === selected?.id ? "#63ddff" : "#3c90bd",
-            selected: item.id === selected?.id
-          }
-        ];
+        const visual = aircraftVisual(item);
+        return [{
+          id: item.id,
+          positions,
+          color: item.id === selected?.id ? "#63ddff" : visual.color,
+          selected: item.id === selected?.id
+        }];
       }),
-    // trailsVersion is intentionally used to refresh stored trails.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [aircraft, selected, trailsVersion]
   );
@@ -254,10 +232,14 @@ export default function AviationPanel() {
           </div>
           <div className="toolbar-group right-tools">
             <span className="source-chip">✈ {aircraft.length}</span>
-            <span className="source-chip">📍 {positionStatus}</span>
+            <span className={isLive ? "source-chip gps-live" : "source-chip"}>📍 {positionStatus}</span>
             <span className="source-chip live">● {sourceStatus}</span>
           </div>
         </div>
+
+        {(gpsError || error) && (
+          <div className="aviation-warning-v5">{gpsError || error}</div>
+        )}
 
         <div className="aviation-map-stage">
           <StableMap
@@ -326,7 +308,7 @@ export default function AviationPanel() {
         <div className="map-footer-line">
           <span>Données aériennes : Airplanes.live</span>
           <span>Actualisation : {lastUpdate}</span>
-          {error && <span className="error-inline">{error}</span>}
+          <span>Aucun METAR n’est affiché dans l’onglet Aviation.</span>
         </div>
       </div>
 

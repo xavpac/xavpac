@@ -1,24 +1,14 @@
-# 4.1.0 — Centre opérationnel
+# 5.0.0 — GPS continu, Drone 71 et CODIS
 
-- Ajout d’un sixième onglet « Centre opérationnel ».
-- Vue de situation SDIS 71.
-- Briefing automatique météo et aérien.
-- Carte des moyens nationaux détectables par ADS-B.
-- Portails rapides vers les sources de référence.
-- Mise en page responsive iPhone, iPad, Mac et PC.
+- Géolocalisation continue avec `watchPosition` dans Aviation, Drone, CODIS, Astronomie et Météo.
+- Bâgé-Dommartin devient la position de secours globale.
+- Avions agrandis, plus contrastés, orientés selon leur cap et colorés par catégorie.
+- METAR absent de l’onglet Aviation et conservé uniquement dans Drone.
+- Carte Drone limitée à la Saône-et-Loire avec R45, R46 et R47 toujours visibles.
+- Onglet Centre opérationnel renommé CODIS.
+- Compteur de vues local visible dans l’en-tête.
+- Météo calculée à la position GPS au lieu de Dommartin-lès-Cuiseaux.
 
-# Journal des versions
+## Sécurité aéronautique
 
-## 2.0.0
-
-- Reconstruction complète de l’onglet Aviation.
-- Correction définitive des imports React `useEffect`, `useMemo` et `useState`.
-- Carte Aviation épurée avec trajectoire bleue.
-- Épingle seule pour la position.
-- Photo de l’avion intégrée.
-- Compteur en temps réel avant et après le passage.
-- Heure locale affichée en petit.
-- Jauge d’approche.
-- Liste des cinq prochains avions.
-- Fiche technique de l’appareil.
-- Base prête pour les futures API réelles.
+Les tracés RTBA intégrés servent au repérage visuel. L’activation, les limites et les niveaux doivent être vérifiés auprès du SIA/AZBA, des NOTAM, SUP AIP et AIP officiels.

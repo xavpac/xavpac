@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useLiveGeolocation } from "../hooks/useLiveGeolocation";
 
 type OrbitRecord = {
   OBJECT_NAME?: string;
@@ -16,24 +17,13 @@ type SkyWeather = {
 };
 
 export default function AstronomyPanel() {
-  const [position, setPosition] = useState<[number, number]>([46.498, 5.298]);
-  const [positionStatus, setPositionStatus] = useState("Position de référence");
+  const { position, status: positionStatus, error: gpsError } = useLiveGeolocation();
   const [iss, setIss] = useState<OrbitRecord | null>(null);
   const [starlinkCount, setStarlinkCount] = useState<number | null>(null);
   const [visibleCount, setVisibleCount] = useState<number | null>(null);
   const [orbitStatus, setOrbitStatus] = useState("Connexion CelesTrak…");
   const [weather, setWeather] = useState<SkyWeather | null>(null);
 
-  useEffect(() => {
-    if (!navigator.geolocation) return;
-    navigator.geolocation.getCurrentPosition(
-      (result) => {
-        setPosition([result.coords.latitude, result.coords.longitude]);
-        setPositionStatus("Position GPS");
-      },
-      () => setPositionStatus("Position de référence")
-    );
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -106,6 +96,8 @@ export default function AstronomyPanel() {
           <div><strong>{orbitStatus}</strong><small>{positionStatus}</small></div>
         </div>
       </section>
+
+      {gpsError && <div className="gps-banner-v5">📍 {gpsError}</div>}
 
       <section className="astronomy-console-v4">
         <article className="panel astronomy-primary">

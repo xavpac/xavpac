@@ -7,16 +7,17 @@ import DronePanel from "./components/DronePanel";
 import AstronomyPanel from "./components/AstronomyPanel";
 import WeatherPanel from "./components/WeatherPanel";
 import CenterOperationsPanel from "./components/CenterOperationsPanel";
+import ViewCounter from "./components/ViewCounter";
 
 type Tab = "aviation" | "drone" | "operations" | "center" | "astronomy" | "weather";
 
 const tabs = [
   { id: "aviation" as Tab, icon: "✈", title: "Aviation", subtitle: "Trafic réel autour de vous" },
-  { id: "drone" as Tab, icon: "🚁", title: "Drone SDIS 71", subtitle: "RTBA et décision avant vol" },
+  { id: "drone" as Tab, icon: "🚁", title: "Drone SDIS 71", subtitle: "Saône-et-Loire et RTBA" },
   { id: "operations" as Tab, icon: "🚒", title: "Moyens nationaux", subtitle: "Détection ADS-B sans données fictives" },
-  { id: "center" as Tab, icon: "🖥️", title: "Centre opérationnel", subtitle: "Vue de situation SDIS 71" },
-  { id: "astronomy" as Tab, icon: "🌌", title: "Astronomie", subtitle: "ISS, Starlink et ciel du soir" },
-  { id: "weather" as Tab, icon: "🌦️", title: "Météo Dommartin", subtitle: "Conditions locales en direct" }
+  { id: "center" as Tab, icon: "🚨", title: "CODIS", subtitle: "Vue opérationnelle SDIS 71" },
+  { id: "astronomy" as Tab, icon: "🌌", title: "Astronomie", subtitle: "ISS, Starlink et ciel local" },
+  { id: "weather" as Tab, icon: "🌦️", title: "Météo locale", subtitle: "Conditions selon votre GPS" }
 ];
 
 export default function Page() {
@@ -35,11 +36,12 @@ export default function Page() {
         <div className="brand-v4">
           <span className="brand-plane">✈</span>
           <div>
-            <h1>XavPac <b>4.1</b></h1>
-            <p>Aviation • Drone SDIS 71 • Moyens nationaux • Centre opérationnel • Astronomie • Météo</p>
+            <h1>XavPac <b>5.0</b></h1>
+            <p>Aviation • Drone SDIS 71 • Moyens nationaux • CODIS • Astronomie • Météo</p>
           </div>
         </div>
         <div className="header-live-area">
+          <ViewCounter />
           <span className="system-live">● SYSTÈME ACTIF</span>
           <div className="clock-v4">
             <strong>{now ? now.toLocaleTimeString("fr-FR") : "--:--:--"}</strong>
@@ -70,7 +72,7 @@ export default function Page() {
       {active === "weather" && <WeatherPanel />}
 
       <footer className="footer-v4">
-        XavPac 4.1 • Données publiques indicatives • Les sources officielles restent prioritaires pour les décisions opérationnelles.
+        XavPac 5.0 • Géolocalisation continue lorsque le site reste ouvert • Les sources officielles restent prioritaires pour toute décision opérationnelle.
       </footer>
     </main>
   );

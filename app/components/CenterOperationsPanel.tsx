@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState } from "react";
+import { useLiveGeolocation } from "../hooks/useLiveGeolocation";
 
 const StableMap = dynamic(() => import("./StableMap"), { ssr: false });
 
@@ -46,7 +47,6 @@ type Portal = {
   source: string;
 };
 
-const DEFAULT_POSITION: [number, number] = [46.64, 4.5];
 
 const portals: Portal[] = [
   {
@@ -154,8 +154,7 @@ function isHelicopter(asset: OperationalAsset) {
 }
 
 export default function CenterOperationsPanel() {
-  const [position, setPosition] = useState<[number, number]>(DEFAULT_POSITION);
-  const [positionStatus, setPositionStatus] = useState("Position de référence SDIS 71");
+  const { position, status: positionStatus, isLive, error: gpsError } = useLiveGeolocation();
   const [weather, setWeather] = useState<CurrentWeather | null>(null);
   const [weatherError, setWeatherError] = useState("");
   const [assets, setAssets] = useState<OperationalAsset[]>([]);
@@ -163,17 +162,6 @@ export default function CenterOperationsPanel() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [updatedAt, setUpdatedAt] = useState("—");
 
-  useEffect(() => {
-    if (!navigator.geolocation) return;
-    navigator.geolocation.getCurrentPosition(
-      (result) => {
-        setPosition([result.coords.latitude, result.coords.longitude]);
-        setPositionStatus(`GPS • précision ±${Math.round(result.coords.accuracy)} m`);
-      },
-      () => setPositionStatus("Position de référence SDIS 71"),
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
-    );
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -305,8 +293,8 @@ export default function CenterOperationsPanel() {
     <>
       <section className="hero center-ops-hero">
         <div>
-          <span className="eyebrow">CENTRE OPÉRATIONNEL</span>
-          <h1>Vue de situation SDIS 71</h1>
+          <span className="eyebrow">CODIS 71</span>
+          <h1>Tableau de bord opérationnel</h1>
           <p>Météo locale, trafic aérien, moyens détectés et accès immédiat aux sources de référence.</p>
         </div>
         <div className={`ops-readiness ${level.className}`}>
@@ -314,10 +302,12 @@ export default function CenterOperationsPanel() {
           <div>
             <small>INDICATEUR TECHNIQUE LOCAL</small>
             <strong>{level.label}</strong>
-            <em>Mise à jour {updatedAt}</em>
+            <em>{isLive ? "GPS continu" : "Position de secours"} • mise à jour {updatedAt}</em>
           </div>
         </div>
       </section>
+
+      {gpsError && <div className="gps-banner-v5">📍 {gpsError}</div>}
 
       <section className="ops-kpi-grid">
         <article className="panel ops-kpi">
@@ -345,7 +335,7 @@ export default function CenterOperationsPanel() {
               <div>
                 <span className="eyebrow">SITUATION AÉRIENNE</span>
                 <h3>Carte opérationnelle</h3>
-                <p className="muted">Position GPS et moyens nationaux détectables par ADS-B.</p>
+                <p className="muted">Position suivie en continu et moyens nationaux détectables par ADS-B.</p>
               </div>
               <span className="ops-source-chip">● AIRPLANES.LIVE</span>
             </div>

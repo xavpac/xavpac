@@ -21,7 +21,7 @@ export type MapPoint = {
   name: string;
   detail: string;
   color?: string;
-  category?: "home" | "aircraft" | "helicopter" | "warning" | string;
+  category?: "home" | "commercial" | "military" | "light" | "aircraft" | "helicopter" | "warning" | string;
   heading?: number | null;
 };
 
@@ -35,24 +35,33 @@ export type MapTrail = {
 export type MapZone = {
   id: string;
   name: string;
-  status: "active" | "inactive" | "unknown";
+  status: "active" | "inactive" | "unknown" | "boundary";
   floor: string;
   ceiling: string;
   positions: [number, number][];
 };
 
+type Bounds = [[number, number], [number, number]];
+
 function FitMap({
   center,
   zoom,
-  radiusKm
+  radiusKm,
+  fixedBounds
 }: {
   center: [number, number];
   zoom: number;
   radiusKm?: number;
+  fixedBounds?: Bounds;
 }) {
   const map = useMap();
 
   useEffect(() => {
+    if (fixedBounds) {
+      map.fitBounds(fixedBounds, { padding: [20, 20], animate: true, duration: 0.65 });
+      return;
+    }
+
     if (radiusKm) {
       const latitudeDelta = radiusKm / 111;
       const longitudeDelta =
@@ -70,7 +79,7 @@ function FitMap({
     }
 
     map.flyTo(center, zoom, { animate: true, duration: 0.65 });
-  }, [center, map, radiusKm, zoom]);
+  }, [center, fixedBounds, map, radiusKm, zoom]);
 
   return null;
 }
@@ -79,16 +88,16 @@ function aircraftSvg(color: string, heading: number, helicopter = false) {
   if (helicopter) {
     return `
       <svg viewBox="0 0 64 64" style="transform:rotate(${heading}deg)">
-        <path d="M11 31h22c8 0 14 4 17 11H29c-7 0-13-4-18-11Z" fill="${color}" stroke="white" stroke-width="1.6"/>
-        <path d="M35 21h3v14h-3zM19 23h33v2H19zM46 39l11 8-2 2-14-7z" fill="${color}" stroke="white" stroke-width="1"/>
-        <circle cx="24" cy="45" r="3" fill="${color}" stroke="white" stroke-width="1.5"/>
-        <circle cx="43" cy="45" r="3" fill="${color}" stroke="white" stroke-width="1.5"/>
+        <path d="M8 30h26c9 0 15 5 18 13H28c-8 0-14-5-20-13Z" fill="${color}" stroke="white" stroke-width="2"/>
+        <path d="M36 18h4v18h-4zM16 21h40v3H16zM47 40l12 9-3 3-16-9z" fill="${color}" stroke="white" stroke-width="1.2"/>
+        <circle cx="23" cy="47" r="3.5" fill="${color}" stroke="white" stroke-width="1.8"/>
+        <circle cx="44" cy="47" r="3.5" fill="${color}" stroke="white" stroke-width="1.8"/>
       </svg>`;
   }
 
   return `
     <svg viewBox="0 0 64 64" style="transform:rotate(${heading}deg)">
-      <path d="M31.8 4.5c2 0 3.5 1.8 3.5 4.2v15.1L53 34.2c1.4.8 2.3 2.2 2.3 3.8v3.6l-20-6.2v12.2l6.6 4.1v3.2l-10.1-2.6-10.1 2.6v-3.2l6.6-4.1V35.4l-20 6.2V38c0-1.6.9-3 2.3-3.8l17.7-10.4V8.7c0-2.4 1.5-4.2 3.5-4.2Z" fill="${color}" stroke="white" stroke-width="1.6" stroke-linejoin="round"/>
+      <path d="M31.8 3.2c2.5 0 4.2 2.1 4.2 5v14.9L55 34.3c1.7 1 2.7 2.6 2.7 4.4v4.2L36 36.3v11.3l7.2 4.5v3.8l-11.4-3-11.4 3v-3.8l7.2-4.5V36.3L6 42.9v-4.2c0-1.8 1-3.4 2.7-4.4l18.9-11.2V8.2c0-2.9 1.7-5 4.2-5Z" fill="${color}" stroke="white" stroke-width="2.2" stroke-linejoin="round"/>
     </svg>`;
 }
 
@@ -96,16 +105,16 @@ function homeIcon() {
   return L.divIcon({
     className: "xavpac-map-icon-root",
     html: `<div class="xavpac-home-marker"><span class="xavpac-home-core"></span><span class="xavpac-home-ring"></span></div>`,
-    iconSize: [30, 30],
-    iconAnchor: [15, 15],
-    popupAnchor: [0, -16]
+    iconSize: [34, 34],
+    iconAnchor: [17, 17],
+    popupAnchor: [0, -18]
   });
 }
 
 function pointIcon(point: MapPoint, selected: boolean, faded: boolean) {
   if (point.category === "home") return homeIcon();
 
-  const color = selected ? "#63ddff" : point.color ?? "#8aa1b7";
+  const color = selected ? "#63ddff" : point.color ?? "#ffb34d";
   const helicopter = point.category === "helicopter";
   const heading = typeof point.heading === "number" ? point.heading : 0;
 
@@ -116,18 +125,29 @@ function pointIcon(point: MapPoint, selected: boolean, faded: boolean) {
         <div class="xavpac-aircraft-svg">${aircraftSvg(color, heading, helicopter)}</div>
         <div class="xavpac-aircraft-label">${point.name}</div>
       </div>`,
-    iconSize: [76, 58],
-    iconAnchor: [38, 29],
-    popupAnchor: [0, -26]
+    iconSize: [108, 82],
+    iconAnchor: [54, 41],
+    popupAnchor: [0, -36]
   });
 }
 
 function zoneStyle(status: MapZone["status"]) {
+  if (status === "boundary") {
+    return {
+      color: "#63ddff",
+      fillColor: "#63ddff",
+      fillOpacity: 0.015,
+      opacity: 0.95,
+      weight: 3,
+      dashArray: "10 7"
+    };
+  }
+
   if (status === "active") {
     return {
       color: "#ff5e78",
       fillColor: "#ff5e78",
-      fillOpacity: 0.18,
+      fillOpacity: 0.2,
       opacity: 1,
       weight: 3
     };
@@ -135,21 +155,21 @@ function zoneStyle(status: MapZone["status"]) {
 
   if (status === "inactive") {
     return {
-      color: "#ffb655",
-      fillColor: "#ffb655",
-      fillOpacity: 0.045,
-      opacity: 0.88,
+      color: "#4fa8ff",
+      fillColor: "#4fa8ff",
+      fillOpacity: 0.05,
+      opacity: 0.92,
       weight: 2
     };
   }
 
   return {
-    color: "#9aa9ba",
-    fillColor: "#9aa9ba",
-    fillOpacity: 0.025,
-    opacity: 0.75,
-    weight: 2,
-    dashArray: "8 8"
+    color: "#ffb655",
+    fillColor: "#ffb655",
+    fillOpacity: 0.045,
+    opacity: 0.95,
+    weight: 2.5,
+    dashArray: "8 7"
   };
 }
 
@@ -162,7 +182,11 @@ export default function StableMap({
   zones = [],
   radiusKm,
   showRadius = false,
-  onSelect
+  onSelect,
+  fixedBounds,
+  maxBounds,
+  lockBounds = false,
+  showZoneLabels = false
 }: {
   points: MapPoint[];
   center: [number, number];
@@ -173,6 +197,10 @@ export default function StableMap({
   radiusKm?: number;
   showRadius?: boolean;
   onSelect?: (id: string) => void;
+  fixedBounds?: Bounds;
+  maxBounds?: Bounds;
+  lockBounds?: boolean;
+  showZoneLabels?: boolean;
 }) {
   return (
     <MapContainer
@@ -181,9 +209,12 @@ export default function StableMap({
       scrollWheelZoom
       zoomControl
       attributionControl
+      maxBounds={maxBounds}
+      maxBoundsViscosity={lockBounds ? 1 : 0}
+      minZoom={lockBounds ? 7 : 3}
       className="leaflet-map xavpac-modern-map"
     >
-      <FitMap center={center} zoom={zoom} radiusKm={radiusKm} />
+      <FitMap center={center} zoom={zoom} radiusKm={radiusKm} fixedBounds={fixedBounds} />
 
       <TileLayer
         attribution="&copy; OpenStreetMap &copy; CARTO"
@@ -197,9 +228,9 @@ export default function StableMap({
           pathOptions={{
             color: "#53cfff",
             weight: 2,
-            opacity: 0.72,
+            opacity: 0.78,
             fillColor: "#53cfff",
-            fillOpacity: 0.035,
+            fillOpacity: 0.04,
             dashArray: "8 10"
           }}
         >
@@ -215,12 +246,19 @@ export default function StableMap({
           positions={zone.positions}
           pathOptions={zoneStyle(zone.status)}
         >
+          {showZoneLabels && (
+            <Tooltip permanent direction="center" className={`zone-label-v5 ${zone.status}`}>
+              {zone.name}
+            </Tooltip>
+          )}
           <Popup>
             <div className="xavpac-popup">
               <strong>{zone.name}</strong>
-              <span>
-                Statut : {zone.status === "active" ? "ACTIVE" : zone.status === "inactive" ? "INACTIVE" : "À VÉRIFIER"}
-              </span>
+              {zone.status !== "boundary" && (
+                <span>
+                  Statut : {zone.status === "active" ? "ACTIVE" : zone.status === "inactive" ? "INACTIVE" : "À VÉRIFIER SUR L’AZBA"}
+                </span>
+              )}
               <span>Plancher : {zone.floor}</span>
               <span>Plafond : {zone.ceiling}</span>
             </div>
@@ -235,7 +273,7 @@ export default function StableMap({
           pathOptions={{
             color: trail.color ?? "#5bd8ff",
             weight: trail.selected ? 4 : 2,
-            opacity: trail.selected ? 0.92 : 0.32,
+            opacity: trail.selected ? 0.94 : 0.38,
             dashArray: trail.selected ? undefined : "7 9",
             lineCap: "round",
             lineJoin: "round"

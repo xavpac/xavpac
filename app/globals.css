@@ -534,3 +534,141 @@ a { color: inherit; }
   .operational-portals-grid { grid-template-columns: 1fr; }
   .operational-portal-card { min-height: 145px; }
 }
+
+/* =========================================================
+   XavPac 5.0 — GPS continu, avions renforcés, Drone 71, CODIS
+   ========================================================= */
+
+.view-counter-v5 {
+  padding: 9px 12px;
+  border-radius: 999px;
+  color: #bfe9ff;
+  background: rgba(88, 212, 255, .09);
+  border: 1px solid rgba(88, 212, 255, .24);
+  font-weight: 900;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.gps-banner-v5,
+.aviation-warning-v5 {
+  margin: 0 0 12px;
+  padding: 11px 14px;
+  border-radius: 13px;
+  border: 1px solid rgba(255, 189, 89, .30);
+  background: rgba(255, 189, 89, .08);
+  color: #ffd18b;
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.source-chip.gps-live {
+  color: #86efb4;
+  border-color: rgba(85, 229, 161, .30);
+  background: rgba(85, 229, 161, .08);
+}
+
+/* Les avions doivent rester visibles, même lorsqu’un autre appareil est sélectionné. */
+.xavpac-aircraft-marker {
+  width: 108px;
+  filter: drop-shadow(0 6px 9px rgba(0, 0, 0, .70));
+}
+
+.xavpac-aircraft-svg {
+  width: 47px;
+  height: 47px;
+  filter:
+    drop-shadow(0 0 2px rgba(255,255,255,.85))
+    drop-shadow(0 6px 8px rgba(0,0,0,.68));
+}
+
+.xavpac-aircraft-label {
+  max-width: 104px;
+  margin-top: 1px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  border-width: 1.5px;
+  background: rgba(3, 14, 26, .96);
+  color: #fff;
+  font-size: 10px;
+  letter-spacing: .02em;
+  box-shadow: 0 7px 16px rgba(0,0,0,.42);
+}
+
+.xavpac-aircraft-marker.is-selected {
+  transform: scale(1.22);
+  z-index: 1200;
+}
+
+.xavpac-aircraft-marker.is-selected .xavpac-aircraft-svg {
+  filter:
+    drop-shadow(0 0 8px rgba(88,212,255,1))
+    drop-shadow(0 7px 10px rgba(0,0,0,.70));
+}
+
+.xavpac-aircraft-marker.is-faded {
+  opacity: .72;
+  filter: saturate(.88);
+}
+
+.zone-label-v5 {
+  padding: 4px 8px !important;
+  border: 1px solid rgba(255, 182, 85, .55) !important;
+  border-radius: 8px !important;
+  background: rgba(7, 22, 38, .94) !important;
+  color: #ffd18b !important;
+  box-shadow: 0 5px 12px rgba(0,0,0,.35) !important;
+  font-size: 9px !important;
+  font-weight: 950 !important;
+}
+
+.zone-label-v5::before { display: none !important; }
+
+.zone-label-v5.boundary {
+  border-color: rgba(99,221,255,.55) !important;
+  color: #91e8ff !important;
+}
+
+.drone-map-locked-v5 {
+  height: 650px;
+  background: #061522;
+}
+
+.rtba-legend-v4 .department { color: #91e8ff; }
+
+.rtba-zone-list-v5 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 9px;
+  margin-top: 11px;
+}
+
+.rtba-zone-list-v5 article {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px;
+  border-radius: 13px;
+  border: 1px solid rgba(255, 182, 85, .18);
+  background: rgba(255, 182, 85, .045);
+}
+
+.rtba-zone-list-v5 article > span { font-size: 20px; }
+.rtba-zone-list-v5 strong,
+.rtba-zone-list-v5 small { display: block; }
+.rtba-zone-list-v5 strong { color: #ffd18b; font-size: 11px; }
+.rtba-zone-list-v5 small { margin-top: 3px; color: var(--muted); font-size: 8px; }
+
+@media (max-width: 900px) {
+  .header-live-area { flex-wrap: wrap; }
+  .drone-map-locked-v5 { height: 560px; }
+  .rtba-zone-list-v5 { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 680px) {
+  .view-counter-v5 { font-size: 9px; padding: 7px 9px; }
+  .xavpac-aircraft-marker { width: 90px; }
+  .xavpac-aircraft-svg { width: 40px; height: 40px; }
+  .xavpac-aircraft-label { max-width: 86px; font-size: 8.5px; }
+  .drone-map-locked-v5 { height: 500px; }
+}

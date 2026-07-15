@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState } from "react";
+import { useLiveGeolocation } from "../hooks/useLiveGeolocation";
 
 const StableMap = dynamic(() => import("./StableMap"), { ssr: false });
 
@@ -28,24 +29,46 @@ type RtbaZone = {
   positions: [number, number][];
 };
 
-// Géométries de repérage visuel intégrées à la maquette.
-// Elles ne remplacent jamais les cartes et horaires officiels SIA/AZBA.
+const SAONE_ET_LOIRE_CENTER: [number, number] = [46.63, 4.56];
+const SAONE_ET_LOIRE_BOUNDS: [[number, number], [number, number]] = [
+  [45.88, 3.60],
+  [47.25, 5.55]
+];
+
+// Contour simplifié destiné au cadrage départemental de la carte.
+const SAONE_ET_LOIRE_CONTOUR: [number, number][] = [
+  [46.12, 3.87], [46.39, 3.71], [46.70, 3.76], [46.96, 3.93],
+  [47.17, 4.25], [47.15, 4.63], [47.09, 5.08], [46.91, 5.37],
+  [46.65, 5.43], [46.42, 5.25], [46.18, 5.34], [45.98, 5.06],
+  [46.02, 4.67], [45.94, 4.25], [46.12, 3.87]
+];
+
+// Les trois secteurs sont affichés en permanence pour le repérage visuel.
+// Leur activation et leurs limites réglementaires doivent être confirmées sur le SIA/AZBA.
 const rtbaZones: RtbaZone[] = [
   {
-    id: "rtba-ouest-71",
-    name: "Secteur RTBA Ouest 71",
+    id: "rtba-r45",
+    name: "RTBA R45",
     status: "unknown",
-    floor: "À confirmer",
-    ceiling: "À confirmer",
-    positions: [[46.18, 3.92], [46.68, 3.88], [46.88, 4.48], [46.42, 4.72], [46.08, 4.36]]
+    floor: "Voir publication SIA",
+    ceiling: "Voir publication SIA",
+    positions: [[46.20, 3.90], [46.56, 3.86], [46.82, 4.30], [46.54, 4.72], [46.18, 4.46]]
   },
   {
-    id: "rtba-est-71",
-    name: "Secteur RTBA Est 71",
+    id: "rtba-r46",
+    name: "RTBA R46",
     status: "unknown",
-    floor: "À confirmer",
-    ceiling: "À confirmer",
-    positions: [[46.45, 4.42], [47.03, 4.5], [47.16, 5.18], [46.7, 5.42], [46.38, 4.92]]
+    floor: "Voir publication SIA",
+    ceiling: "Voir publication SIA",
+    positions: [[46.64, 4.42], [47.02, 4.52], [47.13, 5.05], [46.78, 5.35], [46.52, 4.94]]
+  },
+  {
+    id: "rtba-r47",
+    name: "RTBA R47",
+    status: "unknown",
+    floor: "Voir publication SIA",
+    ceiling: "Voir publication SIA",
+    positions: [[46.12, 4.68], [46.42, 4.78], [46.55, 5.28], [46.20, 5.44], [45.98, 5.02]]
   }
 ];
 
@@ -102,25 +125,9 @@ function categoryText(category?: string) {
 }
 
 export default function DronePanel() {
-  const [position, setPosition] = useState<[number, number]>([46.64, 4.5]);
-  const [positionStatus, setPositionStatus] = useState("Position de référence");
+  const { position, status: positionStatus, isLive, error: gpsError } = useLiveGeolocation();
   const [metar, setMetar] = useState<MetarReport | null>(null);
   const [metarStatus, setMetarStatus] = useState("Chargement du METAR…");
-
-  useEffect(() => {
-    if (!navigator.geolocation) {
-      setPositionStatus("Géolocalisation indisponible");
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(
-      (result) => {
-        setPosition([result.coords.latitude, result.coords.longitude]);
-        setPositionStatus(`GPS • précision ±${Math.round(result.coords.accuracy)} m`);
-      },
-      () => setPositionStatus("Position de référence utilisée"),
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
-    );
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -148,69 +155,117 @@ export default function DronePanel() {
     };
   }, []);
 
+  const insideDepartment = useMemo(
+    () => pointInPolygon(position, SAONE_ET_LOIRE_CONTOUR),
+    [position]
+  );
+
   const containingZones = useMemo(
     () => rtbaZones.filter((zone) => pointInPolygon(position, zone.positions)),
     [position]
   );
 
-  const message = containingZones.length
-    ? `Votre position se trouve dans ${containingZones.map((zone) => zone.name).join(" et ")}. Activité à vérifier sur l’AZBA officiel.`
-    : "Votre position n’est dans aucun secteur RTBA représenté sur cette carte de repérage.";
+  const message = !insideDepartment
+    ? "Votre position GPS est hors Saône-et-Loire. La carte reste volontairement limitée au département 71."
+    : containingZones.length
+      ? `Votre position recoupe ${containingZones.map((zone) => zone.name).join(" et ")}. Vérifiez impérativement l’activation sur l’AZBA officiel.`
+      : "Votre position ne recoupe aucun des secteurs RTBA représentés. Vérifiez malgré tout l’AZBA officiel avant le vol.";
+
+  const zonesForMap = [
+    {
+      id: "saone-et-loire",
+      name: "Saône-et-Loire (71)",
+      status: "boundary" as const,
+      floor: "Limite départementale simplifiée",
+      ceiling: "—",
+      positions: SAONE_ET_LOIRE_CONTOUR
+    },
+    ...rtbaZones
+  ];
+
+  const mapPoints = insideDepartment
+    ? [{
+        id: "home",
+        lat: position[0],
+        lon: position[1],
+        name: "Votre position",
+        detail: positionStatus,
+        category: "home"
+      }]
+    : [];
 
   return (
     <>
       <section className="hero drone-hero-v4">
         <div>
           <span className="eyebrow">DRONE SDIS 71</span>
-          <h1>Préparation rapide du vol</h1>
-          <p>RTBA visible en permanence, position GPS et météo aéronautique expliquée en français.</p>
+          <h1>Saône-et-Loire uniquement</h1>
+          <p>Carte départementale fixe, toutes les zones RTBA affichées et position GPS suivie en continu.</p>
         </div>
-        <div className={containingZones.length ? "hero-status warning" : "hero-status ok"}>
-          <span>{containingZones.length ? "⚠️" : "🟢"}</span>
+        <div className={insideDepartment && !containingZones.length ? "hero-status ok" : "hero-status warning"}>
+          <span>{insideDepartment && !containingZones.length ? "🟢" : "⚠️"}</span>
           <div><strong>{message}</strong><small>{positionStatus}</small></div>
         </div>
       </section>
+
+      {gpsError && <div className="gps-banner-v5">📍 {gpsError}</div>}
 
       <section className="drone-console-v4">
         <article className="panel drone-map-card-v4">
           <div className="panel-title">
             <div>
-              <span className="eyebrow">ESPACE AÉRIEN</span>
-              <h3>Cartographie RTBA</h3>
-              <p className="muted">Les secteurs restent dessinés, même lorsqu’aucune activité n’est connue.</p>
+              <span className="eyebrow">ESPACE AÉRIEN 71</span>
+              <h3>RTBA — Saône-et-Loire</h3>
+              <p className="muted">R45, R46 et R47 restent visibles en permanence. Les statuts ne sont jamais inventés.</p>
             </div>
             <a className="official-button" href="https://www.sia.aviation-civile.gouv.fr/schedules" target="_blank" rel="noreferrer">
-              Ouvrir l’AZBA officiel ↗
+              Vérifier l’AZBA officiel ↗
             </a>
           </div>
-          <div className="drone-map-v4">
+          <div className="drone-map-v4 drone-map-locked-v5">
             <StableMap
-              points={[{
-                id: "home",
-                lat: position[0],
-                lon: position[1],
-                name: "Votre position",
-                detail: positionStatus,
-                category: "home"
-              }]}
-              zones={rtbaZones}
-              center={position}
+              points={mapPoints}
+              zones={zonesForMap}
+              center={SAONE_ET_LOIRE_CENTER}
               zoom={8}
+              fixedBounds={SAONE_ET_LOIRE_BOUNDS}
+              maxBounds={SAONE_ET_LOIRE_BOUNDS}
+              lockBounds
+              showZoneLabels
             />
           </div>
           <div className="rtba-legend-v4">
-            <span className="unknown">● Zone dessinée — activité à vérifier</span>
-            <span>Les NOTAM ne sont pas affichés sur la carte.</span>
+            <span className="department">━━ Limite du département 71</span>
+            <span className="unknown">┅┅ Zone RTBA — activation à vérifier</span>
+            <span>Les NOTAM ne sont pas affichés sur cette carte.</span>
+          </div>
+
+          <div className="rtba-zone-list-v5">
+            {rtbaZones.map((zone) => (
+              <article key={zone.id}>
+                <span>🛩️</span>
+                <div><strong>{zone.name}</strong><small>Visible • statut à vérifier sur le SIA</small></div>
+              </article>
+            ))}
           </div>
         </article>
 
         <aside className="drone-side-v4">
+          <article className="panel rtba-check-card">
+            <span className="eyebrow">GÉOLOCALISATION CONTINUE</span>
+            <div className="check-row"><span>{isLive ? "🟢" : "🟠"}</span><div><strong>GPS</strong><small>{positionStatus}</small></div></div>
+            <div className="check-row"><span>📍</span><div><strong>Coordonnées</strong><small>{position[0].toFixed(5)} / {position[1].toFixed(5)}</small></div></div>
+            <div className="check-row"><span>🗺️</span><div><strong>Département</strong><small>{insideDepartment ? "Position dans le 71" : "Position hors du 71"}</small></div></div>
+            <div className="check-row"><span>🛩️</span><div><strong>RTBA</strong><small>{containingZones.length ? `${containingZones.length} secteur(s) recoupé(s)` : "Aucun secteur représenté à la position"}</small></div></div>
+            <p className="safety-note">La carte est une aide de repérage. L’AZBA, les NOTAM, SUP AIP et AIP officiels restent prioritaires.</p>
+          </article>
+
           <article className="panel metar-card-v4">
             <div className="panel-title">
               <div>
                 <span className="eyebrow">MÉTÉO AÉRONAUTIQUE</span>
                 <h3>METAR traduit en français</h3>
-                <p className="muted">LFLM — Mâcon-Charnay</p>
+                <p className="muted">Uniquement dans l’onglet Drone • LFLM Mâcon-Charnay</p>
               </div>
               <span className="metar-status">{metarStatus}</span>
             </div>
@@ -232,14 +287,6 @@ export default function DronePanel() {
             ) : (
               <div className="metar-empty">Aucune observation aéronautique disponible.</div>
             )}
-          </article>
-
-          <article className="panel rtba-check-card">
-            <span className="eyebrow">CONTRÔLE AVANT VOL</span>
-            <div className="check-row"><span>📍</span><div><strong>Position</strong><small>{positionStatus}</small></div></div>
-            <div className="check-row"><span>🛩️</span><div><strong>RTBA</strong><small>{containingZones.length ? "Secteur repéré — activité à vérifier" : "Aucun secteur repéré"}</small></div></div>
-            <div className="check-row"><span>🌦️</span><div><strong>Météo</strong><small>{metarStatus}</small></div></div>
-            <p className="safety-note">XavPac aide à préparer la décision. Les publications aéronautiques officielles restent prioritaires.</p>
           </article>
         </aside>
       </section>
