@@ -2,8 +2,8 @@ import "leaflet/dist/leaflet.css";
 import "./globals.css";
 
 export const metadata = {
-  title: "XavPac",
-  description: "Aviation, opérations, drone et astronomie"
+  title: "XavPac 4.0",
+  description: "Tableau de bord aviation, drone, astronomie et météo"
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

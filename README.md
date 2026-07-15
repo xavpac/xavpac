@@ -124,3 +124,50 @@ Sources branchées :
 - Délai maximal de neuf secondes pour éviter de bloquer l’interface.
 
 Airplanes.live est utilisé pour un usage non commercial et sans garantie de disponibilité.
+
+
+## XavPac 3.2
+
+- La fiche Aviation utilise désormais uniquement l’avion ADS-B réellement sélectionné.
+- Suppression de l’avion fictif EZY72MB lorsque le flux ne retourne aucun appareil.
+- Suppression des METAR et TAF de l’onglet Aviation.
+- Ajout du METAR dans l’onglet Drone.
+- Lecture française du vent, des rafales, de la visibilité, des nuages,
+  de la température, du point de rosée, de la pression et de la catégorie de vol.
+- Le METAR brut reste consultable dans un panneau repliable.
+
+
+## XavPac 3.3
+
+- METAR traduit uniquement dans l’onglet Drone.
+- Carte Aviation rendue plus compacte.
+- Carte Aviation centrée sur la géolocalisation avec un rayon de 20 km.
+- Toutes les zones RTBA restent visibles, actives ou non.
+- Détection automatique de la zone RTBA contenant la position GPS.
+- Message clair : zone active, inactive, non vérifiée ou aucune zone.
+- Les statuts RTBA restent à confirmer sur la source officielle SIA/AZBA.
+
+
+## XavPac 3.5 — nouvelle cartographie
+
+- Fond CARTO sombre plus lisible.
+- Position GPS sous forme de point bleu animé.
+- Silhouettes d’avions SVG fines, orientées selon le cap lorsqu’il est disponible.
+- Cercle de rayon 20 km dans Aviation.
+- Trajectoires plus fines et arrondies.
+- RTBA toujours visibles avec un code couleur clair.
+- Cartes adaptées aux ordinateurs, tablettes et téléphones.
+
+
+## Centre opérationnel
+
+La version 4.1 ajoute une page dédiée au CTA/CODIS avec :
+
+- météo locale actualisée ;
+- trafic aérien dans un rayon de 50 km ;
+- moyens nationaux détectables par ADS-B ;
+- carte de situation ;
+- briefing automatique ;
+- accès direct à Météo-France Vigilance, Vigicrues, NASA FIRMS, Blitzortung, AZBA et Géoportail UAS.
+
+Les sources externes restent prioritaires pour toute décision opérationnelle.

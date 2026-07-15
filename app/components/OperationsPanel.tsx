@@ -1,184 +1,171 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 const StableMap = dynamic(() => import("./StableMap"), { ssr: false });
 
-const assets = [
-  {
-    id: "dragon69",
-    name: "Dragon 69",
-    type: "Hélicoptère Sécurité civile",
-    mission: "Transit vers le Mâconnais",
-    status: "En vol",
-    lat: 46.72,
-    lon: 4.88,
-    color: "#ff6b6b",
-    distance: "54 km",
-    icon: "🚁"
-  },
-  {
-    id: "helismur71",
-    name: "HéliSMUR 71",
-    type: "Hélicoptère médicalisé",
-    mission: "Disponible à Chalon",
-    status: "Au sol",
-    lat: 46.78,
-    lon: 4.85,
-    color: "#52d273",
-    distance: "27 km",
-    icon: "🚑"
-  },
-  {
-    id: "dash8",
-    name: "Milan 75",
-    type: "Dash 8 Q400-MR",
-    mission: "Surveillance",
-    status: "En vol",
-    lat: 45.82,
-    lon: 4.71,
-    color: "#ffbd59",
-    distance: "88 km",
-    icon: "🛩️"
-  },
-  {
-    id: "canadair",
-    name: "Pélican 36",
-    type: "Canadair CL-415",
-    mission: "Transit opérationnel",
-    status: "En vol",
-    lat: 44.55,
-    lon: 5.12,
-    color: "#ff6b6b",
-    distance: "126 km",
-    icon: "✈️"
-  }
-];
+type NationalAsset = {
+  id: string;
+  callsign: string;
+  latitude: number;
+  longitude: number;
+  altitude: number | null;
+  speed: number | null;
+  track: number | null;
+  registration: string | null;
+  aircraftType: string | null;
+  description: string | null;
+  operator: string | null;
+  onGround: boolean;
+};
+
+function isHelicopter(asset: NationalAsset) {
+  const text = `${asset.aircraftType ?? ""} ${asset.description ?? ""}`.toLowerCase();
+  return text.includes("heli") || text.includes("rotor");
+}
 
 export default function OperationsPanel() {
-  const [selectedId, setSelectedId] = useState(assets[0].id);
+  const [assets, setAssets] = useState<NationalAsset[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [status, setStatus] = useState("Recherche des moyens détectables…");
+  const [updatedAt, setUpdatedAt] = useState("—");
 
-  const selected =
-    assets.find((asset) => asset.id === selectedId) ?? assets[0];
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadAssets() {
+      try {
+        const response = await fetch("/api/national-assets", { cache: "no-store" });
+        const payload = await response.json();
+        if (cancelled) return;
+        const next = Array.isArray(payload.assets) ? payload.assets : [];
+        setAssets(next);
+        setSelectedId((current) =>
+          next.some((item: NationalAsset) => item.id === current)
+            ? current
+            : next[0]?.id ?? null
+        );
+        setStatus(
+          response.ok
+            ? `${payload.source ?? "Source ADS-B"} • ${next.length} moyen${next.length > 1 ? "s" : ""}`
+            : payload.error ?? "Source indisponible"
+        );
+        setUpdatedAt(
+          new Date().toLocaleTimeString("fr-FR", {
+            hour: "2-digit",
+            minute: "2-digit"
+          })
+        );
+      } catch {
+        if (!cancelled) {
+          setAssets([]);
+          setSelectedId(null);
+          setStatus("Détection ADS-B momentanément indisponible");
+        }
+      }
+    }
+
+    loadAssets();
+    const timer = window.setInterval(loadAssets, 120000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  const selected = useMemo(
+    () => assets.find((item) => item.id === selectedId) ?? assets[0] ?? null,
+    [assets, selectedId]
+  );
+
+  const points = assets.map((asset) => ({
+    id: asset.id,
+    lat: asset.latitude,
+    lon: asset.longitude,
+    name: asset.callsign,
+    detail: `${asset.aircraftType ?? asset.description ?? "Moyen aérien"} • ${asset.operator ?? "Opérateur non identifié"}`,
+    color: asset.id === selected?.id ? "#63ddff" : "#ffbd59",
+    category: isHelicopter(asset) ? "helicopter" : "aircraft",
+    heading: asset.track
+  }));
 
   return (
     <>
-      <section className="hero">
+      <section className="hero operations-hero">
         <div>
           <span className="eyebrow">MOYENS NATIONAUX</span>
-          <h1>Moyens aériens nationaux</h1>
-          <p>
-            Le moyen sélectionné reste mis en évidence sur la carte pour
-            faciliter son suivi.
-          </p>
+          <h1>Détection aérienne opérationnelle</h1>
+          <p>Uniquement les appareils repérés par une source ADS-B publique — aucune position fictive.</p>
+        </div>
+        <div className="hero-status neutral">
+          <span>📡</span>
+          <div><strong>{status}</strong><small>Mise à jour {updatedAt}</small></div>
         </div>
       </section>
 
-      <section className="operations-layout">
-        <div className="panel operation-map-panel">
+      <section className="operations-console">
+        <article className="panel national-map-card">
           <div className="panel-title">
             <div>
-              <span className="eyebrow">CARTE NATIONALE</span>
-              <h3>Moyens prioritaires</h3>
+              <span className="eyebrow">CARTE FRANCE</span>
+              <h3>Moyens détectés</h3>
             </div>
-
-            <span className="live-pill">● EN DIRECT</span>
+            <span className="honest-live-badge">● DÉTECTION ADS-B</span>
           </div>
-
-          <div className="operation-map compact-map">
+          <div className="national-map-v4">
             <StableMap
-              points={assets.map((asset) => ({
-                id: asset.id,
-                lat: asset.lat,
-                lon: asset.lon,
-                name: asset.name,
-                detail: `${asset.type} • ${asset.status} • ${asset.mission}`,
-                color: asset.color,
-                icon: asset.icon
-              }))}
-              center={[selected.lat, selected.lon]}
-              zoom={7}
-              selectedId={selectedId}
+              points={points}
+              center={selected ? [selected.latitude, selected.longitude] : [46.5, 2.5]}
+              zoom={selected ? 8 : 6}
+              selectedId={selected?.id}
+              onSelect={setSelectedId}
             />
           </div>
-
-          <div className="map-selection-strip">
-            <span className="selected-map-icon">{selected.icon}</span>
-
-            <div>
-              <span>Moyen actuellement suivi</span>
-              <strong>{selected.name}</strong>
-            </div>
+          <div className="data-limit-banner">
+            <strong>Limite connue :</strong> un moyen non équipé, non reçu ou masqué n’apparaîtra pas. Cette carte n’est pas un outil officiel de disponibilité opérationnelle.
           </div>
-        </div>
+        </article>
 
-        <aside className="operation-side">
-          <article className="panel selected-aircraft">
-            <span className="eyebrow">MOYEN SÉLECTIONNÉ</span>
-
-            <div className="selected-operation-heading">
-              <span className="large-operation-icon">{selected.icon}</span>
-
-              <div>
-                <h2>{selected.name}</h2>
-                <p>{selected.type}</p>
+        <aside className="national-side">
+          <article className="panel">
+            {selected ? (
+              <>
+                <span className="eyebrow">MOYEN SÉLECTIONNÉ</span>
+                <div className="national-selected-title">
+                  <span>{isHelicopter(selected) ? "🚁" : "✈"}</span>
+                  <div><h2>{selected.callsign}</h2><p>{selected.operator ?? selected.description ?? "Donnée ADS-B"}</p></div>
+                </div>
+                <div className="focus-grid compact-grid">
+                  <div><span>Type</span><strong>{selected.aircraftType ?? "—"}</strong></div>
+                  <div><span>Immatriculation</span><strong>{selected.registration ?? "—"}</strong></div>
+                  <div><span>Altitude</span><strong>{selected.altitude === null ? "—" : `${Math.round(selected.altitude)} m`}</strong></div>
+                  <div><span>Vitesse</span><strong>{selected.speed === null ? "—" : `${Math.round(selected.speed)} km/h`}</strong></div>
+                </div>
+              </>
+            ) : (
+              <div className="national-empty">
+                <span>🚒</span>
+                <h2>Aucun moyen identifié</h2>
+                <p>Aucun indicatif ou appareil correspondant aux filtres opérationnels n’est actuellement détecté.</p>
               </div>
-            </div>
-
-            <div className="info-list">
-              <div>
-                <span>État</span>
-                <strong>{selected.status}</strong>
-              </div>
-
-              <div>
-                <span>Mission</span>
-                <strong>{selected.mission}</strong>
-              </div>
-
-              <div>
-                <span>Distance</span>
-                <strong>{selected.distance}</strong>
-              </div>
-            </div>
+            )}
           </article>
 
           <article className="panel">
-            <span className="eyebrow">MOYENS SUIVIS</span>
-
-            <div className="rows">
-              {assets.map((asset) => (
+            <span className="eyebrow">MOYENS DÉTECTÉS</span>
+            <div className="national-list">
+              {assets.length ? assets.map((asset) => (
                 <button
                   type="button"
                   key={asset.id}
-                  className={
-                    asset.id === selectedId
-                      ? "asset-row selected"
-                      : "asset-row"
-                  }
+                  className={asset.id === selected?.id ? "national-row selected" : "national-row"}
                   onClick={() => setSelectedId(asset.id)}
                 >
-                  <span
-                    className={
-                      asset.id === selectedId
-                        ? "round operation-icon selected"
-                        : "round operation-icon"
-                    }
-                  >
-                    {asset.icon}
-                  </span>
-
-                  <span className="grow">
-                    <strong>{asset.name}</strong>
-                    <small>
-                      {asset.type} • {asset.status}
-                    </small>
-                  </span>
-
-                  <strong>{asset.distance}</strong>
+                  <span>{isHelicopter(asset) ? "🚁" : "✈"}</span>
+                  <div><strong>{asset.callsign}</strong><small>{asset.aircraftType ?? asset.description ?? "ADS-B"}</small></div>
                 </button>
-              ))}
+              )) : <p className="muted">Aucune donnée à afficher pour le moment.</p>}
             </div>
           </article>
         </aside>

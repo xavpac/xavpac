@@ -8,196 +8,155 @@ type OrbitRecord = {
   EPOCH?: string;
 };
 
-const passes = [
-  {
-    id: "iss",
-    icon: "🛰️",
-    title: "ISS",
-    time: "19 h 49",
-    altitude: "35° max",
-    countdown: "2 h 20"
-  },
-  {
-    id: "starlink",
-    icon: "✨",
-    title: "Starlink récent",
-    time: "21 h 25",
-    altitude: "12° max",
-    countdown: "3 h 56"
-  },
-  {
-    id: "isis1",
-    icon: "🛰️",
-    title: "ISIS 1",
-    time: "22 h 17",
-    altitude: "40° max",
-    countdown: "4 h 48"
-  },
-  {
-    id: "sl8",
-    icon: "🛰️",
-    title: "SL-8 R/B",
-    time: "23 h 02",
-    altitude: "23° max",
-    countdown: "5 h 33"
-  }
-];
-
-const planets = [
-  { id: "moon", icon: "🌙", name: "Lune", visibility: "Visible dès le coucher du Soleil", direction: "Sud-Ouest" },
-  { id: "jupiter", icon: "✨", name: "Jupiter", visibility: "Observable après 02 h 00", direction: "Est" },
-  { id: "saturn", icon: "🪐", name: "Saturne", visibility: "Visible en fin de nuit", direction: "Sud-Est" },
-  { id: "mars", icon: "🔴", name: "Mars", visibility: "Faible cette nuit", direction: "Est" }
-];
+type SkyWeather = {
+  cloud_cover?: number;
+  visibility?: number;
+  temperature_2m?: number;
+  wind_speed_10m?: number;
+};
 
 export default function AstronomyPanel() {
-  const [issRecord, setIssRecord] = useState<OrbitRecord | null>(null);
+  const [position, setPosition] = useState<[number, number]>([46.498, 5.298]);
+  const [positionStatus, setPositionStatus] = useState("Position de référence");
+  const [iss, setIss] = useState<OrbitRecord | null>(null);
   const [starlinkCount, setStarlinkCount] = useState<number | null>(null);
+  const [visibleCount, setVisibleCount] = useState<number | null>(null);
   const [orbitStatus, setOrbitStatus] = useState("Connexion CelesTrak…");
+  const [weather, setWeather] = useState<SkyWeather | null>(null);
+
+  useEffect(() => {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (result) => {
+        setPosition([result.coords.latitude, result.coords.longitude]);
+        setPositionStatus("Position GPS");
+      },
+      () => setPositionStatus("Position de référence")
+    );
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
-
-    async function loadOrbits() {
+    async function load() {
       try {
-        const [stationsResponse, starlinkResponse] = await Promise.all([
+        const [stationsResponse, starlinkResponse, visualResponse, weatherResponse] = await Promise.all([
           fetch("/api/orbits?group=stations", { cache: "no-store" }),
-          fetch("/api/orbits?group=starlink", { cache: "no-store" })
+          fetch("/api/orbits?group=starlink", { cache: "no-store" }),
+          fetch("/api/orbits?group=visual", { cache: "no-store" }),
+          fetch(
+            `https://api.open-meteo.com/v1/forecast?latitude=${position[0]}&longitude=${position[1]}&current=cloud_cover,visibility,temperature_2m,wind_speed_10m&timezone=Europe%2FParis`,
+            { cache: "no-store" }
+          )
         ]);
 
-        const [stations, starlink] = await Promise.all([
+        const [stations, starlink, visual, weatherPayload] = await Promise.all([
           stationsResponse.json(),
-          starlinkResponse.json()
+          starlinkResponse.json(),
+          visualResponse.json(),
+          weatherResponse.json()
         ]);
 
         if (cancelled) return;
-
-        const records = Array.isArray(stations.records) ? stations.records : [];
-        setIssRecord(
-          records.find((record: OrbitRecord) =>
+        const stationRecords = Array.isArray(stations.records) ? stations.records : [];
+        setIss(
+          stationRecords.find((record: OrbitRecord) =>
             record.OBJECT_NAME?.toUpperCase().includes("ISS")
           ) ?? null
         );
-        setStarlinkCount(
-          typeof starlink.count === "number" ? starlink.count : null
-        );
+        setStarlinkCount(typeof starlink.count === "number" ? starlink.count : null);
+        setVisibleCount(typeof visual.count === "number" ? visual.count : null);
+        setWeather(weatherPayload.current ?? null);
         setOrbitStatus(
-          stationsResponse.ok && starlinkResponse.ok
-            ? "Catalogue orbital CelesTrak connecté"
+          stationsResponse.ok && starlinkResponse.ok && visualResponse.ok
+            ? "Catalogue orbital actualisé"
             : "Catalogue orbital partiellement disponible"
         );
       } catch {
-        if (!cancelled) {
-          setOrbitStatus("CelesTrak momentanément indisponible");
-        }
+        if (!cancelled) setOrbitStatus("Sources astronomiques indisponibles");
       }
     }
-
-    loadOrbits();
-    const refresh = window.setInterval(loadOrbits, 10 * 60 * 1000);
-
+    load();
+    const timer = window.setInterval(load, 10 * 60 * 1000);
     return () => {
       cancelled = true;
-      window.clearInterval(refresh);
+      window.clearInterval(timer);
     };
-  }, []);
+  }, [position]);
+
+  const cloudCover = weather?.cloud_cover ?? null;
+  const skyQuality =
+    cloudCover === null
+      ? "Non disponible"
+      : cloudCover <= 20
+        ? "Très bon ciel"
+        : cloudCover <= 50
+          ? "Ciel partiellement favorable"
+          : "Ciel très nuageux";
 
   return (
     <>
-      <section className="hero astronomy-dashboard-hero">
+      <section className="hero astronomy-hero-v4">
         <div>
           <span className="eyebrow">CIEL EN DIRECT</span>
           <h1>Tableau de bord astronomique</h1>
-          <p>Prévisions orbitales adaptées à votre géolocalisation actuelle.</p>
+          <p>Catalogue orbital actuel et conditions d’observation selon votre position.</p>
         </div>
-        <div className="position-card">
-          <span>Source orbitale</span>
-          <strong>{orbitStatus}</strong>
+        <div className="hero-status neutral">
+          <span>🛰️</span>
+          <div><strong>{orbitStatus}</strong><small>{positionStatus}</small></div>
         </div>
       </section>
 
-      <section className="panel space-passages">
-        <div className="panel-title">
-          <div>
-            <h3>Passages spatiaux</h3>
-            <p className="muted">ISS, Starlink et satellites brillants</p>
+      <section className="astronomy-console-v4">
+        <article className="panel astronomy-primary">
+          <div className="panel-title">
+            <div>
+              <span className="eyebrow">ORBITE</span>
+              <h3>ISS et catalogues satellites</h3>
+            </div>
+            <span className="catalogue-badge">CELESTRAK LIVE</span>
           </div>
-          <span className="orbit-pill">CATALOGUE LIVE</span>
-        </div>
 
-        <div className="iss-main-card">
-          <div className="satellite-orbit-icon">🛰️</div>
-          <div>
-            <span>PROCHAIN PASSAGE ISS</span>
-            <strong>2 h 20</strong>
-            <small>Prévision indicative • éléments orbitaux actualisés</small>
+          <div className="iss-card-v4">
+            <span className="iss-icon-v4">🛰️</span>
+            <div>
+              <span>Station spatiale internationale</span>
+              <h2>{iss?.OBJECT_NAME ?? "ISS"}</h2>
+              <p>Dernière époque orbitale : {iss?.EPOCH ?? "non disponible"}</p>
+            </div>
           </div>
-        </div>
 
-        <div className="pass-cards">
-          {passes.map((pass) => (
-            <article key={pass.id}>
-              <span className="pass-icon">{pass.icon}</span>
-              <div className="grow">
-                <strong>{pass.title}</strong>
-                <small>{pass.time} • {pass.altitude}</small>
-              </div>
-              <strong className="green">{pass.countdown}</strong>
-            </article>
-          ))}
-        </div>
-
-        <div className="orbit-source-grid">
-          <div>
-            <span>ISS — époque orbitale</span>
-            <strong>{issRecord?.EPOCH ?? "Non disponible"}</strong>
+          <div className="orbit-metrics-v4">
+            <div><span>Objets Starlink</span><strong>{starlinkCount ?? "—"}</strong></div>
+            <div><span>Satellites visuels</span><strong>{visibleCount ?? "—"}</strong></div>
+            <div><span>Identifiant ISS</span><strong>{iss?.NORAD_CAT_ID ?? "25544"}</strong></div>
           </div>
-          <div>
-            <span>Objets Starlink au catalogue</span>
-            <strong>{starlinkCount ?? "—"}</strong>
+
+          <div className="honesty-card-v4">
+            <strong>Pas d’horaire inventé</strong>
+            <p>Les passages précis seront affichés uniquement lorsqu’un calcul orbital local fiable sera activé. Le catalogue ci-dessus est réellement actualisé.</p>
           </div>
-        </div>
-
-        <p className="tiny-note">
-          Les horaires de passage restent indicatifs tant que le calcul SGP4 local
-          n’est pas ajouté. CelesTrak fournit ici les éléments orbitaux actuels.
-        </p>
-      </section>
-
-      <section className="astro-metrics">
-        <article className="panel"><span>🛰️ Recalcul orbital</span><strong>Toutes les 10 min</strong></article>
-        <article className="panel"><span>📍 Géolocalisation</span><strong>Position GPS</strong></article>
-        <article className="panel"><span>☁️ Couverture nuageuse</span><strong>84 %</strong></article>
-        <article className="panel"><span>👁️ Visibilité</span><strong>54 km</strong></article>
-        <article className="panel"><span>🏳️ Vent local</span><strong>3 km/h</strong></article>
-        <article className="panel"><span>🌡️ Température</span><strong>38 °C</strong></article>
-      </section>
-
-      <section className="astronomy-lower-grid">
-        <article className="panel">
-          <span className="eyebrow">EN RÉSUMÉ</span>
-          <h3>Ce qu’il faut regarder ce soir</h3>
-          <p className="astro-summary">
-            Le catalogue orbital est désormais récupéré en direct. La prochaine
-            étape sera le calcul local des passages à partir de ta position.
-          </p>
         </article>
 
-        <article className="panel">
-          <span className="eyebrow">PLANÈTES ET LUNE</span>
-          <div className="planet-list">
-            {planets.map((planet) => (
-              <div key={planet.id} className="planet-row">
-                <span className="planet-icon">{planet.icon}</span>
-                <div className="grow">
-                  <strong>{planet.name}</strong>
-                  <small>{planet.visibility}</small>
-                </div>
-                <span className="planet-direction">{planet.direction}</span>
-              </div>
-            ))}
-          </div>
-        </article>
+        <aside className="astronomy-side-v4">
+          <article className="panel sky-conditions-v4">
+            <span className="eyebrow">CONDITIONS DU CIEL</span>
+            <h2>{skyQuality}</h2>
+            <div className="sky-condition-grid">
+              <div><span>Nuages</span><strong>{cloudCover === null ? "—" : `${Math.round(cloudCover)} %`}</strong></div>
+              <div><span>Visibilité</span><strong>{weather?.visibility === undefined ? "—" : `${Math.round(weather.visibility / 1000)} km`}</strong></div>
+              <div><span>Température</span><strong>{weather?.temperature_2m === undefined ? "—" : `${Math.round(weather.temperature_2m)} °C`}</strong></div>
+              <div><span>Vent</span><strong>{weather?.wind_speed_10m === undefined ? "—" : `${Math.round(weather.wind_speed_10m)} km/h`}</strong></div>
+            </div>
+          </article>
+
+          <article className="panel astronomy-guide-v4">
+            <span className="eyebrow">REPÈRES DU SOIR</span>
+            <div className="planet-guide-row"><span>🌙</span><div><strong>Lune</strong><small>Repérez-la dès le crépuscule selon sa phase.</small></div></div>
+            <div className="planet-guide-row"><span>🪐</span><div><strong>Planètes</strong><small>Les positions précises seront ajoutées avec un moteur d’éphémérides.</small></div></div>
+            <div className="planet-guide-row"><span>✨</span><div><strong>Starlink</strong><small>Le nombre d’objets catalogués est affiché en direct.</small></div></div>
+          </article>
+        </aside>
       </section>
     </>
   );

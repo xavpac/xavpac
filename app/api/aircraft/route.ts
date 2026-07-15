@@ -127,7 +127,7 @@ export async function GET(request: NextRequest) {
       signal: AbortSignal.timeout(9000),
       headers: {
         Accept: "application/json",
-        "User-Agent": "XavPac/3.1 (non-commercial aviation dashboard)"
+        "User-Agent": "XavPac/4.0 (non-commercial aviation dashboard)"
       }
     });
 

@@ -1,0 +1,11 @@
+XavPac 4.1 — installation simple
+
+1. Décompresse le ZIP.
+2. Ouvre le dossier « xavpac » que tu as cloné depuis GitHub.
+3. Copie tout le contenu de « XavPac-4.1-Centre-Operationnel » dans ce dossier « xavpac ».
+4. Accepte « Remplacer » quand le Mac le demande.
+5. Dans VS Code, ouvre le dossier « xavpac ».
+6. Dans l’onglet Source Control, écris : Ajout du Centre opérationnel
+7. Clique sur Commit, puis sur Sync Changes.
+
+Vercel publiera ensuite automatiquement la mise à jour.

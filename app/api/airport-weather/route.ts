@@ -7,7 +7,7 @@ async function fetchJson(url: string) {
     cache: "no-store",
     headers: {
       Accept: "application/json",
-      "User-Agent": "XavPac/3.0"
+      "User-Agent": "XavPac/4.0"
     }
   });
 

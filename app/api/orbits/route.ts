@@ -16,12 +16,12 @@ export async function GET(request: NextRequest) {
 
   try {
     const response = await fetch(
-      `https://celestrak.org/NORAD/elements/gp.php?GROUP=${group}&FORMAT=json`,
+      `https://celestrak.org/NORAD/elements/gp.php?GROUP=${group.toUpperCase()}&FORMAT=JSON`,
       {
         cache: "no-store",
         headers: {
           Accept: "application/json",
-          "User-Agent": "XavPac/3.0"
+          "User-Agent": "XavPac/4.0"
         }
       }
     );
