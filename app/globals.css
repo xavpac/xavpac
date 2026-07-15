@@ -672,3 +672,67 @@ a { color: inherit; }
   .xavpac-aircraft-label { max-width: 86px; font-size: 8.5px; }
   .drone-map-locked-v5 { height: 500px; }
 }
+
+
+/* XavPac 5.1 — cartes réellement lisibles et Aviation FlightWall */
+.xavpac-readable-map { background: #dbe8f1; }
+.xavpac-readable-map .leaflet-tile-pane { filter: none !important; }
+.xavpac-readable-map .leaflet-control-layers,
+.xavpac-readable-map .leaflet-control-zoom a {
+  color: #122235;
+  background: rgba(255,255,255,.96);
+  border-color: rgba(13,55,91,.20);
+  box-shadow: 0 5px 18px rgba(13,35,54,.16);
+}
+.xavpac-readable-map .leaflet-control-layers-expanded { padding: 9px 12px; }
+.xavpac-readable-map .leaflet-control-attribution { background: rgba(255,255,255,.86); color: #51677c; }
+.xavpac-readable-map .leaflet-control-attribution a { color: #1764a1; }
+
+.aviation-pro-heading { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:4px 4px 12px; }
+.aviation-pro-heading h2 { margin:4px 0 3px; font-size:24px; }
+.aviation-pro-heading p { margin:0; color:var(--muted); font-size:11px; }
+.aviation-pro-badge { padding:8px 10px; border-radius:999px; color:#baf2ff; border:1px solid rgba(88,212,255,.28); background:rgba(88,212,255,.08); font-size:9px; font-weight:900; }
+.aviation-flightwall-v51 .aviation-map-stage { height:730px; background:#dce9f2; }
+.aviation-flightwall-v51 .aircraft-focus { background:linear-gradient(155deg,rgba(13,40,67,.99),rgba(5,20,36,.99)); }
+.xavpac-aircraft-marker { width:102px; }
+.xavpac-aircraft-svg { width:47px; height:47px; filter:drop-shadow(0 2px 1px rgba(255,255,255,.95)) drop-shadow(0 5px 8px rgba(0,0,0,.48)); }
+.xavpac-aircraft-label { max-width:98px; padding:4px 7px; border-radius:8px; border:1px solid rgba(0,34,63,.32); background:rgba(255,255,255,.96); color:#071827; font-size:10px; box-shadow:0 4px 12px rgba(0,31,55,.22); }
+.xavpac-aircraft-marker.is-selected { transform:scale(1.20); }
+.xavpac-aircraft-marker.is-selected .xavpac-aircraft-label { color:#fff; background:#006fa8; border-color:#003f63; }
+.xavpac-aircraft-marker.is-faded { opacity:.68; }
+.radius-label { color:#003b60 !important; font-weight:900; }
+.radius-label.leaflet-tooltip { background:rgba(255,255,255,.95); border-color:#1287c1; }
+.map-radar-card,.map-nearest-card { background:rgba(5,22,38,.94); }
+
+.rtba-panel-title-v51 { align-items:flex-start; }
+.rtba-mode-switch { display:flex; gap:7px; flex-wrap:wrap; justify-content:flex-end; }
+.rtba-mode-switch button { border:1px solid rgba(88,212,255,.22); background:rgba(255,255,255,.03); color:#b9ccde; border-radius:10px; padding:9px 11px; cursor:pointer; font-size:10px; font-weight:850; }
+.rtba-mode-switch button.active { color:#fff; border-color:rgba(88,212,255,.62); background:linear-gradient(135deg,#126e9d,#0c486d); box-shadow:0 0 18px rgba(88,212,255,.13); }
+.azba-live-shell { overflow:hidden; border-radius:17px; border:1px solid rgba(105,172,220,.30); background:#eef4f8; }
+.azba-live-banner { min-height:45px; display:flex; align-items:center; justify-content:space-between; gap:12px; padding:9px 12px; background:#f7fbfd; color:#23384b; border-bottom:1px solid #c8d8e4; font-size:10px; }
+.azba-live-banner b { color:#d31635; }
+.azba-live-banner a { color:#006da3; font-weight:900; text-decoration:none; }
+.azba-live-frame { display:block; width:100%; height:660px; border:0; background:#eef4f8; }
+.azba-frame-fallback { padding:8px 12px; background:#fff8df; color:#745a13; font-size:9px; border-top:1px solid #eadb9a; }
+.zone-label-v5.active { color:#b00020 !important; }
+.zone-label-v5.inactive { color:#0758bc !important; }
+
+@media (max-width:1250px){
+  .aviation-flightwall-v51 .aviation-map-stage{height:680px}
+  .azba-live-frame{height:620px}
+}
+@media (max-width:900px){
+  .aviation-pro-heading{align-items:flex-start;flex-direction:column}
+  .aviation-flightwall-v51 .aviation-map-stage{height:620px}
+  .azba-live-frame{height:580px}
+}
+@media (max-width:680px){
+  .aviation-pro-heading h2{font-size:20px}
+  .aviation-flightwall-v51 .aviation-map-stage{height:570px}
+  .xavpac-aircraft-svg{width:39px;height:39px}
+  .xavpac-aircraft-label{max-width:82px;font-size:8px}
+  .rtba-mode-switch{width:100%;justify-content:stretch}
+  .rtba-mode-switch button{flex:1}
+  .azba-live-banner{align-items:flex-start;flex-direction:column}
+  .azba-live-frame{height:520px}
+}

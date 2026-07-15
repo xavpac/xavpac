@@ -36,7 +36,7 @@ export default function Page() {
         <div className="brand-v4">
           <span className="brand-plane">✈</span>
           <div>
-            <h1>XavPac <b>5.0</b></h1>
+            <h1>XavPac <b>5.1</b></h1>
             <p>Aviation • Drone SDIS 71 • Moyens nationaux • CODIS • Astronomie • Météo</p>
           </div>
         </div>
@@ -72,7 +72,7 @@ export default function Page() {
       {active === "weather" && <WeatherPanel />}
 
       <footer className="footer-v4">
-        XavPac 5.0 • Géolocalisation continue lorsque le site reste ouvert • Les sources officielles restent prioritaires pour toute décision opérationnelle.
+        XavPac 5.1 • Cartes lisibles • Aviation FlightWall • AZBA officiel • Géolocalisation continue lorsque le site reste ouvert • Les sources officielles restent prioritaires pour toute décision opérationnelle.
       </footer>
     </main>
   );

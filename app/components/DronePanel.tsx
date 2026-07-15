@@ -125,6 +125,7 @@ function categoryText(category?: string) {
 }
 
 export default function DronePanel() {
+  const [mapMode, setMapMode] = useState<"official" | "department">("official");
   const { position, status: positionStatus, isLive, error: gpsError } = useLiveGeolocation();
   const [metar, setMetar] = useState<MetarReport | null>(null);
   const [metarStatus, setMetarStatus] = useState("Chargement du METAR…");
@@ -212,33 +213,57 @@ export default function DronePanel() {
 
       <section className="drone-console-v4">
         <article className="panel drone-map-card-v4">
-          <div className="panel-title">
+          <div className="panel-title rtba-panel-title-v51">
             <div>
               <span className="eyebrow">ESPACE AÉRIEN 71</span>
-              <h3>RTBA — Saône-et-Loire</h3>
-              <p className="muted">R45, R46 et R47 restent visibles en permanence. Les statuts ne sont jamais inventés.</p>
+              <h3>RTBA — carte opérationnelle</h3>
+              <p className="muted">Le mode officiel affiche les couleurs d’activation publiées par le SIA. Le mode 71 reste cadré sur la Saône-et-Loire.</p>
             </div>
-            <a className="official-button" href="https://www.sia.aviation-civile.gouv.fr/schedules" target="_blank" rel="noreferrer">
-              Vérifier l’AZBA officiel ↗
-            </a>
+            <div className="rtba-mode-switch">
+              <button type="button" className={mapMode === "official" ? "active" : ""} onClick={() => setMapMode("official")}>AZBA officiel live</button>
+              <button type="button" className={mapMode === "department" ? "active" : ""} onClick={() => setMapMode("department")}>Vue Saône-et-Loire</button>
+            </div>
           </div>
-          <div className="drone-map-v4 drone-map-locked-v5">
-            <StableMap
-              points={mapPoints}
-              zones={zonesForMap}
-              center={SAONE_ET_LOIRE_CENTER}
-              zoom={8}
-              fixedBounds={SAONE_ET_LOIRE_BOUNDS}
-              maxBounds={SAONE_ET_LOIRE_BOUNDS}
-              lockBounds
-              showZoneLabels
-            />
-          </div>
-          <div className="rtba-legend-v4">
-            <span className="department">━━ Limite du département 71</span>
-            <span className="unknown">┅┅ Zone RTBA — activation à vérifier</span>
-            <span>Les NOTAM ne sont pas affichés sur cette carte.</span>
-          </div>
+
+          {mapMode === "official" ? (
+            <div className="azba-live-shell">
+              <div className="azba-live-banner">
+                <span><b>● OFFICIEL EN DIRECT</b> — rouge : active • bleu : inactive</span>
+                <a href="https://www.sia.aviation-civile.gouv.fr/azbaEx/" target="_blank" rel="noreferrer">Ouvrir en plein écran ↗</a>
+              </div>
+              <iframe
+                className="azba-live-frame"
+                src="https://www.sia.aviation-civile.gouv.fr/azbaEx/"
+                title="Carte officielle AZBA du SIA"
+                loading="lazy"
+                referrerPolicy="no-referrer-when-downgrade"
+              />
+              <div className="azba-frame-fallback">
+                Si la carte officielle est bloquée par le navigateur, utilisez le bouton « Ouvrir en plein écran ».
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="drone-map-v4 drone-map-locked-v5">
+                <StableMap
+                  points={mapPoints}
+                  zones={zonesForMap}
+                  center={SAONE_ET_LOIRE_CENTER}
+                  zoom={8}
+                  fixedBounds={SAONE_ET_LOIRE_BOUNDS}
+                  maxBounds={SAONE_ET_LOIRE_BOUNDS}
+                  lockBounds
+                  showZoneLabels
+                  mapVariant="layers"
+                />
+              </div>
+              <div className="rtba-legend-v4">
+                <span className="department">━━ Limite du département 71</span>
+                <span className="unknown">┅┅ Repérage schématique — statut non inventé</span>
+                <span>Pour les limites et couleurs exactes en direct : mode AZBA officiel live.</span>
+              </div>
+            </>
+          )}
 
           <div className="rtba-zone-list-v5">
             {rtbaZones.map((zone) => (

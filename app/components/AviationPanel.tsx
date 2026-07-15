@@ -215,8 +215,16 @@ export default function AviationPanel() {
   }
 
   return (
-    <section className="aviation-console">
+    <section className="aviation-console aviation-flightwall-v51">
       <div className="aviation-map-shell panel">
+        <div className="aviation-pro-heading">
+          <div>
+            <span className="eyebrow">FLIGHTWALL AVIATION</span>
+            <h2>Trafic réel autour de votre position</h2>
+            <p>Carte lisible, avion le plus proche suivi automatiquement et fiche détaillée.</p>
+          </div>
+          <span className="aviation-pro-badge">CARTE MULTICOUCHE</span>
+        </div>
         <div className="aviation-toolbar">
           <div className="toolbar-group">
             {[20, 50, 100].map((value) => (
@@ -250,6 +258,7 @@ export default function AviationPanel() {
             selectedId={selected?.id}
             trails={mapTrails}
             onSelect={selectAircraft}
+            mapVariant="layers"
           />
 
           <div className="map-radar-card">

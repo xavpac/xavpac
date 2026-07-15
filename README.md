@@ -25,3 +25,13 @@ npm install
 npm run typecheck
 npm run build
 ```
+
+
+## XavPac 5.1 — Aviation FlightWall et cartes lisibles
+
+- Carte Aviation claire par défaut, avec choix Plan / Satellite / Sombre.
+- Avions nettement agrandis et renforcés pour rester visibles sur tous les fonds.
+- Interface responsive Mac, iPad et iPhone.
+- Onglet Drone avec deux vues : Saône-et-Loire et carte officielle AZBA du SIA en direct.
+- Les couleurs officielles AZBA sont affichées par le service SIA lui-même : rouge actif, bleu inactif.
+- Bâgé-Dommartin reste la position de secours lorsque le GPS est indisponible.

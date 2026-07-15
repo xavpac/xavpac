@@ -1,3 +1,13 @@
+# Changelog
+
+## 5.1.0
+- Refonte visuelle Aviation type FlightWall.
+- Fonds de carte lisibles avec sélecteur Plan / Satellite / Sombre.
+- Avions plus grands, contrastés et orientés selon le cap.
+- Intégration de la carte officielle AZBA en direct.
+- Vue départementale Saône-et-Loire conservée.
+- Adaptation Mac, iPad et iPhone.
+
 # 5.0.0 — GPS continu, Drone 71 et CODIS
 
 - Géolocalisation continue avec `watchPosition` dans Aviation, Drone, CODIS, Astronomie et Météo.
