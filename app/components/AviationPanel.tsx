@@ -51,6 +51,23 @@ type AircraftPhoto = {
   photographer?: string | null;
 };
 
+const PREVIEW_AIRCRAFT: AircraftWithDistance[] = [
+  { id: "39a123", callsign: "AFR1234", country: "France", longitude: 4.76, latitude: 46.79, barometricAltitude: 10972, geometricAltitude: 11030, velocity: 253, trueTrack: 113, verticalRate: 3.25, onGround: false, squawk: "5632", registration: "F-GKXU", aircraftType: "A320", description: "Airbus A320-214", operator: "Air France", category: "A3", distance: 18.7 },
+  { id: "4ca456", callsign: "RYR45GQ", country: "Ireland", longitude: 4.35, latitude: 46.62, barometricAltitude: 9448, geometricAltitude: 9510, velocity: 245, trueTrack: 78, verticalRate: 0, onGround: false, squawk: "2241", registration: "EI-EZZ", aircraftType: "B738", description: "Boeing 737-800", operator: "Ryanair", category: "A3", distance: 23.4 },
+  { id: "896789", callsign: "UAE14Q", country: "United Arab Emirates", longitude: 5.16, latitude: 46.82, barometricAltitude: 11887, geometricAltitude: 11930, velocity: 219, trueTrack: 244, verticalRate: -1.8, onGround: false, squawk: "4031", registration: "A6-EQX", aircraftType: "B77W", description: "Boeing 777-300ER", operator: "Emirates", category: "A5", distance: 31.2 },
+  { id: "4b1234", callsign: "SAS42P", country: "Sweden", longitude: 5.09, latitude: 46.46, barometricAltitude: 9754, geometricAltitude: 9810, velocity: 226, trueTrack: 302, verticalRate: 0.3, onGround: false, squawk: "1127", registration: "SE-ROJ", aircraftType: "A320", description: "Airbus A320neo", operator: "SAS", category: "A3", distance: 36.8 },
+  { id: "39a987", callsign: "AFR27FQ", country: "France", longitude: 4.46, latitude: 46.39, barometricAltitude: 11582, geometricAltitude: 11620, velocity: 265, trueTrack: 61, verticalRate: 0, onGround: false, squawk: "2711", registration: "F-HBNK", aircraftType: "A321", description: "Airbus A321-200", operator: "Air France", category: "A3", distance: 41.6 },
+  { id: "4ca777", callsign: "TRA568D", country: "Netherlands", longitude: 4.56, latitude: 46.18, barometricAltitude: 8534, geometricAltitude: 8610, velocity: 218, trueTrack: 338, verticalRate: -2.4, onGround: false, squawk: "3045", registration: "PH-HXN", aircraftType: "B738", description: "Boeing 737-800", operator: "Transavia", category: "A3", distance: 47.1 }
+];
+
+const PREVIEW_WEATHER: CityWeather[] = [
+  { name: "Mâcon", latitude: 46.3069, longitude: 4.8287, distance: 0, temperature: 27, windSpeed: 8, windDirection: 240, visibility: 10000, cloudCover: 20, weatherCode: 1, icon: "🌤️", label: "Peu nuageux" },
+  { name: "Chalon-sur-Saône", latitude: 46.7808, longitude: 4.8532, distance: 53, temperature: 24, windSpeed: 7, windDirection: 230, visibility: 10000, cloudCover: 10, weatherCode: 0, icon: "☀️", label: "Ciel clair" },
+  { name: "Le Creusot", latitude: 46.8062, longitude: 4.4166, distance: 64, temperature: 22, windSpeed: 6, windDirection: 210, visibility: 9000, cloudCover: 38, weatherCode: 2, icon: "🌤️", label: "Variable" },
+  { name: "Louhans", latitude: 46.6298, longitude: 5.2242, distance: 45, temperature: 25, windSpeed: 5, windDirection: 180, visibility: 10000, cloudCover: 18, weatherCode: 1, icon: "🌤️", label: "Peu nuageux" },
+  { name: "Bourg-en-Bresse", latitude: 46.2052, longitude: 5.2255, distance: 37, temperature: 27, windSpeed: 5, windDirection: 160, visibility: 10000, cloudCover: 25, weatherCode: 1, icon: "🌤️", label: "Peu nuageux" }
+];
+
 function distanceKm(origin: [number, number], destination: [number, number]) {
   const [lat1, lon1] = origin.map((value) => (value * Math.PI) / 180);
   const [lat2, lon2] = destination.map((value) => (value * Math.PI) / 180);
@@ -183,13 +200,37 @@ export default function AviationPanel() {
   const [showCircle, setShowCircle] = useState(true);
   const [locateSignal, setLocateSignal] = useState(0);
   const [query, setQuery] = useState("");
+  const [previewMode, setPreviewMode] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
+  const [flightOnly, setFlightOnly] = useState(true);
+  const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
   const trailsRef = useRef<Record<string, [number, number][]>>({});
   const [trailsVersion, setTrailsVersion] = useState(0);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setPreviewMode(params.get("preview") === "1");
+    try {
+      const stored = window.localStorage.getItem("xavpac-favorites");
+      if (stored) setFavoriteIds(JSON.parse(stored));
+    } catch {
+      setFavoriteIds([]);
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
 
     async function refresh() {
+      if (previewMode) {
+        const sorted = PREVIEW_AIRCRAFT.filter((item) => item.distance <= radius).sort((a, b) => a.distance - b.distance);
+        setAircraft(sorted);
+        setSelectedId((current) => current && sorted.some((item) => item.id === current) ? current : sorted[0]?.id ?? null);
+        setSourceStatus(`MODE APERÇU • ${sorted.length} appareils`);
+        setLastUpdate("17:27:19");
+        setError("");
+        return;
+      }
       try {
         setError("");
         const response = await fetch(`/api/aircraft?lat=${position[0]}&lon=${position[1]}&radius=${radius}`, { cache: "no-store" });
@@ -240,11 +281,15 @@ export default function AviationPanel() {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [position, radius, manualSelection, selectedId]);
+  }, [position, radius, manualSelection, selectedId, previewMode]);
 
   useEffect(() => {
     let cancelled = false;
     async function refreshWeather() {
+      if (previewMode) {
+        setWeather(PREVIEW_WEATHER);
+        return;
+      }
       try {
         const response = await fetch(`/api/city-weather?lat=${position[0]}&lon=${position[1]}&count=8`, { cache: "no-store" });
         const payload = await response.json();
@@ -259,7 +304,7 @@ export default function AviationPanel() {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [position]);
+  }, [position, previewMode]);
 
   const selected = useMemo(() => aircraft.find((item) => item.id === selectedId) ?? aircraft[0] ?? null, [aircraft, selectedId]);
 
@@ -271,6 +316,11 @@ export default function AviationPanel() {
         return;
       }
       setPhotoLoading(true);
+      if (previewMode) {
+        setPhoto({ image: "/aircraft/illustrative-aircraft.jpg", photographer: "Illustration XavPac" });
+        setPhotoLoading(false);
+        return;
+      }
       try {
         const params = new URLSearchParams({ hex: selected.id, registration: selected.registration ?? "" });
         const response = await fetch(`/api/aircraft-photo?${params.toString()}`, { cache: "no-store" });
@@ -284,13 +334,14 @@ export default function AviationPanel() {
     }
     refreshPhoto();
     return () => { cancelled = true; };
-  }, [selected?.id, selected?.registration]);
+  }, [selected?.id, selected?.registration, previewMode]);
 
   const visibleAircraft = useMemo(() => {
     const normalized = query.trim().toLowerCase();
-    if (!normalized) return aircraft;
-    return aircraft.filter((item) => `${item.callsign} ${item.registration ?? ""} ${item.aircraftType ?? ""} ${item.operator ?? ""}`.toLowerCase().includes(normalized));
-  }, [aircraft, query]);
+    const base = flightOnly ? aircraft.filter((item) => !item.onGround) : aircraft;
+    if (!normalized) return base;
+    return base.filter((item) => `${item.callsign} ${item.registration ?? ""} ${item.aircraftType ?? ""} ${item.operator ?? ""}`.toLowerCase().includes(normalized));
+  }, [aircraft, query, flightOnly]);
 
   const mapPoints = useMemo(
     () => [
@@ -374,6 +425,22 @@ export default function AviationPanel() {
     setManualSelection(true);
   }
 
+  function toggleFavorite(id: string) {
+    setFavoriteIds((current) => {
+      const next = current.includes(id) ? current.filter((value) => value !== id) : [...current, id];
+      try { window.localStorage.setItem("xavpac-favorites", JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }
+
+  function toggleFullscreen() {
+    if (document.fullscreenElement) {
+      void document.exitFullscreen();
+    } else {
+      void document.documentElement.requestFullscreen?.();
+    }
+  }
+
   const approachTitle = approach?.state === "approaching"
     ? `Dans ${formatDuration(approach.seconds ?? 0)}`
     : approach?.state === "passed"
@@ -388,11 +455,21 @@ export default function AviationPanel() {
         <div className="flightwall-actions">
           <button type="button" className={showTrails ? "fw-action active" : "fw-action"} onClick={() => setShowTrails((value) => !value)}>🛩️ Traces</button>
           <button type="button" className={showCircle ? "fw-action active" : "fw-action"} onClick={() => setShowCircle((value) => !value)}>🎯 Cercles</button>
-          <button type="button" className="fw-action">🔽 Filtres</button>
-          <button type="button" className="fw-action">🔔 Alertes <b>0</b></button>
+          <button type="button" className={showFilters ? "fw-action active" : "fw-action"} onClick={() => setShowFilters((value) => !value)}>🔽 Filtres</button>
+          <button type="button" className="fw-action">🔔 Alertes <b>{aircraft.filter((item) => item.distance <= 5).length}</b></button>
+          <button type="button" className="fw-action" onClick={toggleFullscreen}>⛶ Plein écran</button>
         </div>
         <div className="fw-live-summary"><span className={isLive ? "live-dot" : "live-dot off"} /> {sourceStatus}</div>
       </div>
+
+      {previewMode && <div className="fw-preview-banner">APERÇU LOCAL — données de démonstration uniquement pour contrôler le rendu. La version normale utilise Airplanes.live.</div>}
+      {showFilters && (
+        <div className="fw-filterbar panel">
+          <button type="button" className={flightOnly ? "active" : ""} onClick={() => setFlightOnly(true)}>En vol uniquement</button>
+          <button type="button" className={!flightOnly ? "active" : ""} onClick={() => setFlightOnly(false)}>Tous les appareils</button>
+          <span>{favoriteIds.length} favori{favoriteIds.length > 1 ? "s" : ""}</span>
+        </div>
+      )}
 
       {(gpsError || error) && <div className="aviation-warning-v5">{gpsError || error}</div>}
 
@@ -489,11 +566,11 @@ export default function AviationPanel() {
           {selected ? (
             <>
               <div className="fw-focus-header">
-                <div><span className="fw-kicker">AVION DU MOMENT</span><h2>{selected.callsign}</h2><strong>{selected.operator ?? "Opérateur non renseigné"}</strong><p>{selected.aircraftType ?? selected.description ?? "Type non disponible"}</p></div>
+                <div><span className="fw-kicker">AVION SÉLECTIONNÉ</span><div className="fw-title-line"><h2>{selected.callsign}</h2><button type="button" className={favoriteIds.includes(selected.id) ? "fw-favorite active" : "fw-favorite"} onClick={() => toggleFavorite(selected.id)} aria-label="Ajouter aux favoris">☆</button></div><strong>{selected.operator ?? "Opérateur non renseigné"}</strong><p>{selected.aircraftType ?? selected.description ?? "Type non disponible"}</p></div>
                 <div className={photoLoading ? "fw-aircraft-photo loading" : "fw-aircraft-photo"}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={photo?.image ?? "/aircraft-placeholder.svg"} alt={`Appareil ${selected.callsign}`} />
-                  {photo?.photographer && <small>Photo : {photo.photographer}</small>}
+                  <img src={photo?.image ?? "/aircraft/illustrative-aircraft.jpg"} alt={`Appareil ${selected.callsign}`} />
+                  <small>{photo?.photographer ? `Photo : ${photo.photographer}` : "Illustration — photo réelle indisponible"}</small>
                 </div>
               </div>
 

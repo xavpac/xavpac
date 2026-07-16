@@ -33,3 +33,16 @@
 ## Sécurité aéronautique
 
 Les tracés RTBA intégrés servent au repérage visuel. L’activation, les limites et les niveaux doivent être vérifiés auprès du SIA/AZBA, des NOTAM, SUP AIP et AIP officiels.
+
+## 6.2.0 — Aviation FlightWall fidèle
+
+- Refonte visuelle complète de l’onglet Aviation autour de la maquette validée.
+- Grande carte claire par défaut, satellite et sombre en option.
+- Avions agrandis, étiquettes compactes, halo pour l’appareil sélectionné.
+- Bouton de recentrage GPS très visible.
+- Météo affichée sous les villes sur la carte et dans le panneau latéral.
+- Photo réelle via PlaneSpotters lorsqu’elle existe ; illustration explicitement signalée sinon.
+- Recherche, filtres en vol/tous, favoris locaux et plein écran.
+- Mise en page adaptée Mac/PC, iPad et iPhone.
+- Mode aperçu local disponible uniquement avec `?preview=1`, clairement étiqueté.
+- TypeScript et build Next.js validés.

@@ -52,3 +52,7 @@ Cette version reconstruit réellement l’onglet Aviation :
 - mises en page dédiées aux ordinateurs, tablettes et téléphones.
 
 Les routes départ/arrivée ne sont pas inventées : elles restent indiquées comme indisponibles lorsque la source ADS-B ne les fournit pas.
+
+## XavPac 6.2 — Aviation FlightWall fidèle
+
+Cette version modifie uniquement l’onglet Aviation. Les données opérationnelles restent issues des sources publiques configurées dans le projet. Les départs et arrivées ne sont jamais inventés lorsqu’ils ne sont pas fournis. La photo provient de PlaneSpotters lorsqu’elle est disponible ; l’image de remplacement est explicitement identifiée comme une illustration.
