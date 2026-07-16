@@ -3,7 +3,6 @@
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLiveGeolocation } from "../hooks/useLiveGeolocation";
-import type { MapVariant } from "./StableMap";
 
 const StableMap = dynamic(() => import("./StableMap"), { ssr: false });
 
@@ -29,20 +28,40 @@ type LiveAircraft = {
 
 type AircraftWithDistance = LiveAircraft & { distance: number };
 type Radius = 20 | 50 | 100;
+type MapStyle = "street" | "satellite" | "dark";
+
+type CityWeather = {
+  name: string;
+  latitude: number;
+  longitude: number;
+  distance: number;
+  temperature: number | null;
+  windSpeed: number | null;
+  windDirection: number | null;
+  visibility: number | null;
+  cloudCover: number | null;
+  weatherCode: number;
+  icon: string;
+  label: string;
+};
+
+type AircraftPhoto = {
+  image: string;
+  link?: string | null;
+  photographer?: string | null;
+};
 
 function distanceKm(origin: [number, number], destination: [number, number]) {
   const [lat1, lon1] = origin.map((value) => (value * Math.PI) / 180);
   const [lat2, lon2] = destination.map((value) => (value * Math.PI) / 180);
   const deltaLat = lat2 - lat1;
   const deltaLon = lon2 - lon1;
-  const a =
-    Math.sin(deltaLat / 2) ** 2 +
-    Math.cos(lat1) * Math.cos(lat2) * Math.sin(deltaLon / 2) ** 2;
+  const a = Math.sin(deltaLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(deltaLon / 2) ** 2;
   return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 function formatAltitude(value: number | null) {
-  return value === null ? "—" : `${Math.round(value)} m`;
+  return value === null ? "—" : `${Math.round(value).toLocaleString("fr-FR")} m`;
 }
 
 function formatFlightLevel(value: number | null) {
@@ -50,14 +69,70 @@ function formatFlightLevel(value: number | null) {
   return `FL${Math.max(0, Math.round(value / 30.48)).toString().padStart(3, "0")}`;
 }
 
-function formatSpeed(value: number | null) {
+function formatSpeedKmh(value: number | null) {
   return value === null ? "—" : `${Math.round(value * 3.6)} km/h`;
+}
+
+function formatSpeedKnots(value: number | null) {
+  return value === null ? "—" : `${Math.round(value * 1.94384)} kt`;
+}
+
+function formatVertical(value: number | null | undefined) {
+  if (value === null || value === undefined) return "—";
+  const feetPerMinute = value * 196.8504;
+  return `${feetPerMinute >= 0 ? "+" : ""}${Math.round(feetPerMinute)} ft/min`;
 }
 
 function directionName(track: number | null) {
   if (track === null) return "—";
   const directions = ["Nord", "Nord-Est", "Est", "Sud-Est", "Sud", "Sud-Ouest", "Ouest", "Nord-Ouest"];
   return `${directions[Math.round(track / 45) % 8]} • ${Math.round(track)}°`;
+}
+
+function bearingName(origin: [number, number], destination: [number, number]) {
+  const lat1 = (origin[0] * Math.PI) / 180;
+  const lat2 = (destination[0] * Math.PI) / 180;
+  const dLon = ((destination[1] - origin[1]) * Math.PI) / 180;
+  const y = Math.sin(dLon) * Math.cos(lat2);
+  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
+  const bearing = (Math.atan2(y, x) * 180) / Math.PI;
+  const normalized = (bearing + 360) % 360;
+  const directions = ["Nord", "Nord-Est", "Est", "Sud-Est", "Sud", "Sud-Ouest", "Ouest", "Nord-Ouest"];
+  return { label: directions[Math.round(normalized / 45) % 8], bearing: normalized };
+}
+
+function formatDuration(seconds: number) {
+  if (!Number.isFinite(seconds) || seconds < 0) return "—";
+  const rounded = Math.round(seconds);
+  if (rounded < 60) return `${rounded} s`;
+  const minutes = Math.floor(rounded / 60);
+  const remaining = rounded % 60;
+  if (minutes < 60) return `${minutes} min ${remaining.toString().padStart(2, "0")} s`;
+  return `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
+}
+
+function closestApproach(home: [number, number], aircraft: AircraftWithDistance) {
+  if (aircraft.velocity === null || aircraft.trueTrack === null || aircraft.velocity < 2) {
+    return { state: "position", seconds: null, minimumDistance: aircraft.distance } as const;
+  }
+
+  const north = (aircraft.latitude - home[0]) * 111;
+  const east = (aircraft.longitude - home[1]) * 111 * Math.cos((home[0] * Math.PI) / 180);
+  const track = (aircraft.trueTrack * Math.PI) / 180;
+  const speedKmS = aircraft.velocity / 1000;
+  const velocityEast = Math.sin(track) * speedKmS;
+  const velocityNorth = Math.cos(track) * speedKmS;
+  const denominator = velocityEast ** 2 + velocityNorth ** 2;
+  const time = denominator > 0 ? -((east * velocityEast + north * velocityNorth) / denominator) : 0;
+  const projected = Math.max(0, Math.min(time, 7200));
+  const minEast = east + velocityEast * projected;
+  const minNorth = north + velocityNorth * projected;
+  const minimumDistance = Math.sqrt(minEast ** 2 + minNorth ** 2);
+
+  if (time < -30) return { state: "passed", seconds: Math.abs(time), minimumDistance } as const;
+  if (time <= 0) return { state: "now", seconds: 0, minimumDistance } as const;
+  if (time > 7200) return { state: "position", seconds: null, minimumDistance: aircraft.distance } as const;
+  return { state: "approaching", seconds: time, minimumDistance } as const;
 }
 
 function radarCoordinates(home: [number, number], aircraft: AircraftWithDistance, radius: number) {
@@ -70,30 +145,44 @@ function radarCoordinates(home: [number, number], aircraft: AircraftWithDistance
 
 function aircraftVisual(item: LiveAircraft) {
   const text = `${item.aircraftType ?? ""} ${item.description ?? ""} ${item.category ?? ""} ${item.operator ?? ""}`.toLowerCase();
-  if (text.includes("heli") || text.includes("rotor")) {
-    return { category: "helicopter", color: "#4fa8ff" };
-  }
-  if (/(military|armée|air force|fighter|rafale|mirage|trainer)/i.test(text)) {
-    return { category: "military", color: "#ff5e78" };
-  }
-  if (/(cessna|piper|robin|cirrus|ultralight|ulm|glider)/i.test(text)) {
-    return { category: "light", color: "#bc83ff" };
-  }
-  return { category: "commercial", color: "#ffb34d" };
+  if (text.includes("heli") || text.includes("rotor")) return { category: "helicopter", color: "#4fa8ff" };
+  if (/(military|armée|air force|fighter|rafale|mirage|trainer)/i.test(text)) return { category: "military", color: "#ff5e78" };
+  if (/(cessna|piper|robin|cirrus|ultralight|ulm|glider|bristell)/i.test(text)) return { category: "light", color: "#bc83ff" };
+  return { category: "commercial", color: "#ffb000" };
+}
+
+function altitudeBand(value: number | null) {
+  if (value === null) return 0;
+  const fl = value / 30.48;
+  if (fl >= 400) return 4;
+  if (fl >= 300) return 3;
+  if (fl >= 200) return 2;
+  if (fl >= 100) return 1;
+  return 0;
+}
+
+function weatherVisibility(value: number | null) {
+  if (value === null) return "—";
+  return value >= 10000 ? "> 10 km" : `${(value / 1000).toFixed(1)} km`;
 }
 
 export default function AviationPanel() {
-  const { position, status: positionStatus, isLive, error: gpsError } = useLiveGeolocation();
+  const { position, status: positionStatus, accuracy, isLive, error: gpsError } = useLiveGeolocation();
   const [radius, setRadius] = useState<Radius>(50);
-  const [mapVariant, setMapVariant] = useState<MapVariant>("street");
-  const [showTrails, setShowTrails] = useState(true);
-  const [showRadius, setShowRadius] = useState(true);
   const [aircraft, setAircraft] = useState<AircraftWithDistance[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [manualSelection, setManualSelection] = useState(false);
   const [sourceStatus, setSourceStatus] = useState("Connexion Airplanes.live…");
   const [lastUpdate, setLastUpdate] = useState("—");
   const [error, setError] = useState("");
+  const [weather, setWeather] = useState<CityWeather[]>([]);
+  const [photo, setPhoto] = useState<AircraftPhoto | null>(null);
+  const [photoLoading, setPhotoLoading] = useState(false);
+  const [mapStyle, setMapStyle] = useState<MapStyle>("street");
+  const [showTrails, setShowTrails] = useState(true);
+  const [showCircle, setShowCircle] = useState(true);
+  const [locateSignal, setLocateSignal] = useState(0);
+  const [query, setQuery] = useState("");
   const trailsRef = useRef<Record<string, [number, number][]>>({});
   const [trailsVersion, setTrailsVersion] = useState(0);
 
@@ -103,18 +192,12 @@ export default function AviationPanel() {
     async function refresh() {
       try {
         setError("");
-        const response = await fetch(
-          `/api/aircraft?lat=${position[0]}&lon=${position[1]}&radius=${radius}`,
-          { cache: "no-store" }
-        );
+        const response = await fetch(`/api/aircraft?lat=${position[0]}&lon=${position[1]}&radius=${radius}`, { cache: "no-store" });
         const payload = await response.json();
         if (cancelled) return;
 
         const sorted: AircraftWithDistance[] = (Array.isArray(payload.aircraft) ? payload.aircraft : [])
-          .map((item: LiveAircraft) => ({
-            ...item,
-            distance: distanceKm(position, [item.latitude, item.longitude])
-          }))
+          .map((item: LiveAircraft) => ({ ...item, distance: distanceKm(position, [item.latitude, item.longitude]) }))
           .filter((item: AircraftWithDistance) => item.distance <= radius + 1)
           .sort((a: AircraftWithDistance, b: AircraftWithDistance) => a.distance - b.distance);
 
@@ -129,15 +212,12 @@ export default function AviationPanel() {
           setManualSelection(false);
         }
 
-        for (const item of sorted.slice(0, 60)) {
+        for (const item of sorted.slice(0, 80)) {
           const current = trailsRef.current[item.id] ?? [];
           const nextPoint: [number, number] = [item.latitude, item.longitude];
           const previousPoint = current[current.length - 1];
-          const isNew =
-            !previousPoint ||
-            Math.abs(previousPoint[0] - nextPoint[0]) > 0.00005 ||
-            Math.abs(previousPoint[1] - nextPoint[1]) > 0.00005;
-          trailsRef.current[item.id] = isNew ? [...current, nextPoint].slice(-40) : current;
+          const isNew = !previousPoint || Math.abs(previousPoint[0] - nextPoint[0]) > 0.00005 || Math.abs(previousPoint[1] - nextPoint[1]) > 0.00005;
+          trailsRef.current[item.id] = isNew ? [...current, nextPoint].slice(-50) : current;
         }
         setTrailsVersion((value) => value + 1);
 
@@ -155,17 +235,62 @@ export default function AviationPanel() {
     }
 
     refresh();
-    const timer = window.setInterval(refresh, 12000);
+    const timer = window.setInterval(refresh, 10000);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
     };
   }, [position, radius, manualSelection, selectedId]);
 
-  const selected = useMemo(
-    () => aircraft.find((item) => item.id === selectedId) ?? aircraft[0] ?? null,
-    [aircraft, selectedId]
-  );
+  useEffect(() => {
+    let cancelled = false;
+    async function refreshWeather() {
+      try {
+        const response = await fetch(`/api/city-weather?lat=${position[0]}&lon=${position[1]}&count=8`, { cache: "no-store" });
+        const payload = await response.json();
+        if (!cancelled) setWeather(Array.isArray(payload.weather) ? payload.weather : []);
+      } catch {
+        if (!cancelled) setWeather([]);
+      }
+    }
+    refreshWeather();
+    const timer = window.setInterval(refreshWeather, 10 * 60 * 1000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [position]);
+
+  const selected = useMemo(() => aircraft.find((item) => item.id === selectedId) ?? aircraft[0] ?? null, [aircraft, selectedId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function refreshPhoto() {
+      if (!selected) {
+        setPhoto(null);
+        return;
+      }
+      setPhotoLoading(true);
+      try {
+        const params = new URLSearchParams({ hex: selected.id, registration: selected.registration ?? "" });
+        const response = await fetch(`/api/aircraft-photo?${params.toString()}`, { cache: "no-store" });
+        const payload = await response.json();
+        if (!cancelled) setPhoto(payload.photo ?? null);
+      } catch {
+        if (!cancelled) setPhoto(null);
+      } finally {
+        if (!cancelled) setPhotoLoading(false);
+      }
+    }
+    refreshPhoto();
+    return () => { cancelled = true; };
+  }, [selected?.id, selected?.registration]);
+
+  const visibleAircraft = useMemo(() => {
+    const normalized = query.trim().toLowerCase();
+    if (!normalized) return aircraft;
+    return aircraft.filter((item) => `${item.callsign} ${item.registration ?? ""} ${item.aircraftType ?? ""} ${item.operator ?? ""}`.toLowerCase().includes(normalized));
+  }, [aircraft, query]);
 
   const mapPoints = useMemo(
     () => [
@@ -178,209 +303,254 @@ export default function AviationPanel() {
         color: "#3aa7ff",
         category: "home"
       },
-      ...aircraft.slice(0, 80).map((item) => {
+      ...weather.map((city) => ({
+        id: `weather-${city.name}`,
+        lat: city.latitude,
+        lon: city.longitude,
+        name: city.name,
+        detail: `${city.label} • ${city.temperature === null ? "—" : `${Math.round(city.temperature)}°C`} • vent ${city.windSpeed === null ? "—" : `${Math.round(city.windSpeed)} kt`}`,
+        category: "weather",
+        weatherIcon: city.icon,
+        temperature: city.temperature
+      })),
+      ...visibleAircraft.slice(0, 100).map((item) => {
         const visual = aircraftVisual(item);
         return {
           id: item.id,
           lat: item.latitude,
           lon: item.longitude,
           name: item.callsign,
-          detail: `${item.aircraftType ?? "Type inconnu"} • ${formatFlightLevel(item.barometricAltitude)} • ${formatSpeed(item.velocity)}`,
-          color: item.id === selected?.id ? "#63ddff" : visual.color,
+          detail: `${item.aircraftType ?? "Type inconnu"} • ${formatFlightLevel(item.barometricAltitude)} • ${formatSpeedKnots(item.velocity)}`,
+          color: item.id === selected?.id ? "#00b7ff" : visual.color,
           category: visual.category,
           heading: item.trueTrack
         };
       })
     ],
-    [aircraft, position, positionStatus, selected]
+    [position, positionStatus, selected, visibleAircraft, weather]
   );
 
   const mapTrails = useMemo(
-    () =>
-      aircraft.slice(0, 30).flatMap((item) => {
-        const positions = trailsRef.current[item.id] ?? [];
-        if (positions.length < 2) return [];
-        const visual = aircraftVisual(item);
-        return [{
-          id: item.id,
-          positions,
-          color: item.id === selected?.id ? "#63ddff" : visual.color,
-          selected: item.id === selected?.id
-        }];
-      }),
+    () => showTrails
+      ? visibleAircraft.slice(0, 40).flatMap((item) => {
+          const positions = trailsRef.current[item.id] ?? [];
+          if (positions.length < 2) return [];
+          const visual = aircraftVisual(item);
+          return [{ id: item.id, positions, color: item.id === selected?.id ? "#00a8ff" : visual.color, selected: item.id === selected?.id }];
+        })
+      : [],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [aircraft, selected, trailsVersion]
+    [visibleAircraft, selected, trailsVersion, showTrails]
   );
 
+  const approach = selected ? closestApproach(position, selected) : null;
+  const bearing = selected ? bearingName(position, [selected.latitude, selected.longitude]) : null;
+  const estimatedElevation = selected && selected.barometricAltitude !== null && selected.distance > 0
+    ? Math.max(0, Math.min(90, (Math.atan2(selected.barometricAltitude, selected.distance * 1000) * 180) / Math.PI))
+    : null;
+
+  const altitudeBands = useMemo(() => {
+    const counts = [0, 0, 0, 0, 0];
+    for (const item of aircraft) counts[altitudeBand(item.barometricAltitude)] += 1;
+    const max = Math.max(1, ...counts);
+    return [
+      { label: "FL400+", count: counts[4], width: (counts[4] / max) * 100 },
+      { label: "FL300 - FL399", count: counts[3], width: (counts[3] / max) * 100 },
+      { label: "FL200 - FL299", count: counts[2], width: (counts[2] / max) * 100 },
+      { label: "FL100 - FL199", count: counts[1], width: (counts[1] / max) * 100 },
+      { label: "FL000 - FL099", count: counts[0], width: (counts[0] / max) * 100 }
+    ];
+  }, [aircraft]);
+
+  const proximityCounts = useMemo(() => ({
+    five: aircraft.filter((item) => item.distance <= 5).length,
+    ten: aircraft.filter((item) => item.distance <= 10).length,
+    twentyFive: aircraft.filter((item) => item.distance <= 25).length,
+    fifty: aircraft.filter((item) => item.distance <= 50).length
+  }), [aircraft]);
+
   function selectAircraft(id: string) {
-    if (id === "home") return;
     setSelectedId(id);
     setManualSelection(true);
   }
 
+  const approachTitle = approach?.state === "approaching"
+    ? `Dans ${formatDuration(approach.seconds ?? 0)}`
+    : approach?.state === "passed"
+      ? "Passage effectué"
+      : approach?.state === "now"
+        ? "Au plus près maintenant"
+        : "Position reçue en direct";
+
   return (
-    <section className="aviation-console aviation-flightwall-v51">
-      <div className="aviation-map-shell panel">
-        <div className="aviation-pro-heading">
-          <div>
-            <span className="eyebrow">FLIGHTWALL AVIATION</span>
-            <h2>Trafic réel autour de votre position</h2>
-            <p>Carte lisible, avion le plus proche suivi automatiquement et fiche détaillée.</p>
-          </div>
-          <span className="aviation-pro-badge">CARTE MULTICOUCHE</span>
+    <section className="flightwall-v61">
+      <div className="flightwall-commandbar panel">
+        <div className="flightwall-actions">
+          <button type="button" className={showTrails ? "fw-action active" : "fw-action"} onClick={() => setShowTrails((value) => !value)}>🛩️ Traces</button>
+          <button type="button" className={showCircle ? "fw-action active" : "fw-action"} onClick={() => setShowCircle((value) => !value)}>🎯 Cercles</button>
+          <button type="button" className="fw-action">🔽 Filtres</button>
+          <button type="button" className="fw-action">🔔 Alertes <b>0</b></button>
         </div>
-        <div className="aviation-toolbar">
-          <div className="toolbar-group">
-            {[20, 50, 100].map((value) => (
-              <button
-                type="button"
-                key={value}
-                className={radius === value ? "tool-button active" : "tool-button"}
-                onClick={() => setRadius(value as Radius)}
-              >
-                {value} km
-              </button>
-            ))}
-          </div>
-          <div className="toolbar-group aviation-map-controls">
-            <button type="button" className={mapVariant === "street" ? "tool-button active" : "tool-button"} onClick={() => setMapVariant("street")}>Plan lisible</button>
-            <button type="button" className={mapVariant === "satellite" ? "tool-button active" : "tool-button"} onClick={() => setMapVariant("satellite")}>Satellite</button>
-            <button type="button" className={mapVariant === "dark" ? "tool-button active" : "tool-button"} onClick={() => setMapVariant("dark")}>Sombre</button>
-            <button type="button" className={showTrails ? "tool-button active" : "tool-button"} onClick={() => setShowTrails((value) => !value)}>Traces</button>
-            <button type="button" className={showRadius ? "tool-button active" : "tool-button"} onClick={() => setShowRadius((value) => !value)}>Cercle</button>
-          </div>
-          <div className="toolbar-group right-tools">
-            <span className="source-chip">✈ {aircraft.length}</span>
-            <span className={isLive ? "source-chip gps-live" : "source-chip"}>📍 {positionStatus}</span>
-            <span className="source-chip live">● {sourceStatus}</span>
-          </div>
-        </div>
-
-        {(gpsError || error) && (
-          <div className="aviation-warning-v5">{gpsError || error}</div>
-        )}
-
-        <div className="aviation-map-stage">
-          <StableMap
-            points={mapPoints}
-            center={position}
-            radiusKm={radius}
-            selectedId={selected?.id}
-            trails={showTrails ? mapTrails : []}
-            onSelect={selectAircraft}
-            showRadius={showRadius}
-            mapVariant={mapVariant}
-          />
-
-          <div className="map-radar-card">
-            <div className="radar-title"><strong>Radar local</strong><span>{radius} km</span></div>
-            <div className="mini-radar">
-              <span className="radar-axis horizontal" />
-              <span className="radar-axis vertical" />
-              <span className="radar-circle one" />
-              <span className="radar-circle two" />
-              <span className="radar-circle three" />
-              <span className="radar-center" />
-              {aircraft.slice(0, 16).map((item) => {
-                const coordinate = radarCoordinates(position, item, radius);
-                return (
-                  <button
-                    type="button"
-                    key={item.id}
-                    className={item.id === selected?.id ? "radar-blip selected" : "radar-blip"}
-                    style={coordinate}
-                    title={item.callsign}
-                    onClick={() => selectAircraft(item.id)}
-                  />
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="map-nearest-card">
-            <div className="nearest-head">
-              <strong>5 appareils les plus proches</strong>
-              <button type="button" onClick={() => { setManualSelection(false); setSelectedId(aircraft[0]?.id ?? null); }}>
-                Suivre le plus proche
-              </button>
-            </div>
-            {aircraft.length ? (
-              aircraft.slice(0, 5).map((item, index) => (
-                <button
-                  type="button"
-                  key={item.id}
-                  className={item.id === selected?.id ? "nearest-row selected" : "nearest-row"}
-                  onClick={() => selectAircraft(item.id)}
-                >
-                  <b>{index + 1}</b>
-                  <span><strong>{item.callsign}</strong><small>{item.aircraftType ?? item.registration ?? "ADS-B"}</small></span>
-                  <span>{formatFlightLevel(item.barometricAltitude)}</span>
-                  <span>{formatSpeed(item.velocity)}</span>
-                  <em>{item.distance.toFixed(1)} km</em>
-                </button>
-              ))
-            ) : (
-              <div className="nearest-empty">Aucun avion détecté dans ce rayon.</div>
-            )}
-          </div>
-        </div>
-
-        <div className="map-footer-line">
-          <span>Données aériennes : Airplanes.live</span>
-          <span>Actualisation : {lastUpdate}</span>
-          <span>Aucun METAR n’est affiché dans l’onglet Aviation.</span>
-        </div>
+        <div className="fw-live-summary"><span className={isLive ? "live-dot" : "live-dot off"} /> {sourceStatus}</div>
       </div>
 
-      <aside className="aircraft-focus panel">
-        {selected ? (
-          <>
-            <div className="focus-title">
-              <div>
-                <span className="eyebrow">AVION DU MOMENT</span>
-                <h2>{selected.callsign}</h2>
-                <p>{selected.operator ?? selected.country ?? "Donnée ADS-B publique"}</p>
+      {(gpsError || error) && <div className="aviation-warning-v5">{gpsError || error}</div>}
+
+      <div className="flightwall-main-grid">
+        <div className="flightwall-left">
+          <div className="flightwall-map-card panel">
+            <div className="flightwall-map-stage">
+              <StableMap
+                points={mapPoints}
+                center={position}
+                radiusKm={radius}
+                showRadius={showCircle}
+                selectedId={selected?.id}
+                trails={mapTrails}
+                onSelect={selectAircraft}
+                mapVariant={mapStyle}
+                focusSignal={locateSignal}
+              />
+
+              <div className="fw-map-search">
+                <span>⌕</span>
+                <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Rechercher un vol, une immatriculation…" />
               </div>
-              <div className="focus-plane">✈</div>
-            </div>
 
-            <div className="focus-identity">
-              <div className="identity-logo">{(selected.operator ?? selected.callsign).slice(0, 1)}</div>
-              <div>
-                <strong>{selected.registration ?? selected.callsign}</strong>
-                <span>{selected.aircraftType ?? selected.description ?? "Type non disponible"}</span>
+              <div className="fw-map-style">
+                <button className={mapStyle === "street" ? "active" : ""} onClick={() => setMapStyle("street")} type="button">Plan lisible</button>
+                <button className={mapStyle === "satellite" ? "active" : ""} onClick={() => setMapStyle("satellite")} type="button">Satellite</button>
+                <button className={mapStyle === "dark" ? "active" : ""} onClick={() => setMapStyle("dark")} type="button">Mode sombre</button>
+              </div>
+
+              <div className="fw-radius-selector">
+                {[20, 50, 100].map((value) => (
+                  <button type="button" key={value} className={radius === value ? "active" : ""} onClick={() => setRadius(value as Radius)}>{value} km</button>
+                ))}
+              </div>
+
+              <div className="fw-map-counters">
+                <div><span>✈️</span><strong>{aircraft.filter((item) => !item.onGround).length}</strong><small>En vol</small></div>
+                <div><span>🎯</span><strong>{aircraft.filter((item) => item.distance <= 20).length}</strong><small>À proximité</small></div>
+                <div><span>🛬</span><strong>{aircraft.filter((item) => item.onGround).length}</strong><small>Au sol</small></div>
+                <button type="button" onClick={() => setLocateSignal((value) => value + 1)}><span>📍</span><strong>HOME</strong><small>Ma position</small></button>
+              </div>
+
+              <button type="button" className="fw-locate-button" title="Centrer sur ma position" onClick={() => setLocateSignal((value) => value + 1)}>⌾</button>
+
+              <div className="fw-position-card">
+                <span className={isLive ? "live-dot" : "live-dot off"} />
+                <div><strong>MA POSITION</strong><small>{position[0].toFixed(4)} N / {position[1].toFixed(4)} E{accuracy ? ` • ±${Math.round(accuracy)} m` : ""}</small></div>
               </div>
             </div>
-
-            <div className="focus-status-card">
-              <span>📡 Position reçue en direct</span>
-              <h3>{selected.distance.toFixed(1)} km</h3>
-              <p>{selected.onGround ? "Appareil au sol" : "Appareil en vol"}</p>
-            </div>
-
-            <div className="focus-grid">
-              <div><span>Altitude</span><strong>{formatAltitude(selected.barometricAltitude)}</strong></div>
-              <div><span>Niveau</span><strong>{formatFlightLevel(selected.barometricAltitude)}</strong></div>
-              <div><span>Vitesse sol</span><strong>{formatSpeed(selected.velocity)}</strong></div>
-              <div><span>Cap</span><strong>{directionName(selected.trueTrack)}</strong></div>
-              <div><span>Immatriculation</span><strong>{selected.registration ?? "—"}</strong></div>
-              <div><span>Transpondeur</span><strong>{selected.squawk ?? "—"}</strong></div>
-            </div>
-
-            <div className="data-honesty">
-              <strong>Informations fiables uniquement</strong>
-              <p>Le départ, l’arrivée et la compagnie ne sont affichés que lorsqu’une source les fournit. XavPac n’invente aucune route.</p>
-            </div>
-          </>
-        ) : (
-          <div className="focus-empty">
-            <span>✈</span>
-            <h2>Aucun avion détecté</h2>
-            <p>Aucun appareil ADS-B n’est reçu dans un rayon de {radius} km.</p>
-            <small>{sourceStatus}</small>
           </div>
-        )}
-      </aside>
+
+          <div className="flightwall-bottom-grid">
+            <article className="fw-data-card panel fw-radar-card">
+              <header><strong>Mini radar local</strong><span>Rayon {radius} km</span></header>
+              <div className="fw-radar-layout">
+                <div className="mini-radar fw-large-radar">
+                  <span className="radar-axis horizontal" /><span className="radar-axis vertical" />
+                  <span className="radar-circle one" /><span className="radar-circle two" /><span className="radar-circle three" /><span className="radar-center" />
+                  {aircraft.slice(0, 22).map((item) => <button type="button" key={item.id} className={item.id === selected?.id ? "radar-blip selected" : "radar-blip"} style={radarCoordinates(position, item, radius)} onClick={() => selectAircraft(item.id)} title={item.callsign} />)}
+                </div>
+                <div className="fw-proximity-grid">
+                  <div><span>≤ 5 km</span><strong>{proximityCounts.five}</strong></div>
+                  <div><span>≤ 10 km</span><strong>{proximityCounts.ten}</strong></div>
+                  <div><span>≤ 25 km</span><strong>{proximityCounts.twentyFive}</strong></div>
+                  <div><span>≤ 50 km</span><strong>{proximityCounts.fifty}</strong></div>
+                  <div className="nearest"><span>Le plus proche</span><strong>{aircraft[0] ? `${aircraft[0].distance.toFixed(1)} km` : "—"}</strong></div>
+                </div>
+              </div>
+            </article>
+
+            <article className="fw-data-card panel fw-nearest-card">
+              <header><div><strong>Les 5 prochains avions</strong><span>Appareils les plus proches de votre position</span></div></header>
+              <div className="fw-nearest-list">
+                {aircraft.slice(0, 5).map((item, index) => (
+                  <button type="button" key={item.id} onClick={() => selectAircraft(item.id)} className={item.id === selected?.id ? "selected" : ""}>
+                    <b>{index + 1}</b><strong>{item.callsign}</strong><span>{item.aircraftType ?? item.registration ?? "ADS-B"}</span><em>{item.distance.toFixed(1)} km</em>
+                  </button>
+                ))}
+                {!aircraft.length && <p className="fw-empty-text">Aucun appareil reçu dans ce rayon.</p>}
+              </div>
+            </article>
+
+            <article className="fw-data-card panel fw-altitude-card">
+              <header><div><strong>Altitudes des avions</strong><span>Répartition par tranche d’altitude</span></div></header>
+              <div className="fw-altitude-bars">
+                {altitudeBands.map((band, index) => <div key={band.label}><span>{band.label}</span><i style={{ width: `${band.width}%` }} className={`band-${index}`} /><strong>{band.count}</strong></div>)}
+              </div>
+            </article>
+          </div>
+        </div>
+
+        <aside className="flightwall-focus panel">
+          {selected ? (
+            <>
+              <div className="fw-focus-header">
+                <div><span className="fw-kicker">AVION DU MOMENT</span><h2>{selected.callsign}</h2><strong>{selected.operator ?? "Opérateur non renseigné"}</strong><p>{selected.aircraftType ?? selected.description ?? "Type non disponible"}</p></div>
+                <div className={photoLoading ? "fw-aircraft-photo loading" : "fw-aircraft-photo"}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={photo?.image ?? "/aircraft-placeholder.svg"} alt={`Appareil ${selected.callsign}`} />
+                  {photo?.photographer && <small>Photo : {photo.photographer}</small>}
+                </div>
+              </div>
+
+              <div className="fw-identity-grid">
+                <div><span>Immatriculation</span><strong>{selected.registration ?? "—"}</strong></div>
+                <div><span>Type</span><strong>{selected.aircraftType ?? "—"}</strong></div>
+                <div><span>Mode S</span><strong>{selected.id.toUpperCase()}</strong></div>
+              </div>
+
+              <div className="fw-passage-card">
+                <div><span>Passage au plus près de ma position</span><h3>{approachTitle}</h3><p>{approach?.state === "approaching" ? "L’appareil se rapproche actuellement" : approach?.state === "passed" ? "L’appareil s’éloigne actuellement" : "Calcul à partir de la position ADS-B"}</p></div>
+                <div><span>Distance minimale estimée</span><strong>{approach ? `${approach.minimumDistance.toFixed(1)} km` : "—"}</strong><small>Cap {selected.trueTrack === null ? "—" : `${Math.round(selected.trueTrack)}°`}</small></div>
+              </div>
+
+              <div className="fw-look-grid">
+                <div><span>Où regarder ?</span><strong>{bearing?.label ?? "—"}</strong></div>
+                <div><span>Hauteur estimée</span><strong>{estimatedElevation === null ? "—" : `${Math.round(estimatedElevation)}°`}</strong></div>
+                <div><span>Distance actuelle</span><strong>{selected.distance.toFixed(1)} km</strong></div>
+                <div><span>Vitesse sol</span><strong>{formatSpeedKnots(selected.velocity)}</strong></div>
+              </div>
+
+              <div className="fw-route-card">
+                <div><span>Départ</span><strong>—</strong><small>Route non fournie par la source ADS-B</small></div>
+                <div className="fw-route-line">✈︎ <i /> ✈︎</div>
+                <div><span>Arrivée</span><strong>—</strong><small>Route non fournie par la source ADS-B</small></div>
+              </div>
+
+              <div className="fw-telemetry-grid">
+                <div><span>Altitude</span><strong>{formatFlightLevel(selected.barometricAltitude)}</strong><small>{formatAltitude(selected.barometricAltitude)}</small></div>
+                <div><span>Vitesse</span><strong>{formatSpeedKnots(selected.velocity)}</strong><small>{formatSpeedKmh(selected.velocity)}</small></div>
+                <div><span>Cap</span><strong>{selected.trueTrack === null ? "—" : `${Math.round(selected.trueTrack)}°`}</strong><small>{directionName(selected.trueTrack).split(" • ")[0]}</small></div>
+                <div><span>Vertical</span><strong>{formatVertical(selected.verticalRate)}</strong><small>{selected.onGround ? "Au sol" : (selected.verticalRate ?? 0) > 0.5 ? "Montée" : (selected.verticalRate ?? 0) < -0.5 ? "Descente" : "Palier"}</small></div>
+              </div>
+
+              <div className="fw-source-grid">
+                <div><span>Source</span><strong>Airplanes.live</strong></div>
+                <div><span>Suivi</span><strong>ADS-B</strong></div>
+                <div><span>Dernière MAJ</span><strong>{lastUpdate}</strong></div>
+                <div><span>N° de vol</span><strong>{selected.callsign}</strong></div>
+              </div>
+
+              <div className="fw-weather-strip">
+                <header><div><span>MÉTÉO DES VILLES</span><strong>Conditions autour de votre position</strong></div><small>Open-Meteo</small></header>
+                <div>
+                  {weather.slice(0, 5).map((city) => (
+                    <article key={city.name}><span>{city.name}</span><strong>{city.icon} {city.temperature === null ? "—" : `${Math.round(city.temperature)}°C`}</strong><small>Vent {city.windSpeed === null ? "—" : `${Math.round(city.windSpeed)} kt`} • Vis. {weatherVisibility(city.visibility)}</small></article>
+                  ))}
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="focus-empty"><span>✈</span><h2>Aucun avion détecté</h2><p>Aucun appareil ADS-B reçu dans un rayon de {radius} km.</p><small>{sourceStatus}</small></div>
+          )}
+        </aside>
+      </div>
+
+      <div className="flightwall-statusline"><span>Données en direct et temps réel</span><span>GPS : {positionStatus}</span><span><i className="live-dot" /> Prochaine actualisation : 10 s</span></div>
     </section>
   );
 }

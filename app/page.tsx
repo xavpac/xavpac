@@ -9,15 +9,15 @@ import WeatherPanel from "./components/WeatherPanel";
 import CenterOperationsPanel from "./components/CenterOperationsPanel";
 import ViewCounter from "./components/ViewCounter";
 
-type Tab = "aviation" | "drone" | "center" | "weather" | "astronomy" | "operations";
+type Tab = "aviation" | "drone" | "operations" | "center" | "astronomy" | "weather";
 
 const tabs = [
   { id: "aviation" as Tab, icon: "✈", title: "Aviation", subtitle: "Avions en vol" },
-  { id: "drone" as Tab, icon: "⌖", title: "Drone", subtitle: "Zones & RTBA" },
-  { id: "center" as Tab, icon: "✣", title: "CODIS", subtitle: "Centre opérationnel" },
-  { id: "weather" as Tab, icon: "☀", title: "Météo", subtitle: "Prévisions" },
-  { id: "astronomy" as Tab, icon: "◔", title: "Astronomie", subtitle: "Ciel & étoiles" },
-  { id: "operations" as Tab, icon: "✹", title: "Opérations", subtitle: "Moyens & interventions" }
+  { id: "drone" as Tab, icon: "⌁", title: "Drone", subtitle: "Zones & RTBA" },
+  { id: "operations" as Tab, icon: "🚁", title: "Moyens nationaux", subtitle: "Canadair, Dash, etc." },
+  { id: "center" as Tab, icon: "☀", title: "CODIS", subtitle: "Centre opérationnel" },
+  { id: "weather" as Tab, icon: "🌤️", title: "Météo", subtitle: "Prévisions" },
+  { id: "astronomy" as Tab, icon: "◔", title: "Astronomie", subtitle: "Ciel & étoiles" }
 ];
 
 export default function Page() {
@@ -31,23 +31,30 @@ export default function Page() {
   }, []);
 
   return (
-    <main className="app-v4">
-      <header className="header-v4">
+    <main className="app-v4 app-v61">
+      <header className="header-v4 header-v61">
         <div className="brand-v4">
           <span className="brand-plane">✈</span>
-          <div><h1>XavPac <b>6.0</b></h1><p>Aviation en temps réel • Drone SDIS 71 • CODIS</p></div>
+          <div>
+            <h1>XavPac <b>6.1</b></h1>
+            <p>Aviation en temps réel</p>
+          </div>
         </div>
         <div className="header-live-area">
           <ViewCounter />
-          <div className="clock-v4"><strong>{now ? now.toLocaleTimeString("fr-FR") : "--:--:--"}</strong><span>{now ? now.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" }) : ""}</span></div>
-          <span className="system-live">● SYSTÈME ACTIF<small>Données en direct</small></span>
+          <span className="system-live">● SYSTÈME ACTIF<br /><small>Données en direct</small></span>
+          <div className="clock-v4">
+            <strong>{now ? now.toLocaleTimeString("fr-FR") : "--:--:--"}</strong>
+            <span>{now ? now.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" }) : ""}</span>
+          </div>
         </div>
       </header>
 
-      <nav className="tabs-v4" aria-label="Modules XavPac">
+      <nav className="tabs-v4 tabs-v61" aria-label="Modules XavPac">
         {tabs.map((tab) => (
           <button type="button" key={tab.id} className={active === tab.id ? "tab-v4 active" : "tab-v4"} onClick={() => setActive(tab.id)}>
-            <span>{tab.icon}</span><div><strong>{tab.title}</strong><small>{tab.subtitle}</small></div>
+            <span>{tab.icon}</span>
+            <div><strong>{tab.title}</strong><small>{tab.subtitle}</small></div>
           </button>
         ))}
       </nav>
@@ -59,7 +66,15 @@ export default function Page() {
       {active === "astronomy" && <AstronomyPanel />}
       {active === "weather" && <WeatherPanel />}
 
-      <footer className="footer-v4">XavPac 6.0 • Cartes claires par défaut • Données publiques réellement disponibles • Les sources officielles restent prioritaires pour toute décision opérationnelle.</footer>
+      <nav className="mobile-bottom-nav" aria-label="Navigation mobile">
+        {tabs.slice(0, 5).map((tab) => (
+          <button type="button" key={tab.id} className={active === tab.id ? "active" : ""} onClick={() => setActive(tab.id)}>
+            <span>{tab.icon}</span><small>{tab.title === "Moyens nationaux" ? "Moyens" : tab.title}</small>
+          </button>
+        ))}
+      </nav>
+
+      <footer className="footer-v4">XavPac 6.1 • Aviation FlightWall • Photos selon disponibilité • Météo des villes • Géolocalisation continue lorsque le site reste ouvert.</footer>
     </main>
   );
 }

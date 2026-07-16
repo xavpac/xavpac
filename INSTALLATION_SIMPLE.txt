@@ -1,8 +1,14 @@
-XavPac 5.0 — installation automatique
+XAVPAC 6.1 — INSTALLATION AUTOMATIQUE
 
-1. Décompresse le ZIP de l’installateur.
-2. Sur Mac : clic droit sur « Installer XavPac.command » puis Ouvrir.
-3. L’installateur sauvegarde le dossier xavpac, installe la version, vérifie TypeScript et le build, puis envoie sur GitHub.
-4. Vercel publie automatiquement la branche main.
+1. Décompressez le fichier Installateur-XavPac-6.1-Aviation-FlightWall.zip.
+2. Double-cliquez sur « Installer XavPac.command ».
+3. Si macOS bloque le fichier : clic droit > Ouvrir > Ouvrir.
+4. Laissez la fenêtre Terminal ouverte jusqu’au message final.
 
-Le dossier unique utilisé est : ~/Downloads/xavpac
+L’installateur :
+- sauvegarde le dossier xavpac existant ;
+- conserve la liaison GitHub (.git) ;
+- installe les fichiers XavPac 6.1 ;
+- exécute npm install, le contrôle TypeScript et le build ;
+- crée un commit et pousse vers GitHub lorsque le dépôt est connecté ;
+- ouvre ensuite https://xavpac-one.vercel.app.

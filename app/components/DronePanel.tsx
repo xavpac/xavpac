@@ -29,10 +29,10 @@ type RtbaZone = {
   positions: [number, number][];
 };
 
-const SAONE_ET_LOIRE_CENTER: [number, number] = [46.67, 4.67];
+const SAONE_ET_LOIRE_CENTER: [number, number] = [46.63, 4.56];
 const SAONE_ET_LOIRE_BOUNDS: [[number, number], [number, number]] = [
-  [45.82, 3.42],
-  [47.48, 5.82]
+  [45.88, 3.60],
+  [47.25, 5.55]
 ];
 
 // Contour simplifié destiné au cadrage départemental de la carte.
@@ -46,20 +46,30 @@ const SAONE_ET_LOIRE_CONTOUR: [number, number][] = [
 // Les trois secteurs sont affichés en permanence pour le repérage visuel.
 // Leur activation et leurs limites réglementaires doivent être confirmées sur le SIA/AZBA.
 const rtbaZones: RtbaZone[] = [
-  { id: "r142-b", name: "R 142 B", status: "unknown", floor: "Voir publication SIA", ceiling: "Voir publication SIA", positions: [[46.44,3.55],[46.57,3.72],[46.51,4.00],[46.34,3.91]] },
-  { id: "r142-a", name: "R 142 A", status: "unknown", floor: "Voir publication SIA", ceiling: "Voir publication SIA", positions: [[46.36,3.85],[46.55,3.96],[46.50,4.27],[46.30,4.16]] },
-  { id: "r144-b", name: "R 144 B", status: "unknown", floor: "Voir publication SIA", ceiling: "Voir publication SIA", positions: [[46.08,3.89],[46.38,4.02],[46.31,4.28],[46.02,4.18]] },
-  { id: "r45-s3", name: "R 45 S3", status: "unknown", floor: "Voir publication SIA", ceiling: "Voir publication SIA", positions: [[46.45,4.08],[46.67,4.18],[46.59,4.56],[46.33,4.40]] },
-  { id: "r45-b", name: "R 45 B", status: "unknown", floor: "Voir publication SIA", ceiling: "Voir publication SIA", positions: [[46.48,4.39],[46.73,4.48],[46.82,4.76],[46.55,4.82],[46.38,4.62]] },
-  { id: "r45-s2", name: "R 45 S2", status: "unknown", floor: "Voir publication SIA", ceiling: "Voir publication SIA", positions: [[46.73,4.20],[46.94,4.32],[47.03,4.72],[46.84,4.82],[46.67,4.54]] },
-  { id: "r45-s5", name: "R 45 S5", status: "unknown", floor: "Voir publication SIA", ceiling: "Voir publication SIA", positions: [[45.98,4.35],[46.31,4.50],[46.42,4.82],[46.19,4.97],[45.94,4.73]] },
-  { id: "r45-s62", name: "R 45 S6.2", status: "unknown", floor: "Voir publication SIA", ceiling: "Voir publication SIA", positions: [[46.13,4.82],[46.42,4.91],[46.51,5.27],[46.31,5.43],[46.06,5.20]] },
-  { id: "r45-s61", name: "R 45 S6.1", status: "unknown", floor: "Voir publication SIA", ceiling: "Voir publication SIA", positions: [[46.43,5.04],[46.69,5.14],[46.84,5.40],[46.65,5.58],[46.39,5.37]] },
-  { id: "r45-s7", name: "R 45 S7", status: "unknown", floor: "Voir publication SIA", ceiling: "Voir publication SIA", positions: [[46.72,5.02],[46.93,5.13],[47.05,5.45],[46.87,5.62],[46.66,5.40]] },
-  { id: "r45-a", name: "R 45 A", status: "unknown", floor: "Voir publication SIA", ceiling: "Voir publication SIA", positions: [[46.92,4.79],[47.12,4.92],[47.23,5.26],[47.04,5.42],[46.84,5.16]] },
-  { id: "r45-s4", name: "R 45 S4", status: "unknown", floor: "Voir publication SIA", ceiling: "Voir publication SIA", positions: [[47.00,4.45],[47.19,4.55],[47.29,4.92],[47.10,5.03],[46.92,4.76]] },
-  { id: "r45-ns", name: "R 45 N/S", status: "unknown", floor: "Voir publication SIA", ceiling: "Voir publication SIA", positions: [[47.16,4.87],[47.35,4.99],[47.43,5.24],[47.25,5.35],[47.10,5.12]] },
-  { id: "r45-s1", name: "R 45 S1", status: "unknown", floor: "Voir publication SIA", ceiling: "Voir publication SIA", positions: [[47.14,5.12],[47.34,5.23],[47.40,5.50],[47.22,5.60],[47.06,5.34]] }
+  {
+    id: "rtba-r45",
+    name: "RTBA R45",
+    status: "unknown",
+    floor: "Voir publication SIA",
+    ceiling: "Voir publication SIA",
+    positions: [[46.20, 3.90], [46.56, 3.86], [46.82, 4.30], [46.54, 4.72], [46.18, 4.46]]
+  },
+  {
+    id: "rtba-r46",
+    name: "RTBA R46",
+    status: "unknown",
+    floor: "Voir publication SIA",
+    ceiling: "Voir publication SIA",
+    positions: [[46.64, 4.42], [47.02, 4.52], [47.13, 5.05], [46.78, 5.35], [46.52, 4.94]]
+  },
+  {
+    id: "rtba-r47",
+    name: "RTBA R47",
+    status: "unknown",
+    floor: "Voir publication SIA",
+    ceiling: "Voir publication SIA",
+    positions: [[46.12, 4.68], [46.42, 4.78], [46.55, 5.28], [46.20, 5.44], [45.98, 5.02]]
+  }
 ];
 
 function pointInPolygon(point: [number, number], polygon: [number, number][]) {
@@ -115,7 +125,7 @@ function categoryText(category?: string) {
 }
 
 export default function DronePanel() {
-  const [mapMode, setMapMode] = useState<"official" | "department">("department");
+  const [mapMode, setMapMode] = useState<"official" | "department">("official");
   const { position, status: positionStatus, isLive, error: gpsError } = useLiveGeolocation();
   const [metar, setMetar] = useState<MetarReport | null>(null);
   const [metarStatus, setMetarStatus] = useState("Chargement du METAR…");

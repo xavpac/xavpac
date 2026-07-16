@@ -1,21 +1,54 @@
-# XavPac 6.0
+# XavPac 5.0
 
-Tableau de bord responsive Aviation, Drone SDIS 71, CODIS, météo et astronomie.
+Tableau de bord Aviation, Drone SDIS 71, Moyens nationaux, CODIS, Astronomie et Météo.
 
-## Nouveautés
+## Nouveautés 5.0
 
-- Interface Aviation de type FlightWall réellement codée.
-- Cartographie claire par défaut, avec choix Plan lisible, Satellite et Sombre.
-- Avions ADS-B plus grands, orientés selon le cap, traces et cercle activables.
-- Géolocalisation continue avec Bâgé-Dommartin uniquement comme position de secours.
-- Onglet Drone cadré sur la Saône-et-Loire et ses abords.
-- Davantage de secteurs RTBA visibles et accès direct à l’AZBA officiel.
-- Mise en page adaptée au Mac, à l’iPad et à l’iPhone.
+- GPS suivi en continu lorsque le site reste ouvert.
+- Position de secours : Bâgé-Dommartin.
+- Avions nettement plus visibles sur la carte.
+- Onglet Aviation sans METAR.
+- Onglet Drone cadré uniquement sur la Saône-et-Loire.
+- R45, R46 et R47 affichées en permanence, avec statut à vérifier sur l’AZBA officiel.
+- Onglet CODIS distinct.
+- Compteur de vues local affiché dans l’en-tête.
+- Météo à la position GPS.
 
-## Données
+## Données et prudence
 
-- Trafic aérien : Airplanes.live.
-- METAR : Aviation Weather, uniquement dans l’onglet Drone.
-- RTBA : les polygones locaux servent au repérage. L’activation rouge/bleue doit être consultée sur l’AZBA officiel du SIA.
+XavPac présente des données publiques et des aides de repérage. Pour les décisions opérationnelles et aéronautiques, les sources officielles restent prioritaires. L’information AZBA ne remplace pas les NOTAM, SUP AIP et AIP.
 
-XavPac est une aide de visualisation. Les NOTAM, SUP AIP, AIP et informations officielles restent prioritaires.
+## Développement
+
+```bash
+npm install
+npm run typecheck
+npm run build
+```
+
+
+## XavPac 5.1 — Aviation FlightWall et cartes lisibles
+
+- Carte Aviation claire par défaut, avec choix Plan / Satellite / Sombre.
+- Avions nettement agrandis et renforcés pour rester visibles sur tous les fonds.
+- Interface responsive Mac, iPad et iPhone.
+- Onglet Drone avec deux vues : Saône-et-Loire et carte officielle AZBA du SIA en direct.
+- Les couleurs officielles AZBA sont affichées par le service SIA lui-même : rouge actif, bleu inactif.
+- Bâgé-Dommartin reste la position de secours lorsque le GPS est indisponible.
+
+
+## XavPac 6.1 — Aviation FlightWall
+
+Cette version reconstruit réellement l’onglet Aviation :
+
+- carte claire par défaut, satellite et sombre au choix ;
+- avions ADS-B agrandis et orientés selon le cap ;
+- météo actuelle affichée sous les villes proches ;
+- bouton de recentrage sur la géolocalisation ;
+- traces et cercle de portée activables ;
+- fiche avion avec photo PlaneSpotters lorsque disponible ;
+- calcul indicatif du prochain passage à partir de la position, du cap et de la vitesse ADS-B ;
+- radar local, cinq appareils les plus proches et histogramme d’altitudes ;
+- mises en page dédiées aux ordinateurs, tablettes et téléphones.
+
+Les routes départ/arrivée ne sont pas inventées : elles restent indiquées comme indisponibles lorsque la source ADS-B ne les fournit pas.
