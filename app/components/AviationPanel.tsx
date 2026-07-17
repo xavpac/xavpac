@@ -30,21 +30,6 @@ type AircraftWithDistance = LiveAircraft & { distance: number };
 type Radius = 20 | 50 | 100;
 type MapStyle = "street" | "satellite" | "dark";
 
-type CityWeather = {
-  name: string;
-  latitude: number;
-  longitude: number;
-  distance: number;
-  temperature: number | null;
-  windSpeed: number | null;
-  windDirection: number | null;
-  visibility: number | null;
-  cloudCover: number | null;
-  weatherCode: number;
-  icon: string;
-  label: string;
-};
-
 type AircraftPhoto = {
   image: string;
   link?: string | null;
@@ -54,6 +39,19 @@ type AircraftPhoto = {
 type RouteAirport = { name?: string; municipality?: string; iata_code?: string; icao_code?: string };
 type RouteWeather = { temperature_2m?: number; weather_code?: number; wind_speed_10m?: number; visibility?: number };
 type FlightRoute = { origin: RouteAirport; destination: RouteAirport; originWeather: RouteWeather | null; destinationWeather: RouteWeather | null };
+type FlightDetails = { route: FlightRoute | null; operator: string | null; aircraft: { url_photo?: string | null; url_photo_thumbnail?: string | null } | null };
+type RouteLabel = { label: string; operator: string | null };
+
+const ICAO_OPERATOR_PREFIXES: Readonly<Record<string, string>> = {
+  AFR: "Air France", BAW: "British Airways", DLH: "Lufthansa", EJU: "easyJet Europe",
+  EZY: "easyJet", KLM: "KLM", RYR: "Ryanair", SAS: "SAS", SWR: "Swiss",
+  TRA: "Transavia", TVF: "Transavia France", UAE: "Emirates", VLG: "Vueling", WZZ: "Wizz Air"
+};
+
+function operatorFromCallsign(callsign: string) {
+  const prefix = callsign.trim().toUpperCase().match(/^[A-Z]{3}/)?.[0];
+  return prefix ? ICAO_OPERATOR_PREFIXES[prefix] ?? null : null;
+}
 
 function distanceKm(origin: [number, number], destination: [number, number]) {
   const [lat1, lon1] = origin.map((value) => (value * Math.PI) / 180);
@@ -179,7 +177,8 @@ export default function AviationPanel() {
   const [sourceStatus, setSourceStatus] = useState("Connexion Airplanes.live…");
   const [lastUpdate, setLastUpdate] = useState("—");
   const [error, setError] = useState("");
-  const [route, setRoute] = useState<FlightRoute | null>(null);
+  const [flightDetails, setFlightDetails] = useState<FlightDetails>({ route: null, operator: null, aircraft: null });
+  const [routeLabels, setRouteLabels] = useState<Record<string, RouteLabel>>({});
   const [photo, setPhoto] = useState<AircraftPhoto | null>(null);
   const [photoLoading, setPhotoLoading] = useState(false);
   const [mapStyle, setMapStyle] = useState<MapStyle>("street");
@@ -268,13 +267,36 @@ export default function AviationPanel() {
 
   useEffect(() => {
     let cancelled = false;
-    if (!selected?.callsign) { setRoute(null); return; }
-    fetch(`/api/flight-details?callsign=${encodeURIComponent(selected.callsign)}`, { cache: "no-store" })
-      .then((response) => response.json())
-      .then((payload) => { if (!cancelled) setRoute(payload.route ?? null); })
-      .catch(() => { if (!cancelled) setRoute(null); });
+    const missing = aircraft.slice(0, 24).filter((item) => !routeLabels[item.id]);
+    if (!missing.length) return;
+    void Promise.all(missing.map(async (item) => {
+      try {
+        const aircraftKey = item.registration || item.id;
+        const response = await fetch(`/api/flight-details?callsign=${encodeURIComponent(item.callsign)}&aircraft=${encodeURIComponent(aircraftKey)}&weather=0`, { cache: "no-store" });
+        const payload = await response.json();
+        const origin = payload.route?.origin?.iata_code || payload.route?.origin?.icao_code || "?";
+        const destination = payload.route?.destination?.iata_code || payload.route?.destination?.icao_code || "?";
+        return [item.id, { label: `${origin} → ${destination}`, operator: payload.operator ?? null }] as const;
+      } catch {
+        return [item.id, { label: "? → ?", operator: null }] as const;
+      }
+    })).then((entries) => { if (!cancelled) setRouteLabels((current) => ({ ...current, ...Object.fromEntries(entries) })); });
     return () => { cancelled = true; };
-  }, [selected?.callsign]);
+  }, [aircraft, routeLabels]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!selected?.callsign) { setFlightDetails({ route: null, operator: null, aircraft: null }); return; }
+    const aircraftKey = selected.registration || selected.id;
+    fetch(`/api/flight-details?callsign=${encodeURIComponent(selected.callsign)}&aircraft=${encodeURIComponent(aircraftKey)}`, { cache: "no-store" })
+      .then((response) => response.json())
+      .then((payload) => { if (!cancelled) setFlightDetails({ route: payload.route ?? null, operator: payload.operator ?? null, aircraft: payload.aircraft ?? null }); })
+      .catch(() => { if (!cancelled) setFlightDetails({ route: null, operator: null, aircraft: null }); });
+    return () => { cancelled = true; };
+  }, [selected?.callsign, selected?.id, selected?.registration]);
+
+  const identifiedOperator = selected?.operator || flightDetails.operator || (selected ? routeLabels[selected.id]?.operator : null) || (selected ? operatorFromCallsign(selected.callsign) : null);
+  const route = flightDetails.route;
 
   useEffect(() => {
     let cancelled = false;
@@ -323,15 +345,15 @@ export default function AviationPanel() {
           id: item.id,
           lat: item.latitude,
           lon: item.longitude,
-          name: item.callsign,
-          detail: `${item.aircraftType ?? "Type inconnu"} • ${formatFlightLevel(item.barometricAltitude)} • ${formatSpeedKnots(item.velocity)}`,
+          name: routeLabels[item.id]?.label ?? "? → ?",
+          detail: "",
           color: item.id === selected?.id ? "#00b7ff" : visual.color,
           category: visual.category,
           heading: item.trueTrack
         };
       })
     ],
-    [position, positionStatus, selected, visibleAircraft]
+    [position, positionStatus, routeLabels, selected, visibleAircraft]
   );
 
   const mapTrails = useMemo(
@@ -429,17 +451,26 @@ export default function AviationPanel() {
         <div className="flightwall-left">
           <div className="flightwall-map-card panel">
             <div className="flightwall-map-stage">
-              <StableMap
-                points={mapPoints}
-                center={position ?? [46.5, 2.5]}
-                radiusKm={radius}
-                showRadius={showCircle && Boolean(position)}
-                selectedId={selected?.id}
-                trails={mapTrails}
-                onSelect={selectAircraft}
-                mapVariant={mapStyle}
-                focusSignal={locateSignal}
-              />
+              {position ? (
+                <StableMap
+                  points={mapPoints}
+                  center={position}
+                  radiusKm={radius}
+                  showRadius={showCircle}
+                  selectedId={selected?.id}
+                  trails={mapTrails}
+                  onSelect={selectAircraft}
+                  mapVariant={mapStyle}
+                  focusSignal={locateSignal}
+                />
+              ) : (
+                <div className="gps-required-map" role="status">
+                  <span>📍</span>
+                  <strong>Autorisez la localisation</strong>
+                  <p>Le navigateur doit transmettre votre position GPS réelle pour afficher HOME et le trafic autour de vous.</p>
+                  <small>Position GPS indisponible</small>
+                </div>
+              )}
 
               <div className="fw-map-search">
                 <span>⌕</span>
@@ -465,7 +496,9 @@ export default function AviationPanel() {
                 <button type="button" disabled={!position} onClick={() => setLocateSignal((value) => value + 1)}><span>📍</span><strong>HOME</strong><small>{position ? "Ma position" : "GPS requis"}</small></button>
               </div>
 
-              <button type="button" disabled={!position} className="fw-locate-button" title="Centrer sur ma position" onClick={() => setLocateSignal((value) => value + 1)}>⌾</button>
+              <button type="button" disabled={!position} className="fw-locate-button" title="Recentrer sur ma position" aria-label="Recentrer sur ma position" onClick={() => setLocateSignal((value) => value + 1)}>📍</button>
+
+              <button type="button" disabled={!position} className="fw-recenter-label" onClick={() => setLocateSignal((value) => value + 1)}>Recentrer sur ma position</button>
 
               <div className="fw-position-card">
                 <span className={isLive ? "live-dot" : "live-dot off"} />
@@ -518,11 +551,11 @@ export default function AviationPanel() {
           {selected ? (
             <>
               <div className="fw-focus-header">
-                <div><span className="fw-kicker">AVION SÉLECTIONNÉ</span><div className="fw-title-line"><h2>{selected.callsign}</h2><button type="button" className={favoriteIds.includes(selected.id) ? "fw-favorite active" : "fw-favorite"} onClick={() => toggleFavorite(selected.id)} aria-label="Ajouter aux favoris">☆</button></div><strong>{selected.operator ?? "Opérateur non renseigné"}</strong><p>{selected.aircraftType ?? selected.description ?? "Type non disponible"}</p></div>
+                <div><span className="fw-kicker">AVION SÉLECTIONNÉ</span><div className="fw-title-line"><h2>{selected.callsign}</h2><button type="button" className={favoriteIds.includes(selected.id) ? "fw-favorite active" : "fw-favorite"} onClick={() => toggleFavorite(selected.id)} aria-label="Ajouter aux favoris">☆</button></div><strong>{identifiedOperator ?? "Opérateur non identifié"}</strong><p>{selected.aircraftType ?? selected.description ?? "Type non disponible"}</p></div>
                 <div className={photoLoading ? "fw-aircraft-photo loading" : "fw-aircraft-photo"}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={photo?.image ?? "/aircraft/illustrative-aircraft.jpg"} alt={`Appareil ${selected.callsign}`} />
-                  <small>{photo?.photographer ? `Photo : ${photo.photographer}` : "Illustration — photo réelle indisponible"}</small>
+                  <img src={photo?.image ?? flightDetails.aircraft?.url_photo ?? flightDetails.aircraft?.url_photo_thumbnail ?? "/aircraft/illustrative-aircraft.jpg"} alt={`Appareil ${selected.callsign}`} />
+                  <small>{photo?.photographer ? `Photo : ${photo.photographer}` : (flightDetails.aircraft?.url_photo || flightDetails.aircraft?.url_photo_thumbnail) ? "Photo issue de la fiche appareil" : "Illustration — photo réelle indisponible"}</small>
                 </div>
               </div>
 
@@ -544,10 +577,10 @@ export default function AviationPanel() {
                 <div><span>Vitesse sol</span><strong>{formatSpeedKnots(selected.velocity)}</strong></div>
               </div>
 
-              <div className="fw-route-card">
-                <div><span>Départ</span><strong>{route?.origin.iata_code ?? route?.origin.icao_code ?? "—"}</strong><small>{route ? `${route.origin.municipality ?? "Ville inconnue"} • ${route.origin.name ?? "Aéroport non renseigné"}` : "Route non disponible"}</small></div>
+              <div className={route ? "fw-route-card" : "fw-route-card unavailable"}>
+                <div><span>Départ</span><strong>{route?.origin.iata_code ?? route?.origin.icao_code ?? "?"}</strong><small>{route ? `${route.origin.municipality ?? "Non déterminé"} • ${route.origin.name ?? "Non déterminé"}` : "Non déterminé"}</small></div>
                 <div className="fw-route-line">✈︎ <i /> ✈︎</div>
-                <div><span>Arrivée</span><strong>{route?.destination.iata_code ?? route?.destination.icao_code ?? "—"}</strong><small>{route ? `${route.destination.municipality ?? "Ville inconnue"} • ${route.destination.name ?? "Aéroport non renseigné"}` : "Route non disponible"}</small></div>
+                <div><span>Arrivée</span><strong>{route?.destination.iata_code ?? route?.destination.icao_code ?? "?"}</strong><small>{route ? `${route.destination.municipality ?? "Non déterminé"} • ${route.destination.name ?? "Non déterminé"}` : "Non déterminé"}</small></div>
               </div>
 
               <div className="fw-telemetry-grid">
@@ -564,15 +597,14 @@ export default function AviationPanel() {
                 <div><span>N° de vol</span><strong>{selected.callsign}</strong></div>
               </div>
 
-              <div className="fw-weather-strip">
+              {route && <div className="fw-weather-strip route-only-weather">
                 <header><div><span>MÉTÉO DU VOL</span><strong>Départ et arrivée uniquement</strong></div><small>Open-Meteo</small></header>
                 <div>
                   {route && ([{ airport: route.origin, weather: route.originWeather }, { airport: route.destination, weather: route.destinationWeather }]).map(({ airport, weather }) => (
                     <article key={airport.icao_code ?? airport.name}><span>{airport.municipality ?? airport.name ?? "Aéroport"}</span><strong>{typeof weather?.temperature_2m === "number" ? `${Math.round(weather.temperature_2m)}°C` : "—"}</strong><small>Vent {typeof weather?.wind_speed_10m === "number" ? `${Math.round(weather.wind_speed_10m)} kt` : "—"} • Vis. {weatherVisibility(weather?.visibility ?? null)}</small></article>
                   ))}
-                  {!route && <article><span>Route indisponible</span><strong>—</strong><small>Aucune météo de substitution affichée</small></article>}
                 </div>
-              </div>
+              </div>}
             </>
           ) : (
             <div className="focus-empty"><span>✈</span><h2>Aucun avion détecté</h2><p>Aucun appareil ADS-B reçu dans un rayon de {radius} km.</p><small>{sourceStatus}</small></div>

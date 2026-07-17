@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState } from "react";
+import { useLiveGeolocation } from "../hooks/useLiveGeolocation";
 
 const StableMap = dynamic(() => import("./StableMap"), { ssr: false });
 
@@ -18,22 +19,44 @@ type NationalAsset = {
   description: string | null;
   operator: string | null;
   onGround: boolean;
+  lastSeenSeconds: number | null;
+  identification: {
+    category: string;
+    badge: string;
+    model: string | null;
+    operator: string | null;
+    probableMission: string | null;
+    confidence: "confirmed" | "to-confirm";
+    evidence: string[];
+  };
 };
 
 type MapStyle = "street" | "satellite" | "dark";
 
+function markerCategory(asset: NationalAsset) {
+  const badge = asset.identification.badge;
+  if (badge.includes("CANADAIR")) return "national-canadair";
+  if (badge.includes("DASH")) return "national-dash";
+  if (badge.includes("DRAGON")) return "national-dragon";
+  if (badge.includes("GENDARMERIE")) return "national-gendarmerie";
+  if (badge.includes("SAMU")) return "national-samu";
+  if (badge.includes("BEECHCRAFT")) return "national-beechcraft";
+  if (badge.includes("MILITAIRE")) return "national-military";
+  if (badge.includes("DRONE")) return "national-drone";
+  return "national-unknown";
+}
+
+function distanceKm(origin: [number, number], destination: [number, number]) {
+  const [lat1, lon1] = origin.map((value) => value * Math.PI / 180);
+  const [lat2, lon2] = destination.map((value) => value * Math.PI / 180);
+  const dLat = lat2 - lat1, dLon = lon2 - lon1;
+  const value = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+  return 6371 * 2 * Math.atan2(Math.sqrt(value), Math.sqrt(1 - value));
+}
+
 function isHelicopter(asset: NationalAsset) {
   const text = `${asset.aircraftType ?? ""} ${asset.description ?? ""} ${asset.operator ?? ""}`.toLowerCase();
   return text.includes("heli") || text.includes("rotor") || /h145|ec145|h135|ec135/.test(text);
-}
-
-function assetFamily(asset: NationalAsset) {
-  const text = `${asset.callsign} ${asset.aircraftType ?? ""} ${asset.description ?? ""} ${asset.operator ?? ""}`.toLowerCase();
-  if (isHelicopter(asset)) return "Hélicoptère";
-  if (/cl-?415|canadair|pelican/.test(text)) return "Canadair";
-  if (/q400|dash\s*8|dash/.test(text)) return "Dash";
-  if (/beech|king\s*air|b200|b350/.test(text)) return "Beech";
-  return "Avion";
 }
 
 function formatAltitude(value: number | null) {
@@ -45,6 +68,7 @@ function formatSpeed(value: number | null) {
 }
 
 export default function OperationsPanel() {
+  const { position } = useLiveGeolocation();
   const [assets, setAssets] = useState<NationalAsset[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [status, setStatus] = useState("Recherche des moyens détectables…");
@@ -52,6 +76,8 @@ export default function OperationsPanel() {
   const [query, setQuery] = useState("");
   const [mapStyle, setMapStyle] = useState<MapStyle>("street");
   const [reloadSignal, setReloadSignal] = useState(0);
+  const [photo, setPhoto] = useState<string | null>(null);
+  const [route, setRoute] = useState<{ origin?: { municipality?: string }; destination?: { municipality?: string } } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -112,15 +138,26 @@ export default function OperationsPanel() {
     [assets, selectedId, visibleAssets]
   );
 
+  useEffect(() => {
+    let cancelled = false;
+    if (!selected) { setPhoto(null); setRoute(null); return; }
+    const photoParams = new URLSearchParams({ hex: selected.id, registration: selected.registration ?? "" });
+    void Promise.all([
+      fetch(`/api/aircraft-photo?${photoParams}`).then((response) => response.json()),
+      fetch(`/api/flight-details?callsign=${encodeURIComponent(selected.callsign)}&aircraft=${encodeURIComponent(selected.registration || selected.id)}&weather=0`).then((response) => response.json())
+    ]).then(([photoPayload, routePayload]) => { if (!cancelled) { setPhoto(photoPayload.photo?.image ?? null); setRoute(routePayload.route ?? null); } }).catch(() => { if (!cancelled) { setPhoto(null); setRoute(null); } });
+    return () => { cancelled = true; };
+  }, [selected]);
+
   const points = useMemo(
     () => visibleAssets.map((asset) => ({
       id: asset.id,
       lat: asset.latitude,
       lon: asset.longitude,
       name: asset.callsign,
-      detail: `${assetFamily(asset)} • ${asset.aircraftType ?? asset.description ?? "Type inconnu"}`,
+      detail: asset.identification.model ?? "Non déterminé",
       color: asset.id === selected?.id ? "#00b7ff" : isHelicopter(asset) ? "#4fa8ff" : "#ffb000",
-      category: isHelicopter(asset) ? "helicopter" : "aircraft",
+      category: markerCategory(asset),
       heading: asset.track
     })),
     [selected?.id, visibleAssets]
@@ -133,7 +170,7 @@ export default function OperationsPanel() {
   const familyCounts = useMemo(() => {
     const counts = new Map<string, number>();
     for (const asset of assets) {
-      const family = assetFamily(asset);
+      const family = asset.identification.category;
       counts.set(family, (counts.get(family) ?? 0) + 1);
     }
     return [...counts.entries()].sort((a, b) => b[1] - a[1]);
@@ -144,8 +181,8 @@ export default function OperationsPanel() {
       <div className="flightwall-commandbar panel">
         <div className="flightwall-actions">
           <button type="button" className="fw-action active" onClick={() => setReloadSignal((value) => value + 1)}>↻ Actualiser</button>
-          <button type="button" className="fw-action">🚒 Moyens nationaux</button>
-          <button type="button" className="fw-action">📡 ADS-B public</button>
+          <button type="button" className="fw-action">Moyens nationaux</button>
+          <button type="button" className="fw-action">ADS-B public</button>
         </div>
         <div className="fw-live-summary"><span className="live-dot" /> {status}</div>
       </div>
@@ -175,10 +212,10 @@ export default function OperationsPanel() {
               </div>
 
               <div className="fw-map-counters">
-                <div><span>✈️</span><strong>{aircraftCount}</strong><small>Avions</small></div>
-                <div><span>🚁</span><strong>{helicopters}</strong><small>Hélicoptères</small></div>
-                <div><span>📡</span><strong>{airborne}</strong><small>En vol</small></div>
-                <div><span>🚒</span><strong>{assets.length}</strong><small>Détectés</small></div>
+                <div><span className="ops-counter-symbol">AV</span><strong>{aircraftCount}</strong><small>Avions</small></div>
+                <div><span className="ops-counter-symbol">HE</span><strong>{helicopters}</strong><small>Hélicoptères</small></div>
+                <div><span className="ops-counter-symbol">AIR</span><strong>{airborne}</strong><small>En vol</small></div>
+                <div><span className="ops-counter-symbol">OPS</span><strong>{assets.length}</strong><small>Détectés</small></div>
               </div>
             </div>
           </div>
@@ -198,7 +235,7 @@ export default function OperationsPanel() {
               <div className="fw-nearest-list">
                 {visibleAssets.slice(0, 8).map((asset, index) => (
                   <button type="button" key={asset.id} onClick={() => setSelectedId(asset.id)} className={asset.id === selected?.id ? "selected" : ""}>
-                    <b>{index + 1}</b><strong>{asset.callsign}</strong><span>{assetFamily(asset)}</span><em>{asset.aircraftType ?? "ADS-B"}</em>
+                    <b>{index + 1}</b><strong>{asset.identification.badge}</strong><span>{`${asset.operator ?? "Opérateur non déterminé"} • ${asset.registration ?? "Immat. non déterminée"} • ${formatAltitude(asset.altitude)} • ${formatSpeed(asset.speed)} • ${asset.track === null ? "Cap —" : `Cap ${Math.round(asset.track)}°`} • ${asset.onGround ? "Au sol" : "En vol"}`}</span><em>{position ? `${distanceKm(position, [asset.latitude, asset.longitude]).toFixed(0)} km` : "Distance : Non déterminé"}</em>
                   </button>
                 ))}
                 {!visibleAssets.length && <p className="fw-empty-text">Aucun résultat pour cette recherche.</p>}
@@ -220,16 +257,36 @@ export default function OperationsPanel() {
                 <div>
                   <span className="fw-kicker">MOYEN SÉLECTIONNÉ</span>
                   <div className="fw-title-line"><h2>{selected.callsign}</h2></div>
-                  <strong>{selected.operator ?? "Opérateur non renseigné"}</strong>
-                  <p>{selected.description ?? selected.aircraftType ?? "Donnée ADS-B publique"}</p>
+                  <span className={`national-identity-badge ${selected.identification.confidence}`}>{selected.identification.badge}</span>
+                  <strong>{selected.identification.operator ?? selected.operator ?? "Opérateur non identifié"}</strong>
+                  <p>{selected.identification.model ?? selected.description ?? selected.aircraftType ?? "Modèle à confirmer"}</p>
                 </div>
-                <div className="fw-national-visual" aria-hidden="true">{isHelicopter(selected) ? "🚁" : "✈️"}</div>
+                <div className={`fw-national-visual ${markerCategory(selected)}`} aria-hidden="true"><span /></div>
+              </div>
+
+              <div className="national-detail-photo">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={photo ?? "/aircraft-placeholder.svg"} alt={`Moyen ${selected.callsign}`} />
+                <small>{photo ? "Photo selon immatriculation" : "Photo non disponible"}</small>
               </div>
 
               <div className="fw-identity-grid">
                 <div><span>Immatriculation</span><strong>{selected.registration ?? "—"}</strong></div>
-                <div><span>Type</span><strong>{selected.aircraftType ?? "—"}</strong></div>
-                <div><span>Famille</span><strong>{assetFamily(selected)}</strong></div>
+                <div><span>Modèle exact</span><strong>{selected.identification.model ?? selected.aircraftType ?? "À confirmer"}</strong></div>
+                <div><span>Catégorie</span><strong>{selected.identification.category}</strong></div>
+              </div>
+
+              <div className="national-mission-card"><span>Mission probable</span><strong>{selected.identification.probableMission ?? "Non déterminable avec fiabilité"}</strong><small>{selected.identification.evidence.length ? `Identification : ${selected.identification.evidence.join(", ")}` : "Données insuffisantes"}</small></div>
+
+              <div className="national-operational-grid">
+                <div><span>Organisme</span><strong>{selected.identification.operator ?? selected.operator ?? "Non déterminé"}</strong></div>
+                <div><span>Constructeur</span><strong>{selected.description?.split(" ")[0] ?? "Non déterminé"}</strong></div>
+                <div><span>Base</span><strong>Non déterminé</strong></div>
+                <div><span>Départ</span><strong>{route?.origin?.municipality ?? "Non déterminé"}</strong></div>
+                <div><span>Destination</span><strong>{route?.destination?.municipality ?? "Non déterminé"}</strong></div>
+                <div><span>Distance HOME</span><strong>{position ? `${distanceKm(position, [selected.latitude, selected.longitude]).toFixed(1)} km` : "Non déterminé"}</strong></div>
+                <div><span>Passage estimé</span><strong>Non déterminé</strong></div>
+                <div><span>Dernière détection</span><strong>{selected.lastSeenSeconds === null ? "Non déterminé" : `il y a ${Math.round(selected.lastSeenSeconds)} s`}</strong></div>
               </div>
 
               <div className="fw-passage-card national-selected-card">
@@ -252,7 +309,7 @@ export default function OperationsPanel() {
               </div>
             </>
           ) : (
-            <div className="focus-empty"><span>🚒</span><h2>Aucun moyen détecté</h2><p>Aucun appareil correspondant aux filtres opérationnels n’est actuellement reçu.</p><small>{status}</small></div>
+            <div className="focus-empty"><span className="ops-empty-symbol">OPS</span><h2>Aucun moyen détecté</h2><p>Aucun appareil correspondant aux filtres opérationnels n’est actuellement reçu.</p><small>{status}</small></div>
           )}
         </aside>
       </div>

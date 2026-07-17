@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState } from "react";
 import { useLiveGeolocation } from "../hooks/useLiveGeolocation";
+import { evaluateDroneFlight } from "../lib/droneDecision";
 
 const StableMap = dynamic(() => import("./StableMap"), { ssr: false });
 
@@ -30,6 +31,7 @@ type RtbaZone = {
 };
 
 const SAONE_ET_LOIRE_CENTER: [number, number] = [46.63, 4.56];
+const MACON_CHARNAY: [number, number] = [46.295, 4.795];
 const SAONE_ET_LOIRE_BOUNDS: [[number, number], [number, number]] = [
   [45.88, 3.60],
   [47.25, 5.55]
@@ -86,6 +88,15 @@ function pointInPolygon(point: [number, number], polygon: [number, number][]) {
   return inside;
 }
 
+function distanceKm(origin: [number, number], destination: [number, number]) {
+  const [lat1, lon1] = origin.map((value) => value * Math.PI / 180);
+  const [lat2, lon2] = destination.map((value) => value * Math.PI / 180);
+  const dLat = lat2 - lat1;
+  const dLon = lon2 - lon1;
+  const value = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+  return 6371 * 2 * Math.atan2(Math.sqrt(value), Math.sqrt(1 - value));
+}
+
 function directionText(value?: number | string) {
   if (value === undefined || value === null) return "inconnue";
   if (typeof value === "string") return value === "VRB" ? "variable" : value;
@@ -126,9 +137,12 @@ function categoryText(category?: string) {
 
 export default function DronePanel() {
   const [mapMode, setMapMode] = useState<"official" | "department">("official");
-  const { position, status: positionStatus, isLive, error: gpsError } = useLiveGeolocation();
+  const { position, status: positionStatus, accuracy, isLive, error: gpsError } = useLiveGeolocation();
   const [metar, setMetar] = useState<MetarReport | null>(null);
   const [metarStatus, setMetarStatus] = useState("Chargement du METAR…");
+  const [lastUpdated, setLastUpdated] = useState("—");
+  const [manualPoint, setManualPoint] = useState<[number, number] | null>(null);
+  const [requestedHeight, setRequestedHeight] = useState(60);
 
   useEffect(() => {
     let cancelled = false;
@@ -140,6 +154,7 @@ export default function DronePanel() {
         if (!cancelled) {
           setMetar(report);
           setMetarStatus(response.ok && report ? "Observation LFLM reçue" : "METAR indisponible");
+          setLastUpdated(new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
         }
       } catch {
         if (!cancelled) {
@@ -156,15 +171,45 @@ export default function DronePanel() {
     };
   }, []);
 
+  const selectedPosition = manualPoint ?? position;
+
   const insideDepartment = useMemo(
-    () => position ? pointInPolygon(position, SAONE_ET_LOIRE_CONTOUR) : false,
-    [position]
+    () => selectedPosition ? pointInPolygon(selectedPosition, SAONE_ET_LOIRE_CONTOUR) : false,
+    [selectedPosition]
   );
 
   const containingZones = useMemo(
-    () => position ? rtbaZones.filter((zone) => pointInPolygon(position, zone.positions)) : [],
-    [position]
+    () => selectedPosition ? rtbaZones.filter((zone) => pointInPolygon(selectedPosition, zone.positions)) : [],
+    [selectedPosition]
   );
+
+  const decision = useMemo(() => evaluateDroneFlight({
+    hasPosition: Boolean(selectedPosition),
+    zones: rtbaZones.map((zone) => ({ name: zone.name, status: zone.status, containsPoint: selectedPosition ? pointInPolygon(selectedPosition, zone.positions) : false })),
+    aerodromeDistanceKm: selectedPosition ? distanceKm(selectedPosition, MACON_CHARNAY) : null,
+    requestedHeightM: requestedHeight,
+    weatherAvailable: Boolean(metar),
+    flightCategory: metar?.flightCategory,
+    gustKnots: metar?.wgst ?? metar?.wspd,
+    visibilityKm: typeof metar?.visib === "number" ? metar.visib * 1.60934 : null,
+    restrictionsChecked: false
+  }), [metar, requestedHeight, selectedPosition]);
+
+  const ceilingMeters = useMemo(() => {
+    const layers = metar?.clouds?.filter((cloud) => ["BKN", "OVC", "VV"].includes(cloud.cover ?? "") && typeof cloud.base === "number") ?? [];
+    return layers.length ? Math.min(...layers.map((cloud) => (cloud.base ?? 0) * 0.3048)) : null;
+  }, [metar]);
+
+  const nearestAerodromeDistance = selectedPosition ? distanceKm(selectedPosition, MACON_CHARNAY) : null;
+  const checklist = [
+    { label: "Position", state: selectedPosition ? "OK" : "Non disponible" },
+    { label: "RTBA", state: containingZones.length ? "À vérifier" : selectedPosition ? "À vérifier" : "Non disponible" },
+    { label: "NOTAM", state: "À vérifier" },
+    { label: "Météo", state: !metar ? "Non disponible" : decision.level === "forbidden" ? "Bloquant" : "OK" },
+    { label: "Hauteur", state: requestedHeight > 120 ? "Bloquant" : "OK" },
+    { label: "Autorisation", state: "À vérifier" },
+    { label: "Sécurité", state: decision.level === "forbidden" ? "Bloquant" : "À vérifier" }
+  ] as const;
 
   const message = !position
     ? "En attente d’une position GPS réelle. Aucun emplacement HOME n’est affiché."
@@ -186,16 +231,17 @@ export default function DronePanel() {
     ...rtbaZones
   ];
 
-  const mapPoints = insideDepartment && position
-    ? [{
-        id: "home",
-        lat: position[0],
-        lon: position[1],
-        name: "Votre position",
-        detail: positionStatus,
-        category: "home"
-      }]
-    : [];
+  const mapPoints = [
+    ...(insideDepartment && selectedPosition ? [{
+        id: manualPoint ? "selected-point" : "home",
+        lat: selectedPosition[0],
+        lon: selectedPosition[1],
+        name: manualPoint ? "Point sélectionné" : "Votre position HOME",
+        detail: manualPoint ? "Point choisi manuellement" : positionStatus,
+        category: manualPoint ? "location" : "home"
+      }] : []),
+    { id: "aerodrome-lflm", lat: MACON_CHARNAY[0], lon: MACON_CHARNAY[1], name: "LFLM", detail: "Aérodrome Mâcon-Charnay", category: "aerodrome" }
+  ];
 
   return (
     <>
@@ -205,10 +251,43 @@ export default function DronePanel() {
           <h1>Saône-et-Loire uniquement</h1>
           <p>Carte départementale fixe, toutes les zones RTBA affichées et position GPS suivie en continu.</p>
         </div>
-        <div className={insideDepartment && !containingZones.length ? "hero-status ok" : "hero-status warning"}>
-          <span>{insideDepartment && !containingZones.length ? "🟢" : "⚠️"}</span>
-          <div><strong>{message}</strong><small>{positionStatus}</small></div>
+        <div className={`drone-decision-status ${decision.level}`}>
+          <span>{decision.level === "possible" ? "🟢" : decision.level === "forbidden" ? "🔴" : "🟠"}</span>
+          <div><strong>{decision.label}</strong><small>Mise à jour {lastUpdated}</small></div>
         </div>
+      </section>
+
+      <section className={`panel drone-decision-panel ${decision.level}`}>
+        <div><span className="eyebrow">AIDE À LA DÉCISION</span><h2>{decision.label}</h2><p>{message}</p></div>
+        <ul>{decision.reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul>
+        <label>Hauteur demandée <input type="number" min="0" max="500" value={requestedHeight} onChange={(event) => setRequestedHeight(Math.max(0, Number(event.target.value) || 0))} /> m</label>
+        <div className="drone-point-actions"><button type="button" disabled={!position} onClick={() => setManualPoint(null)}>📍 Utiliser HOME</button><small>{manualPoint ? `${manualPoint[0].toFixed(5)} / ${manualPoint[1].toFixed(5)}` : position ? "Position GPS réelle" : "Position GPS indisponible"}</small></div>
+        <footer>Cette synthèse est une aide opérationnelle. Elle ne remplace pas la vérification réglementaire du télépilote (AZBA, NOTAM, SUP AIP, AIP et restrictions locales).</footer>
+      </section>
+
+      <section className="drone-ops-overview">
+        <article className="panel drone-synthesis">
+          <header><span className="eyebrow">SYNTHÈSE OPÉRATIONNELLE</span><h3>Situation au point analysé</h3></header>
+          <div>
+            <p><span>GPS</span><strong>{selectedPosition ? manualPoint ? "Point manuel" : "Position réelle" : "Non disponible"}</strong></p>
+            <p><span>Précision</span><strong>{!manualPoint && accuracy ? `±${Math.round(accuracy)} m` : "Non déterminé"}</strong></p>
+            <p><span>Altitude demandée</span><strong>{requestedHeight} m</strong></p>
+            <p><span>Vent</span><strong>{metar?.wspd !== undefined ? `${metar.wspd} kt` : "Non déterminé"}</strong></p>
+            <p><span>Rafales</span><strong>{metar?.wgst !== undefined ? `${metar.wgst} kt` : "Non déterminé"}</strong></p>
+            <p><span>Visibilité</span><strong>{metar?.visib !== undefined ? visibilityText(metar.visib) : "Non déterminé"}</strong></p>
+            <p><span>Plafond</span><strong>{ceilingMeters !== null ? `${Math.round(ceilingMeters)} m` : "Non déterminé"}</strong></p>
+            <p><span>Pluie</span><strong>{metar?.wxString ? metar.wxString : "Non déterminé"}</strong></p>
+            <p><span>RTBA</span><strong>{containingZones.length ? "Statut à vérifier" : "Aucune intersection schématique"}</strong></p>
+            <p><span>Aérodrome proche</span><strong>{nearestAerodromeDistance !== null ? `LFLM • ${nearestAerodromeDistance.toFixed(1)} km` : "Non déterminé"}</strong></p>
+            <p><span>Héliport</span><strong>Non déterminé</strong></p>
+            <p><span>Mise à jour</span><strong>{lastUpdated}</strong></p>
+          </div>
+        </article>
+        <article className="panel drone-checklist">
+          <header><span className="eyebrow">CHECKLIST TÉLÉPILOTE</span><h3>Contrôles indispensables</h3></header>
+          <div>{checklist.map((item) => <p key={item.label}><strong>{item.label}</strong><span className={`check-state ${item.state.toLowerCase().replace(" ", "-").replace("à", "a")}`}>{item.state}</span></p>)}</div>
+          <footer>Cette application constitue une aide à la décision et ne remplace pas la vérification réglementaire du télépilote.</footer>
+        </article>
       </section>
 
       {gpsError && <div className="gps-banner-v5">📍 {gpsError}</div>}
@@ -225,6 +304,7 @@ export default function DronePanel() {
               <button type="button" className={mapMode === "official" ? "active" : ""} onClick={() => setMapMode("official")}>AZBA officiel live</button>
               <button type="button" className={mapMode === "department" ? "active" : ""} onClick={() => setMapMode("department")}>Vue Saône-et-Loire</button>
             </div>
+            <div className="drone-map-actions"><button type="button" disabled={!position} onClick={() => setManualPoint(null)}>Ma position</button><button type="button" disabled={!position} onClick={() => setManualPoint(null)}>Recentrer</button><button type="button" onClick={() => setMapMode("department")}>Choisir un point</button></div>
           </div>
 
           {mapMode === "official" ? (
@@ -257,6 +337,7 @@ export default function DronePanel() {
                   lockBounds
                   showZoneLabels
                   mapVariant="layers"
+                  onMapClick={(point) => setManualPoint(point)}
                 />
               </div>
               <div className="rtba-legend-v4">
@@ -281,7 +362,7 @@ export default function DronePanel() {
           <article className="panel rtba-check-card">
             <span className="eyebrow">GÉOLOCALISATION CONTINUE</span>
             <div className="check-row"><span>{isLive ? "🟢" : "🟠"}</span><div><strong>GPS</strong><small>{positionStatus}</small></div></div>
-            <div className="check-row"><span>📍</span><div><strong>HOME</strong><small>{position ? `${position[0].toFixed(5)} / ${position[1].toFixed(5)}` : "Aucune position réelle disponible"}</small></div></div>
+            <div className="check-row"><span>📍</span><div><strong>{manualPoint ? "Point sélectionné" : "HOME"}</strong><small>{selectedPosition ? `${selectedPosition[0].toFixed(5)} / ${selectedPosition[1].toFixed(5)}` : "Position GPS indisponible"}</small></div></div>
             <div className="check-row"><span>🗺️</span><div><strong>Département</strong><small>{insideDepartment ? "Position dans le 71" : "Position hors du 71"}</small></div></div>
             <div className="check-row"><span>🛩️</span><div><strong>RTBA</strong><small>{containingZones.length ? `${containingZones.length} secteur(s) recoupé(s)` : "Aucun secteur représenté à la position"}</small></div></div>
             <p className="safety-note">La carte est une aide de repérage. L’AZBA, les NOTAM, SUP AIP et AIP officiels restent prioritaires.</p>

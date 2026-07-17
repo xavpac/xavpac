@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { identifyNationalAsset } from "../../lib/nationalAssetIdentification";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 60;
@@ -16,6 +17,7 @@ type RawAircraft = {
   desc?: string;
   ownOp?: string;
   category?: string;
+  seen?: number;
 };
 
 const searchPoints = [
@@ -23,7 +25,7 @@ const searchPoints = [
   { lat: 43.8, lon: 4.8, radius: 250 }
 ];
 
-const operationalPattern = /(DRAGON|PELICAN|MILAN|BENGALE|SECURITE\s*CIVILE|SÉCURITÉ\s*CIVILE|CIVIL\s*SECURITY|SAMU|SMUR|GENDARMERIE|DOUANES|POLICE|CANADAIR|DASH\s*8|CL-415|Q400)/i;
+const operationalPattern = /(DRAGON|PELICAN|MILAN|BENGALE|SECURITE\s*CIVILE|SÉCURITÉ\s*CIVILE|CIVIL\s*SECURITY|SAMU|SMUR|GENDARMERIE|DOUANES|POLICE|CANADAIR|DASH\s*8|CL-415|Q400|ARM[ÉE]E|AIR\s*FORCE|MILITAIRE|MILITARY|BEECHCRAFT|DRONE)/i;
 
 function isOperational(item: RawAircraft) {
   return operationalPattern.test(
@@ -35,7 +37,7 @@ function isOperational(item: RawAircraft) {
 
 function normalize(item: RawAircraft) {
   if (typeof item.lat !== "number" || typeof item.lon !== "number") return null;
-  return {
+  const base = {
     id: item.hex?.trim() || `${item.lat}-${item.lon}`,
     callsign: item.flight?.trim() || item.r?.trim() || item.hex?.toUpperCase() || "Sans indicatif",
     latitude: item.lat,
@@ -47,8 +49,10 @@ function normalize(item: RawAircraft) {
     aircraftType: item.t?.trim() || null,
     description: item.desc?.trim() || null,
     operator: item.ownOp?.trim() || null,
-    onGround: item.alt_baro === "ground"
+    onGround: item.alt_baro === "ground",
+    lastSeenSeconds: typeof item.seen === "number" ? item.seen : null
   };
+  return { ...base, identification: identifyNationalAsset(base) };
 }
 
 async function fetchPoint(point: (typeof searchPoints)[number]) {

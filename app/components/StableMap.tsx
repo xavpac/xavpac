@@ -11,7 +11,8 @@ import {
   Popup,
   TileLayer,
   Tooltip,
-  useMap
+  useMap,
+  useMapEvents
 } from "react-leaflet";
 
 export type MapPoint = {
@@ -86,6 +87,11 @@ function MapCamera({
   return null;
 }
 
+function MapClickHandler({ onMapClick }: { onMapClick?: (position: [number, number]) => void }) {
+  useMapEvents({ click: (event) => onMapClick?.([event.latlng.lat, event.latlng.lng]) });
+  return null;
+}
+
 function aircraftSvg(color: string, heading: number, helicopter = false) {
   if (helicopter) {
     return `
@@ -128,9 +134,30 @@ function weatherIcon(point: MapPoint) {
   });
 }
 
+function operationalIcon(point: MapPoint, selected: boolean, faded: boolean) {
+  const category = String(point.category).replace("national-", "");
+  const colors: Record<string, string> = { canadair: "#ef4d5f", dash: "#ff9f43", dragon: "#3aa7ff", gendarmerie: "#244d9b", samu: "#36c98f", beechcraft: "#c6a35b", military: "#8993a1", drone: "#8b6cff", unknown: "#7b93aa" };
+  const color = colors[category] ?? colors.unknown;
+  const shapes: Record<string, string> = {
+    canadair: '<path d="M8 34h18l7-19 6 1-2 18h18l5 6-23 2-2 13h-5l-3-13-24-2z"/>',
+    dash: '<path d="M5 32h22l4-20h5l3 20h20l3 6-23 3-2 13h-7l-3-13-24-3z"/>',
+    dragon: '<path d="M8 33h31c8 0 14 5 17 13H28c-9 0-15-5-20-13zm28-16h4v18h-4zM15 21h42v4H15z"/>',
+    gendarmerie: '<path d="M9 35h29c8 0 13 4 16 11H28c-8 0-14-4-19-11zm26-17h4v18h-4zM13 22h43v3H13z"/>',
+    samu: '<path d="M9 35h29c8 0 13 4 16 11H28c-8 0-14-4-19-11zm26-17h4v18h-4zM13 22h43v3H13z"/><path d="M47 13h5v14h-5zM42 18h15v5H42z"/>',
+    beechcraft: '<path d="M7 34h21l3-19h5l3 19h18l4 5-22 3-2 13h-7l-3-13-23-3z"/>',
+    military: '<path d="M32 6l7 25 18 9-2 6-18-4-2 14h-6l-2-14-19 4-2-6 19-9z"/>',
+    drone: '<path d="M19 19h26v26H19zM8 11h14v5H8zm34 0h14v5H42zM8 48h14v5H8zm34 0h14v5H42z"/>',
+    unknown: '<path d="M32 7l7 22 20 10-3 6-19-5-2 17h-6l-2-17-20 5-3-6 21-10z"/>'
+  };
+  return L.divIcon({ className: "xavpac-map-icon-root", html: `<div class="national-map-marker ${selected ? "selected" : ""} ${faded ? "faded" : ""}"><svg viewBox="0 0 64 64" fill="${color}">${shapes[category] ?? shapes.unknown}</svg><strong>${point.name}</strong></div>`, iconSize: [72, 58], iconAnchor: [36, 29], popupAnchor: [0, -28] });
+}
+
 function pointIcon(point: MapPoint, selected: boolean, faded: boolean) {
   if (point.category === "home") return homeIcon();
+  if (point.category === "location") return L.divIcon({ className: "xavpac-map-icon-root", html: `<div class="xavpac-selected-location">📍<strong>POINT</strong></div>`, iconSize: [72, 44], iconAnchor: [36, 40] });
+  if (point.category === "aerodrome") return L.divIcon({ className: "xavpac-map-icon-root", html: `<div class="xavpac-aerodrome-marker"><span>+</span><strong>${point.name}</strong></div>`, iconSize: [74, 42], iconAnchor: [37, 21] });
   if (point.category === "weather") return weatherIcon(point);
+  if (String(point.category).startsWith("national-")) return operationalIcon(point, selected, faded);
 
   const color = selected ? "#00b7ff" : point.color ?? "#ffb000";
   const helicopter = point.category === "helicopter";
@@ -190,7 +217,8 @@ export default function StableMap({
   lockBounds = false,
   showZoneLabels = false,
   mapVariant = "street",
-  focusSignal = 0
+  focusSignal = 0,
+  onMapClick
 }: {
   points: MapPoint[];
   center: [number, number];
@@ -207,6 +235,7 @@ export default function StableMap({
   showZoneLabels?: boolean;
   mapVariant?: MapVariant;
   focusSignal?: number;
+  onMapClick?: (position: [number, number]) => void;
 }) {
   return (
     <MapContainer
@@ -222,6 +251,7 @@ export default function StableMap({
       className={`leaflet-map xavpac-modern-map xavpac-readable-map map-${mapVariant}`}
     >
       <MapCamera center={center} zoom={zoom} radiusKm={radiusKm} fixedBounds={fixedBounds} focusSignal={focusSignal} />
+      <MapClickHandler onMapClick={onMapClick} />
       <BaseLayer variant={mapVariant} />
 
       {showRadius && radiusKm && (
@@ -235,7 +265,7 @@ export default function StableMap({
       )}
 
       {zones.map((zone) => (
-        <Polygon key={zone.id} positions={zone.positions} pathOptions={zoneStyle(zone.status)}>
+        <Polygon key={zone.id} positions={zone.positions} pathOptions={zoneStyle(zone.status)} eventHandlers={{ click: (event) => onMapClick?.([event.latlng.lat, event.latlng.lng]) }}>
           {showZoneLabels && <Tooltip permanent direction="center" className={`zone-label-v5 ${zone.status}`}>{zone.name}</Tooltip>}
           <Popup>
             <div className="xavpac-popup">

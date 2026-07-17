@@ -36,7 +36,7 @@ export default function Page() {
         <div className="brand-v4">
           <span className="brand-plane">✈</span>
           <div>
-            <h1>XavPac <b>6.2</b></h1>
+            <h1>XavPac <b>6.3</b></h1>
             <p>Aviation en temps réel</p>
           </div>
         </div>
@@ -74,7 +74,7 @@ export default function Page() {
         ))}
       </nav>
 
-      <footer className="footer-v4">XavPac 6.2 • Données aériennes réelles • Photos selon disponibilité • Météo du départ et de l’arrivée • HOME uniquement sur position GPS réelle.</footer>
+      <footer className="footer-v4">XavPac 6.3 • Tableau de bord aéronautique et opérationnel • Données réelles selon disponibilité • HOME uniquement sur position GPS réelle.</footer>
     </main>
   );
 }

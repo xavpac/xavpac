@@ -2,7 +2,7 @@ import "leaflet/dist/leaflet.css";
 import "./globals.css";
 
 export const metadata = {
-  title: "XavPac 6.2 — Aviation FlightWall",
+  title: "XavPac 6.3 — Tableau de bord aéronautique",
   description: "Aviation FlightWall en temps réel — XavPac"
 };
 

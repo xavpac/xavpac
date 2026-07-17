@@ -12,19 +12,19 @@ export type LiveGeolocation = {
 
 export function useLiveGeolocation(): LiveGeolocation {
   const [position, setPosition] = useState<[number, number] | null>(null);
-  const [status, setStatus] = useState("Position en attente");
+  const [status, setStatus] = useState("Autorisez la localisation pour afficher HOME");
   const [accuracy, setAccuracy] = useState<number | null>(null);
   const [isLive, setIsLive] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
     if (!navigator.geolocation) {
-      setError("La géolocalisation n’est pas prise en charge par ce navigateur.");
-      setStatus("GPS indisponible • aucune position affichée");
+      setError("Position GPS indisponible");
+      setStatus("Position GPS indisponible");
       return;
     }
 
-    setStatus("Recherche de votre position…");
+    setStatus("Autorisation GPS demandée au navigateur…");
 
     const watchId = navigator.geolocation.watchPosition(
       (result) => {
@@ -35,18 +35,11 @@ export function useLiveGeolocation(): LiveGeolocation {
         setStatus(`HOME • GPS réel ±${Math.round(result.coords.accuracy)} m`);
       },
       (geolocationError) => {
+        setPosition(null);
         setIsLive(false);
         setAccuracy(null);
-
-        const message =
-          geolocationError.code === geolocationError.PERMISSION_DENIED
-            ? "Autorisez la localisation pour utiliser les fonctions autour de vous."
-            : geolocationError.code === geolocationError.TIMEOUT
-              ? "La position GPS met trop de temps à répondre."
-              : "La position GPS est momentanément indisponible.";
-
-        setError(message);
-        setStatus("Aucune position affichée");
+        setError("Position GPS indisponible");
+        setStatus("Position GPS indisponible");
       },
       {
         enableHighAccuracy: true,
