@@ -157,18 +157,20 @@ export default function DronePanel() {
   }, []);
 
   const insideDepartment = useMemo(
-    () => pointInPolygon(position, SAONE_ET_LOIRE_CONTOUR),
-    [position]
+    () => isLive && pointInPolygon(position, SAONE_ET_LOIRE_CONTOUR),
+    [isLive, position]
   );
 
   const containingZones = useMemo(
-    () => rtbaZones.filter((zone) => pointInPolygon(position, zone.positions)),
-    [position]
+    () => isLive ? rtbaZones.filter((zone) => pointInPolygon(position, zone.positions)) : [],
+    [isLive, position]
   );
 
-  const message = !insideDepartment
-    ? "Votre position GPS est hors Saône-et-Loire. La carte reste volontairement limitée au département 71."
-    : containingZones.length
+  const message = !isLive
+    ? "Autorisez la localisation pour analyser votre position réelle."
+    : !insideDepartment
+      ? "Votre position GPS est hors Saône-et-Loire. La carte reste volontairement limitée au département 71."
+      : containingZones.length
       ? `Votre position recoupe ${containingZones.map((zone) => zone.name).join(" et ")}. Vérifiez impérativement l’activation sur l’AZBA officiel.`
       : "Votre position ne recoupe aucun des secteurs RTBA représentés. Vérifiez malgré tout l’AZBA officiel avant le vol.";
 
@@ -184,7 +186,7 @@ export default function DronePanel() {
     ...rtbaZones
   ];
 
-  const mapPoints = insideDepartment
+  const mapPoints = isLive && insideDepartment
     ? [{
         id: "home",
         lat: position[0],
@@ -279,7 +281,7 @@ export default function DronePanel() {
           <article className="panel rtba-check-card">
             <span className="eyebrow">GÉOLOCALISATION CONTINUE</span>
             <div className="check-row"><span>{isLive ? "🟢" : "🟠"}</span><div><strong>GPS</strong><small>{positionStatus}</small></div></div>
-            <div className="check-row"><span>📍</span><div><strong>Coordonnées</strong><small>{position[0].toFixed(5)} / {position[1].toFixed(5)}</small></div></div>
+            <div className="check-row"><span>📍</span><div><strong>Coordonnées</strong><small>{isLive ? `${position[0].toFixed(5)} / ${position[1].toFixed(5)}` : "En attente du GPS"}</small></div></div>
             <div className="check-row"><span>🗺️</span><div><strong>Département</strong><small>{insideDepartment ? "Position dans le 71" : "Position hors du 71"}</small></div></div>
             <div className="check-row"><span>🛩️</span><div><strong>RTBA</strong><small>{containingZones.length ? `${containingZones.length} secteur(s) recoupé(s)` : "Aucun secteur représenté à la position"}</small></div></div>
             <p className="safety-note">La carte est une aide de repérage. L’AZBA, les NOTAM, SUP AIP et AIP officiels restent prioritaires.</p>

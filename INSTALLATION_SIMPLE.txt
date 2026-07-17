@@ -1,14 +1,34 @@
-XAVPAC 6.1 — INSTALLATION AUTOMATIQUE
+XAVPAC SIMPLE — INSTALLATION
 
-1. Décompressez le fichier Installateur-XavPac-6.1-Aviation-FlightWall.zip.
-2. Double-cliquez sur « Installer XavPac.command ».
-3. Si macOS bloque le fichier : clic droit > Ouvrir > Ouvrir.
-4. Laissez la fenêtre Terminal ouverte jusqu’au message final.
+Cette version a été préparée à partir de votre projet actuel.
 
-L’installateur :
-- sauvegarde le dossier xavpac existant ;
-- conserve la liaison GitHub (.git) ;
-- installe les fichiers XavPac 6.1 ;
-- exécute npm install, le contrôle TypeScript et le build ;
-- crée un commit et pousse vers GitHub lorsque le dépôt est connecté ;
-- ouvre ensuite https://xavpac-one.vercel.app.
+MODIFICATIONS PRINCIPALES
+- GPS réel : aucun emplacement de secours présenté comme votre position.
+- Punaise 📍 pour la position GPS.
+- Aucune météo sur la carte Aviation.
+- Aucune météo des villes voisines dans Aviation.
+- Météo uniquement pour la ville de départ et la ville d’arrivée.
+- Page Moyens nationaux avec la même présentation générale qu’Aviation.
+- Projet vérifié avec TypeScript et avec la compilation Next.js de production.
+
+INSTALLATION DANS LE PROJET ACTUEL
+1. Décompressez le ZIP dans Téléchargements.
+2. Dans le terminal, lancez :
+
+   bash ~/Downloads/XavPac-simple/INSTALLER.command
+
+3. Une sauvegarde est créée automatiquement dans Documents.
+4. Quand le contrôle est terminé, lancez :
+
+   cd ~/xavpac
+   npm run dev
+
+5. Ouvrez http://localhost:3000
+
+MISE EN LIGNE APRÈS VALIDATION LOCALE
+   cd ~/xavpac
+   git add .
+   git commit -m "XavPac simple : aviation et moyens nationaux"
+   git push origin main
+
+Vercel redéploiera automatiquement si le dépôt GitHub est déjà relié.

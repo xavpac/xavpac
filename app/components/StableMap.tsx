@@ -106,10 +106,10 @@ function aircraftSvg(color: string, heading: number, helicopter = false) {
 function homeIcon() {
   return L.divIcon({
     className: "xavpac-map-icon-root",
-    html: `<div class="xavpac-home-marker"><span class="xavpac-home-core"></span><span class="xavpac-home-ring"></span></div>`,
-    iconSize: [42, 42],
-    iconAnchor: [21, 21],
-    popupAnchor: [0, -22]
+    html: `<div class="xavpac-home-pin" aria-label="Votre position">📍</div>`,
+    iconSize: [38, 46],
+    iconAnchor: [19, 42],
+    popupAnchor: [0, -42]
   });
 }
 

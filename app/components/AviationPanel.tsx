@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLiveGeolocation } from "../hooks/useLiveGeolocation";
+import FlightRouteWeather from "./FlightRouteWeather";
 
 const StableMap = dynamic(() => import("./StableMap"), { ssr: false });
 
@@ -30,21 +31,6 @@ type AircraftWithDistance = LiveAircraft & { distance: number };
 type Radius = 20 | 50 | 100;
 type MapStyle = "street" | "satellite" | "dark";
 
-type CityWeather = {
-  name: string;
-  latitude: number;
-  longitude: number;
-  distance: number;
-  temperature: number | null;
-  windSpeed: number | null;
-  windDirection: number | null;
-  visibility: number | null;
-  cloudCover: number | null;
-  weatherCode: number;
-  icon: string;
-  label: string;
-};
-
 type AircraftPhoto = {
   image: string;
   link?: string | null;
@@ -58,14 +44,6 @@ const PREVIEW_AIRCRAFT: AircraftWithDistance[] = [
   { id: "4b1234", callsign: "SAS42P", country: "Sweden", longitude: 5.09, latitude: 46.46, barometricAltitude: 9754, geometricAltitude: 9810, velocity: 226, trueTrack: 302, verticalRate: 0.3, onGround: false, squawk: "1127", registration: "SE-ROJ", aircraftType: "A320", description: "Airbus A320neo", operator: "SAS", category: "A3", distance: 36.8 },
   { id: "39a987", callsign: "AFR27FQ", country: "France", longitude: 4.46, latitude: 46.39, barometricAltitude: 11582, geometricAltitude: 11620, velocity: 265, trueTrack: 61, verticalRate: 0, onGround: false, squawk: "2711", registration: "F-HBNK", aircraftType: "A321", description: "Airbus A321-200", operator: "Air France", category: "A3", distance: 41.6 },
   { id: "4ca777", callsign: "TRA568D", country: "Netherlands", longitude: 4.56, latitude: 46.18, barometricAltitude: 8534, geometricAltitude: 8610, velocity: 218, trueTrack: 338, verticalRate: -2.4, onGround: false, squawk: "3045", registration: "PH-HXN", aircraftType: "B738", description: "Boeing 737-800", operator: "Transavia", category: "A3", distance: 47.1 }
-];
-
-const PREVIEW_WEATHER: CityWeather[] = [
-  { name: "Mâcon", latitude: 46.3069, longitude: 4.8287, distance: 0, temperature: 27, windSpeed: 8, windDirection: 240, visibility: 10000, cloudCover: 20, weatherCode: 1, icon: "🌤️", label: "Peu nuageux" },
-  { name: "Chalon-sur-Saône", latitude: 46.7808, longitude: 4.8532, distance: 53, temperature: 24, windSpeed: 7, windDirection: 230, visibility: 10000, cloudCover: 10, weatherCode: 0, icon: "☀️", label: "Ciel clair" },
-  { name: "Le Creusot", latitude: 46.8062, longitude: 4.4166, distance: 64, temperature: 22, windSpeed: 6, windDirection: 210, visibility: 9000, cloudCover: 38, weatherCode: 2, icon: "🌤️", label: "Variable" },
-  { name: "Louhans", latitude: 46.6298, longitude: 5.2242, distance: 45, temperature: 25, windSpeed: 5, windDirection: 180, visibility: 10000, cloudCover: 18, weatherCode: 1, icon: "🌤️", label: "Peu nuageux" },
-  { name: "Bourg-en-Bresse", latitude: 46.2052, longitude: 5.2255, distance: 37, temperature: 27, windSpeed: 5, windDirection: 160, visibility: 10000, cloudCover: 25, weatherCode: 1, icon: "🌤️", label: "Peu nuageux" }
 ];
 
 function distanceKm(origin: [number, number], destination: [number, number]) {
@@ -178,11 +156,6 @@ function altitudeBand(value: number | null) {
   return 0;
 }
 
-function weatherVisibility(value: number | null) {
-  if (value === null) return "—";
-  return value >= 10000 ? "> 10 km" : `${(value / 1000).toFixed(1)} km`;
-}
-
 export default function AviationPanel() {
   const { position, status: positionStatus, accuracy, isLive, error: gpsError } = useLiveGeolocation();
   const [radius, setRadius] = useState<Radius>(50);
@@ -192,7 +165,6 @@ export default function AviationPanel() {
   const [sourceStatus, setSourceStatus] = useState("Connexion Airplanes.live…");
   const [lastUpdate, setLastUpdate] = useState("—");
   const [error, setError] = useState("");
-  const [weather, setWeather] = useState<CityWeather[]>([]);
   const [photo, setPhoto] = useState<AircraftPhoto | null>(null);
   const [photoLoading, setPhotoLoading] = useState(false);
   const [mapStyle, setMapStyle] = useState<MapStyle>("street");
@@ -231,6 +203,15 @@ export default function AviationPanel() {
         setError("");
         return;
       }
+
+      if (!isLive) {
+        setAircraft([]);
+        setSelectedId(null);
+        setSourceStatus("En attente de la position GPS…");
+        setLastUpdate("—");
+        return;
+      }
+
       try {
         setError("");
         const response = await fetch(`/api/aircraft?lat=${position[0]}&lon=${position[1]}&radius=${radius}`, { cache: "no-store" });
@@ -281,30 +262,7 @@ export default function AviationPanel() {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [position, radius, manualSelection, selectedId, previewMode]);
-
-  useEffect(() => {
-    let cancelled = false;
-    async function refreshWeather() {
-      if (previewMode) {
-        setWeather(PREVIEW_WEATHER);
-        return;
-      }
-      try {
-        const response = await fetch(`/api/city-weather?lat=${position[0]}&lon=${position[1]}&count=8`, { cache: "no-store" });
-        const payload = await response.json();
-        if (!cancelled) setWeather(Array.isArray(payload.weather) ? payload.weather : []);
-      } catch {
-        if (!cancelled) setWeather([]);
-      }
-    }
-    refreshWeather();
-    const timer = window.setInterval(refreshWeather, 10 * 60 * 1000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-    };
-  }, [position, previewMode]);
+  }, [position, radius, manualSelection, selectedId, previewMode, isLive]);
 
   const selected = useMemo(() => aircraft.find((item) => item.id === selectedId) ?? aircraft[0] ?? null, [aircraft, selectedId]);
 
@@ -345,7 +303,7 @@ export default function AviationPanel() {
 
   const mapPoints = useMemo(
     () => [
-      {
+      ...(isLive ? [{
         id: "home",
         lat: position[0],
         lon: position[1],
@@ -353,17 +311,7 @@ export default function AviationPanel() {
         detail: positionStatus,
         color: "#3aa7ff",
         category: "home"
-      },
-      ...weather.map((city) => ({
-        id: `weather-${city.name}`,
-        lat: city.latitude,
-        lon: city.longitude,
-        name: city.name,
-        detail: `${city.label} • ${city.temperature === null ? "—" : `${Math.round(city.temperature)}°C`} • vent ${city.windSpeed === null ? "—" : `${Math.round(city.windSpeed)} kt`}`,
-        category: "weather",
-        weatherIcon: city.icon,
-        temperature: city.temperature
-      })),
+      }] : []),
       ...visibleAircraft.slice(0, 100).map((item) => {
         const visual = aircraftVisual(item);
         return {
@@ -378,7 +326,7 @@ export default function AviationPanel() {
         };
       })
     ],
-    [position, positionStatus, selected, visibleAircraft, weather]
+    [position, positionStatus, selected, visibleAircraft, isLive]
   );
 
   const mapTrails = useMemo(
@@ -510,14 +458,14 @@ export default function AviationPanel() {
                 <div><span>✈️</span><strong>{aircraft.filter((item) => !item.onGround).length}</strong><small>En vol</small></div>
                 <div><span>🎯</span><strong>{aircraft.filter((item) => item.distance <= 20).length}</strong><small>À proximité</small></div>
                 <div><span>🛬</span><strong>{aircraft.filter((item) => item.onGround).length}</strong><small>Au sol</small></div>
-                <button type="button" onClick={() => setLocateSignal((value) => value + 1)}><span>📍</span><strong>HOME</strong><small>Ma position</small></button>
+                <button type="button" disabled={!isLive} onClick={() => setLocateSignal((value) => value + 1)}><span>📍</span><strong>HOME</strong><small>{isLive ? "Ma position" : "GPS requis"}</small></button>
               </div>
 
-              <button type="button" className="fw-locate-button" title="Centrer sur ma position" onClick={() => setLocateSignal((value) => value + 1)}>⌾</button>
+              <button type="button" className="fw-locate-button" disabled={!isLive} title="Centrer sur ma position" onClick={() => setLocateSignal((value) => value + 1)}>📍</button>
 
               <div className="fw-position-card">
                 <span className={isLive ? "live-dot" : "live-dot off"} />
-                <div><strong>MA POSITION</strong><small>{position[0].toFixed(4)} N / {position[1].toFixed(4)} E{accuracy ? ` • ±${Math.round(accuracy)} m` : ""}</small></div>
+                <div><strong>MA POSITION</strong><small>{isLive ? `${position[0].toFixed(4)} N / ${position[1].toFixed(4)} E${accuracy ? ` • ±${Math.round(accuracy)} m` : ""}` : "En attente de l’autorisation GPS"}</small></div>
               </div>
             </div>
           </div>
@@ -592,11 +540,7 @@ export default function AviationPanel() {
                 <div><span>Vitesse sol</span><strong>{formatSpeedKnots(selected.velocity)}</strong></div>
               </div>
 
-              <div className="fw-route-card">
-                <div><span>Départ</span><strong>—</strong><small>Route non fournie par la source ADS-B</small></div>
-                <div className="fw-route-line">✈︎ <i /> ✈︎</div>
-                <div><span>Arrivée</span><strong>—</strong><small>Route non fournie par la source ADS-B</small></div>
-              </div>
+              <FlightRouteWeather flightKey={selected.callsign} />
 
               <div className="fw-telemetry-grid">
                 <div><span>Altitude</span><strong>{formatFlightLevel(selected.barometricAltitude)}</strong><small>{formatAltitude(selected.barometricAltitude)}</small></div>
@@ -612,14 +556,6 @@ export default function AviationPanel() {
                 <div><span>N° de vol</span><strong>{selected.callsign}</strong></div>
               </div>
 
-              <div className="fw-weather-strip">
-                <header><div><span>MÉTÉO DES VILLES</span><strong>Conditions autour de votre position</strong></div><small>Open-Meteo</small></header>
-                <div>
-                  {weather.slice(0, 5).map((city) => (
-                    <article key={city.name}><span>{city.name}</span><strong>{city.icon} {city.temperature === null ? "—" : `${Math.round(city.temperature)}°C`}</strong><small>Vent {city.windSpeed === null ? "—" : `${Math.round(city.windSpeed)} kt`} • Vis. {weatherVisibility(city.visibility)}</small></article>
-                  ))}
-                </div>
-              </div>
             </>
           ) : (
             <div className="focus-empty"><span>✈</span><h2>Aucun avion détecté</h2><p>Aucun appareil ADS-B reçu dans un rayon de {radius} km.</p><small>{sourceStatus}</small></div>

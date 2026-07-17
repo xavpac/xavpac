@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from "react";
 
-export const BAGE_DOMMARTIN_POSITION: [number, number] = [46.307, 4.945];
+// Centre neutre uniquement utilisé pour afficher la carte avant l’accord GPS.
+// Il n’est jamais présenté comme étant la position de l’utilisateur.
+export const DEFAULT_MAP_CENTER: [number, number] = [46.6, 4.8];
 
 export type LiveGeolocation = {
   position: [number, number];
@@ -13,8 +15,8 @@ export type LiveGeolocation = {
 };
 
 export function useLiveGeolocation(): LiveGeolocation {
-  const [position, setPosition] = useState<[number, number]>(BAGE_DOMMARTIN_POSITION);
-  const [status, setStatus] = useState("Bâgé-Dommartin • position de secours");
+  const [position, setPosition] = useState<[number, number]>(DEFAULT_MAP_CENTER);
+  const [status, setStatus] = useState("Recherche de votre position GPS…");
   const [accuracy, setAccuracy] = useState<number | null>(null);
   const [isLive, setIsLive] = useState(false);
   const [error, setError] = useState("");
@@ -22,11 +24,9 @@ export function useLiveGeolocation(): LiveGeolocation {
   useEffect(() => {
     if (!navigator.geolocation) {
       setError("La géolocalisation n’est pas prise en charge par ce navigateur.");
-      setStatus("Bâgé-Dommartin • GPS indisponible");
+      setStatus("Position GPS indisponible");
       return;
     }
-
-    setStatus("Recherche de votre position…");
 
     const watchId = navigator.geolocation.watchPosition(
       (result) => {
@@ -42,18 +42,18 @@ export function useLiveGeolocation(): LiveGeolocation {
 
         const message =
           geolocationError.code === geolocationError.PERMISSION_DENIED
-            ? "Autorisez la localisation pour utiliser les fonctions autour de vous."
+            ? "Autorisez la localisation dans le navigateur pour afficher les données autour de vous."
             : geolocationError.code === geolocationError.TIMEOUT
               ? "La position GPS met trop de temps à répondre."
               : "La position GPS est momentanément indisponible.";
 
         setError(message);
-        setStatus("Bâgé-Dommartin • position de secours");
+        setStatus("Position GPS indisponible");
       },
       {
         enableHighAccuracy: true,
         timeout: 20000,
-        maximumAge: 15000
+        maximumAge: 10000
       }
     );
 

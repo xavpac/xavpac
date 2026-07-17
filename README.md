@@ -1,58 +1,46 @@
-# XavPac 5.0
+# XavPac Ultimate 7.3
 
-Tableau de bord Aviation, Drone SDIS 71, Moyens nationaux, CODIS, Astronomie et Météo.
+Tableau de bord aviation et moyens nationaux, conçu pour Mac, PC, iPad et iPhone.
 
-## Nouveautés 5.0
+## Modifications principales
 
-- GPS suivi en continu lorsque le site reste ouvert.
-- Position de secours : Bâgé-Dommartin.
-- Avions nettement plus visibles sur la carte.
-- Onglet Aviation sans METAR.
-- Onglet Drone cadré uniquement sur la Saône-et-Loire.
-- R45, R46 et R47 affichées en permanence, avec statut à vérifier sur l’AZBA officiel.
-- Onglet CODIS distinct.
-- Compteur de vues local affiché dans l’en-tête.
-- Météo à la position GPS.
+- géolocalisation réelle avec punaise HOME ;
+- aucune météo des villes voisines sur la carte ;
+- aucune liste de météo locale dans l’onglet Aviation ;
+- deux blocs météo uniquement : ville de départ et ville d’arrivée ;
+- saisie manuelle des villes lorsque le flux ADS-B ne fournit pas la route ;
+- même design pour Aviation et Moyens nationaux ;
+- photos d’appareils via Planespotters lorsqu’elles sont disponibles ;
+- trafic via Airplanes.live ;
+- météo via Open-Meteo ;
+- compteur de visites conservé.
 
-## Données et prudence
-
-XavPac présente des données publiques et des aides de repérage. Pour les décisions opérationnelles et aéronautiques, les sources officielles restent prioritaires. L’information AZBA ne remplace pas les NOTAM, SUP AIP et AIP.
-
-## Développement
+## Test local
 
 ```bash
-npm install
-npm run typecheck
-npm run build
+npm ci
+npm run dev
 ```
 
+Puis ouvrir `http://localhost:3000`.
 
-## XavPac 5.1 — Aviation FlightWall et cartes lisibles
+## Installation dans le dépôt GitHub déjà cloné
 
-- Carte Aviation claire par défaut, avec choix Plan / Satellite / Sombre.
-- Avions nettement agrandis et renforcés pour rester visibles sur tous les fonds.
-- Interface responsive Mac, iPad et iPhone.
-- Onglet Drone avec deux vues : Saône-et-Loire et carte officielle AZBA du SIA en direct.
-- Les couleurs officielles AZBA sont affichées par le service SIA lui-même : rouge actif, bleu inactif.
-- Bâgé-Dommartin reste la position de secours lorsque le GPS est indisponible.
+Depuis la racine du dépôt XavPac dans le terminal VS Code :
 
+```bash
+bash ~/Downloads/XavPac-7.3-online/INSTALLER-DANS-XAVPAC.command
+```
 
-## XavPac 6.1 — Aviation FlightWall
+Le script :
 
-Cette version reconstruit réellement l’onglet Aviation :
+1. sauvegarde l’ancienne version dans Documents ;
+2. remplace les fichiers du site ;
+3. vérifie TypeScript et la compilation ;
+4. crée le commit Git ;
+5. pousse vers GitHub ;
+6. déclenche le déploiement automatique Vercel.
 
-- carte claire par défaut, satellite et sombre au choix ;
-- avions ADS-B agrandis et orientés selon le cap ;
-- météo actuelle affichée sous les villes proches ;
-- bouton de recentrage sur la géolocalisation ;
-- traces et cercle de portée activables ;
-- fiche avion avec photo PlaneSpotters lorsque disponible ;
-- calcul indicatif du prochain passage à partir de la position, du cap et de la vitesse ADS-B ;
-- radar local, cinq appareils les plus proches et histogramme d’altitudes ;
-- mises en page dédiées aux ordinateurs, tablettes et téléphones.
+## Limite transparente
 
-Les routes départ/arrivée ne sont pas inventées : elles restent indiquées comme indisponibles lorsque la source ADS-B ne les fournit pas.
-
-## XavPac 6.2 — Aviation FlightWall fidèle
-
-Cette version modifie uniquement l’onglet Aviation. Les données opérationnelles restent issues des sources publiques configurées dans le projet. Les départs et arrivées ne sont jamais inventés lorsqu’ils ne sont pas fournis. La photo provient de PlaneSpotters lorsqu’elle est disponible ; l’image de remplacement est explicitement identifiée comme une illustration.
+La source ADS-B publique ne fournit pas toujours les villes de départ et d’arrivée. Les deux champs restent donc modifiables manuellement. Aucune route n’est inventée.

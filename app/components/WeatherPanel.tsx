@@ -110,6 +110,11 @@ export default function WeatherPanel() {
   useEffect(() => {
     let cancelled = false;
 
+    if (!isLive) {
+      setWeather(null);
+      return () => { cancelled = true; };
+    }
+
     async function loadWeather() {
       try {
         setError("");
@@ -131,7 +136,19 @@ export default function WeatherPanel() {
       cancelled = true;
       window.clearInterval(refresh);
     };
-  }, [url]);
+  }, [url, isLive]);
+
+  if (!isLive) {
+    return (
+      <section className="hero">
+        <div>
+          <span className="eyebrow">MÉTÉO LOCALE</span>
+          <h1>Autorisez la localisation</h1>
+          <p>{gpsError || positionStatus}</p>
+        </div>
+      </section>
+    );
+  }
 
   if (error) {
     return (
@@ -160,7 +177,7 @@ export default function WeatherPanel() {
   const current = weather.current;
   const todaySunrise = weather.daily.sunrise[0];
   const todaySunset = weather.daily.sunset[0];
-  const locationTitle = isLive ? "Votre position GPS" : "Bâgé-Dommartin";
+  const locationTitle = "Votre position GPS";
 
   return (
     <>
@@ -246,7 +263,7 @@ export default function WeatherPanel() {
           <article className="panel">
             <span className="eyebrow">LOCALISATION</span>
             <div className="info-list">
-              <div><span>Source</span><strong>{isLive ? "GPS continu" : "Secours Bâgé-Dommartin"}</strong></div>
+              <div><span>Source</span><strong>GPS continu</strong></div>
               <div><span>État</span><strong>{positionStatus}</strong></div>
               <div><span>Latitude</span><strong>{position[0].toFixed(5)}°</strong></div>
               <div><span>Longitude</span><strong>{position[1].toFixed(5)}°</strong></div>
