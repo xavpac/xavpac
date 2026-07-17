@@ -124,10 +124,19 @@ export default function DronePanel() {
   const [locationMessage, setLocationMessage] = useState("");
   const [nearbyPlaces, setNearbyPlaces] = useState<NearbyPlace[]>([]);
   const passageHistoryRef = useRef(new PassageHistoryStore());
+  const passageReferenceRef = useRef("gps");
   const [passageHistoryVersion, setPassageHistoryVersion] = useState(0);
 
   const selectedPosition = manualPoint ?? position;
   const analysisCenter = selectedPosition ?? FRANCE_CENTER;
+
+  useEffect(() => {
+    const reference = manualPoint ? `manual:${manualPoint[0].toFixed(5)}:${manualPoint[1].toFixed(5)}` : "gps";
+    if (reference === passageReferenceRef.current) return;
+    passageReferenceRef.current = reference;
+    passageHistoryRef.current.clear();
+    setPassageHistoryVersion((value) => value + 1);
+  }, [manualPoint]);
 
   useEffect(() => {
     let cancelled = false;

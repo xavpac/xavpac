@@ -149,6 +149,14 @@ test("supprime globalement les historiques Mode-S sortis de la fenêtre de huit 
   assert.equal(store.size(), 1);
 });
 
+test("réinitialise tous les historiques lors d’un changement de site Drone", () => {
+  const store = approachingHistory("SITE01");
+  assert.equal(store.get("SITE01").length, 3);
+  store.clear();
+  assert.equal(store.get("SITE01").length, 0);
+  assert.equal(store.size(), 0);
+});
+
 test("un changement rapide de sélection ne réutilise jamais l’historique d’un autre avion", () => {
   const store = new PassageHistoryStore();
   record(store, "SELECTA", 3.8, 10);

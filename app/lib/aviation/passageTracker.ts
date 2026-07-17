@@ -123,6 +123,10 @@ export class PassageHistoryStore {
   size() {
     return this.observations.size;
   }
+
+  clear() {
+    this.observations.clear();
+  }
 }
 
 function regressionClosingSpeed(observations: readonly PassageObservation[]) {
