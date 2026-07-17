@@ -49,7 +49,12 @@ type RouteWeather = { time?: string; temperature_2m?: number; weather_code?: num
 type FlightRoute = { origin: RouteAirport; destination: RouteAirport; originWeather: RouteWeather | null; destinationWeather: RouteWeather | null };
 type AviationNews = { date: string; title: string; summary: string; location: string; source: string; link: string };
 
-const confidenceLabels: Record<RouteConfidence, string> = { confirmed: "Confirmée", probable: "Probable", inferred: "Déduite", unavailable: "Non disponible" };
+const routeQualifiers: Record<RouteConfidence, string> = {
+  confirmed: "Route confirmée",
+  probable: "Route probable",
+  inferred: "Route déduite",
+  unavailable: "Route non déterminée"
+};
 
 function weatherCondition(code?: number) {
   if (code === undefined) return "Conditions non déterminées";
@@ -150,7 +155,7 @@ function passageDetail(analysis: PassageAnalysis | null) {
 }
 
 function formatFreshness(seconds: number | null) {
-  if (seconds === null) return "Inconnue";
+  if (seconds === null) return "Non déterminée";
   return seconds < 1 ? "À l’instant" : `${Math.round(seconds)} s`;
 }
 
@@ -456,18 +461,6 @@ export default function AviationPanel() {
     fifty: aircraft.filter((item) => item.distance <= 50).length
   }), [aircraft]);
 
-  const routeQuality = useMemo(() => {
-    const values = aircraft.map((item) => enrichmentFor(item)?.routeConfidence ?? "unavailable");
-    const confirmed = values.filter((value) => value === "confirmed").length;
-    const probable = values.filter((value) => value === "probable").length;
-    const inferred = values.filter((value) => value === "inferred").length;
-    const unknown = values.filter((value) => value === "unavailable").length;
-    const coverage = values.length ? Math.round(((confirmed + probable + inferred) / values.length) * 100) : 0;
-    const score = values.length ? Math.round(((confirmed * 100 + probable * 70 + inferred * 40) / values.length)) : 0;
-    return { confirmed, probable, inferred, unknown, coverage, score };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [aircraft, enrichedByModeS]);
-
   const remarkableById = useMemo(() => Object.fromEntries(aircraft.map((item) => [item.id, detectRemarkable(item, enrichmentFor(item))])),
   // eslint-disable-next-line react-hooks/exhaustive-deps
   [aircraft, enrichedByModeS]);
@@ -519,8 +512,6 @@ export default function AviationPanel() {
       )}
 
       {(gpsError || error) && <div className="aviation-warning-v5">{gpsError || error}</div>}
-
-      <div className="aviation-quality panel"><div><span>Trafic détecté</span><strong>{aircraft.length} avions</strong></div><div className="confirmed"><span>🟢 Confirmées</span><strong>{routeQuality.confirmed}</strong></div><div className="probable"><span>🟡 Probables</span><strong>{routeQuality.probable}</strong></div><div className="inferred"><span>🔵 Déduites</span><strong>{routeQuality.inferred}</strong></div><div className="unknown"><span>⚪ Inconnues</span><strong>{routeQuality.unknown}</strong></div><div><span>Couverture</span><strong>{routeQuality.coverage} %</strong><small>Qualité pondérée {routeQuality.score} %</small></div></div>
 
       <div className="flightwall-main-grid">
         <div className="flightwall-left">
@@ -593,7 +584,7 @@ export default function AviationPanel() {
                     <b>{remarkable ? remarkable.icon : index + 1}</b>
                     <strong>{identity}<small>{identityKind} • {enriched?.operator ?? item.operator ?? "Compagnie non identifiée"}</small></strong>
                     <span>{enriched?.routeLabel ?? "Départ / arrivée non disponibles"}<small>{enriched?.aircraftType ?? item.aircraftType ?? "Type non disponible"} • {formatAltitude(item.barometricAltitude)}</small></span>
-                    <em>{position ? `${item.distance.toFixed(1)} km` : "Distance —"}<small>{passage?.status === "approaching" ? passage.estimatedSecondsToClosest === null ? "En rapprochement" : `Passage estimé dans ${formatDuration(passage.estimatedSecondsToClosest)}` : passage?.status === "closest" ? "Au plus près" : passage?.status === "receding" ? "En éloignement" : passage?.status === "non-convergent" ? "Non convergent" : "Analyse en attente"} • {confidenceLabels[enriched?.routeConfidence ?? "unavailable"]}</small></em>
+                    <em>{position ? `${item.distance.toFixed(1)} km` : "Distance —"}<small>{passage?.status === "approaching" ? passage.estimatedSecondsToClosest === null ? "En rapprochement" : `Passage estimé dans ${formatDuration(passage.estimatedSecondsToClosest)}` : passage?.status === "closest" ? "Au plus près" : passage?.status === "receding" ? "En éloignement" : passage?.status === "non-convergent" ? "Non convergent" : "Analyse en attente"} • {routeQualifiers[enriched?.routeConfidence ?? "unavailable"]}</small></em>
                   </button>;
                 })}
                 {!aircraft.length && <p className="fw-empty-text">Aucun appareil reçu dans ce rayon.</p>}
@@ -671,9 +662,9 @@ export default function AviationPanel() {
                 <div className="fw-route-line">✈︎ <i /> ✈︎</div>
                 <div><span>Arrivée</span><strong>{route?.destination.iata_code ?? route?.destination.icao_code ?? "?"}</strong><small>{route ? `${route.destination.municipality ?? "Non déterminé"} • ${route.destination.name ?? "Non déterminé"}` : "Non déterminé"}</small></div>
               </div>
-              <div className={`fw-route-confidence ${selectedEnriched?.routeConfidence ?? "unavailable"}`}>Trajet {confidenceLabels[selectedEnriched?.routeConfidence ?? "unavailable"]} • {selectedEnriched?.routeSource ?? "aucune source"}</div>
+              <div className={`fw-route-provenance ${selectedEnriched?.routeConfidence ?? "unavailable"}`}>{routeQualifiers[selectedEnriched?.routeConfidence ?? "unavailable"]} • {selectedEnriched?.routeSource ?? "aucune source"}</div>
 
-              {remarkableById[selected.id]?.length > 0 && <div className="remarkable-card"><span>APPAREIL REMARQUABLE</span>{remarkableById[selected.id].map((item) => <div key={item.key}><strong>{item.icon} {item.label}</strong><small>{item.confidence === "confirmed" ? "🟢 Confirmée" : "🟡 Probable"} • {item.evidence}</small></div>)}</div>}
+              {remarkableById[selected.id]?.length > 0 && <div className="remarkable-card"><span>APPAREIL REMARQUABLE</span>{remarkableById[selected.id].map((item) => <div key={item.key}><strong>{item.icon} {item.label}</strong><small>{item.confidence === "confirmed" ? "Identification confirmée" : "Identification probable"} • {item.evidence}</small></div>)}</div>}
 
               <div className="fw-telemetry-grid">
                 <div><span>Altitude</span><strong>{formatFlightLevel(selected.barometricAltitude)}</strong><small>{formatAltitude(selected.barometricAltitude)}</small></div>

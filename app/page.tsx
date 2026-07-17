@@ -8,11 +8,10 @@ import AstronomyPanel from "./components/AstronomyPanel";
 import WeatherPanel from "./components/WeatherPanel";
 import CenterOperationsPanel from "./components/CenterOperationsPanel";
 import ViewCounter from "./components/ViewCounter";
-import InformationPanel from "./components/InformationPanel";
-import SourceHealthPanel from "./components/SourceHealthPanel";
+import TechnicalInformationPanel from "./components/TechnicalInformationPanel";
 import { BUILD_INFO } from "./lib/buildInfo";
 
-type Tab = "aviation" | "drone" | "operations" | "center" | "astronomy" | "weather" | "health" | "information";
+type Tab = "aviation" | "drone" | "operations" | "center" | "astronomy" | "weather" | "technical";
 
 const tabs = [
   { id: "aviation" as Tab, icon: "✈", title: "Aviation", subtitle: "Avions en vol" },
@@ -20,9 +19,7 @@ const tabs = [
   { id: "operations" as Tab, icon: "🚁", title: "Moyens nationaux", subtitle: "Canadair, Dash, etc." },
   { id: "center" as Tab, icon: "☀", title: "CODIS", subtitle: "Centre opérationnel" },
   { id: "weather" as Tab, icon: "🌤️", title: "Météo", subtitle: "Prévisions" },
-  { id: "astronomy" as Tab, icon: "◔", title: "Astronomie", subtitle: "Ciel & étoiles" },
-  { id: "health" as Tab, icon: "♥", title: "Santé", subtitle: "Sources" },
-  { id: "information" as Tab, icon: "ⓘ", title: "Informations", subtitle: "Version & build" }
+  { id: "astronomy" as Tab, icon: "◔", title: "Astronomie", subtitle: "Ciel & étoiles" }
 ];
 
 export default function Page() {
@@ -46,6 +43,7 @@ export default function Page() {
           </div>
         </div>
         <div className="header-live-area">
+          <button type="button" className={active === "technical" ? "technical-info-trigger active" : "technical-info-trigger"} onClick={() => setActive("technical")} title="Informations techniques" aria-label="Ouvrir les informations techniques">i</button>
           <ViewCounter />
           <span className="system-live">● SYSTÈME ACTIF<br /><small>Données en direct</small></span>
           <div className="clock-v4">
@@ -70,18 +68,17 @@ export default function Page() {
       {active === "center" && <CenterOperationsPanel />}
       {active === "astronomy" && <AstronomyPanel />}
       {active === "weather" && <WeatherPanel />}
-      {active === "information" && <InformationPanel />}
-      {active === "health" && <SourceHealthPanel />}
+      {active === "technical" && <TechnicalInformationPanel />}
 
       <nav className="mobile-bottom-nav" aria-label="Navigation mobile">
-        {[...tabs.slice(0, 4), tabs[tabs.length - 1]].map((tab) => (
+        {tabs.slice(0, 5).map((tab) => (
           <button type="button" key={tab.id} className={active === tab.id ? "active" : ""} onClick={() => setActive(tab.id)}>
             <span>{tab.icon}</span><small>{tab.title === "Moyens nationaux" ? "Moyens" : tab.title}</small>
           </button>
         ))}
       </nav>
 
-      <footer className="footer-v4">XavPac {BUILD_INFO.version} • Build #{BUILD_INFO.number} • {BUILD_INFO.environment} • Données réelles selon disponibilité.</footer>
+      <footer className="footer-v4"><button type="button" onClick={() => setActive("technical")}>XavPac {BUILD_INFO.version} • Build #{BUILD_INFO.number} • {BUILD_INFO.environment}</button><span> • Données réelles selon disponibilité.</span></footer>
     </main>
   );
 }

@@ -17,15 +17,14 @@ Tableau de bord Aviation, Drone SDIS 71, Moyens nationaux, CODIS, Astronomie et 
 - Agrégateur serveur gratuit combinant Airplanes.live, ADSBDB et, en option, OpenSky gratuit.
 - Callsign ADS-B, callsign ICAO, numéro commercial IATA et immatriculation séparés.
 - Départ et arrivée partagés par la carte, la liste des cinq appareils proches et la fiche détaillée.
-- Routes qualifiées : Confirmée, Probable, Déduite ou Non disponible.
+- Qualification affichée directement avec chaque route : confirmée, probable, déduite ou non déterminée.
 - Annuaire local versionné des compagnies et logos, sans hotlink.
 - Cache, déduplication et concurrence limitée pour préserver les quotas gratuits.
 - Conversion du taux vertical corrigée et marqueurs Leaflet sécurisés.
 - Provenance visible pour les routes : source, date, méthode et fraîcheur.
-- Couverture courante et score de qualité pondéré sans transformer une observation historique en certitude.
 - Mémoire locale des passages et routes récurrentes, toujours qualifiées « Déduites ».
 - Détection des Canadair, Dash, Dragon, SAMU, appareils d’État et types remarquables.
-- Onglet Santé pour Airplanes.live, ADSBDB, PlaneSpotters, OpenSky et CelesTrak.
+- Informations techniques discrètes pour la version, le cache et le diagnostic d’Airplanes.live, ADSBDB, PlaneSpotters, OpenSky et CelesTrak.
 - Chaque fournisseur est désactivable par variable d’environnement et remplaçable indépendamment.
 
 XavPac reste un projet personnel utilisant uniquement des sources gratuites. OpenSky est facultatif et nécessite seulement un compte gratuit, sans carte bancaire.
