@@ -7,6 +7,12 @@ import { reportDataUpdate } from "../lib/buildInfo";
 import type { EnrichedAircraft, RouteConfidence } from "../lib/aviation/types";
 import { deducedRoute, recordObservations } from "../lib/aviation/observations";
 import { detectRemarkable } from "../lib/aviation/remarkable";
+import {
+  aircraftPositionTimestamp,
+  analyzeAircraftPassage,
+  PassageHistoryStore,
+  type PassageAnalysis
+} from "../lib/aviation/passageTracker";
 
 const StableMap = dynamic(() => import("./StableMap"), { ssr: false });
 const OPERATIONAL_MAP_CENTER: [number, number] = [46.63, 4.56];
@@ -30,6 +36,8 @@ type LiveAircraft = {
   operator?: string | null;
   category?: string | null;
   positionSource?: string;
+  lastPositionAt?: string | null;
+  positionAgeSeconds?: number | null;
 };
 
 type AircraftWithDistance = LiveAircraft & { distance: number };
@@ -116,28 +124,50 @@ function formatDuration(seconds: number) {
   return `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
 }
 
-function closestApproach(home: [number, number], aircraft: AircraftWithDistance) {
-  if (aircraft.velocity === null || aircraft.trueTrack === null || aircraft.velocity < 2) {
-    return { state: "position", seconds: null, minimumDistance: aircraft.distance } as const;
-  }
+function passageTitle(analysis: PassageAnalysis | null) {
+  if (!analysis || analysis.status === "no-observer") return "Position GPS réelle requise";
+  if (analysis.status === "stale") return "Position aéronef trop ancienne pour estimer le passage";
+  if (analysis.status === "waiting") return "Analyse du rapprochement en attente de nouvelles positions";
+  if (analysis.status === "approaching") return analysis.estimatedSecondsToClosest === null
+    ? "En rapprochement"
+    : `En rapprochement — passage au plus près estimé dans ${formatDuration(analysis.estimatedSecondsToClosest)}`;
+  if (analysis.status === "closest") return "Passage au plus près";
+  if (analysis.status === "receding") return analysis.secondsSinceClosest === null
+    ? "En éloignement"
+    : `En éloignement depuis environ ${formatDuration(analysis.secondsSinceClosest)}`;
+  if (analysis.status === "non-convergent") return "Trajectoire non convergente";
+  return "Impossible à analyser avec les données disponibles";
+}
 
-  const north = (aircraft.latitude - home[0]) * 111;
-  const east = (aircraft.longitude - home[1]) * 111 * Math.cos((home[0] * Math.PI) / 180);
-  const track = (aircraft.trueTrack * Math.PI) / 180;
-  const speedKmS = aircraft.velocity / 1000;
-  const velocityEast = Math.sin(track) * speedKmS;
-  const velocityNorth = Math.cos(track) * speedKmS;
-  const denominator = velocityEast ** 2 + velocityNorth ** 2;
-  const time = denominator > 0 ? -((east * velocityEast + north * velocityNorth) / denominator) : 0;
-  const projected = Math.max(0, Math.min(time, 7200));
-  const minEast = east + velocityEast * projected;
-  const minNorth = north + velocityNorth * projected;
-  const minimumDistance = Math.sqrt(minEast ** 2 + minNorth ** 2);
+function passageDetail(analysis: PassageAnalysis | null) {
+  if (!analysis) return "Le calcul utilise uniquement votre position GPS réelle.";
+  if (analysis.status === "non-convergent") return "L’appareil ne devrait pas passer à proximité immédiate de votre position.";
+  if (analysis.status === "insufficient") return "Distance stable ou données de trajectoire insuffisantes.";
+  if (analysis.status === "approaching" && analysis.estimatedSecondsToClosest === null) return "Rapprochement mesuré ; estimation temporelle indisponible sans cap et vitesse complets.";
+  if (analysis.status === "receding") return "La distance augmente après le minimum observé.";
+  if (analysis.status === "closest") return "Minimum observé et projection de trajectoire concordants.";
+  return "Calcul recalculé à chaque nouvelle position ADS-B.";
+}
 
-  if (time < -30) return { state: "passed", seconds: Math.abs(time), minimumDistance } as const;
-  if (time <= 0) return { state: "now", seconds: 0, minimumDistance } as const;
-  if (time > 7200) return { state: "position", seconds: null, minimumDistance: aircraft.distance } as const;
-  return { state: "approaching", seconds: time, minimumDistance } as const;
+function formatFreshness(seconds: number | null) {
+  if (seconds === null) return "Inconnue";
+  return seconds < 1 ? "À l’instant" : `${Math.round(seconds)} s`;
+}
+
+function formatDistanceEvolution(analysis: PassageAnalysis | null) {
+  if (!analysis || analysis.distanceDeltaKm === null) return "En attente";
+  if (Math.abs(analysis.distanceDeltaKm) < 0.02) return "Quasi stable";
+  const sign = analysis.distanceDeltaKm > 0 ? "+" : "−";
+  return `${sign}${Math.abs(analysis.distanceDeltaKm).toFixed(2)} km`;
+}
+
+function formatRelativeSpeed(analysis: PassageAnalysis | null) {
+  if (!analysis || analysis.closingSpeedMetersPerSecond === null) return "Non déterminée";
+  const speed = Math.abs(analysis.closingSpeedMetersPerSecond);
+  if (speed < 1.5) return "Quasi stable";
+  return analysis.closingSpeedMetersPerSecond > 0
+    ? `${Math.round(speed)} m/s vers vous`
+    : `${Math.round(speed)} m/s en éloignement`;
 }
 
 function radarCoordinates(home: [number, number], aircraft: AircraftWithDistance, radius: number) {
@@ -172,13 +202,12 @@ function weatherVisibility(value: number | null) {
 }
 
 export default function AviationPanel() {
-  const { position, status: positionStatus, accuracy, isLive, error: gpsError } = useLiveGeolocation();
+  const { position, status: positionStatus, accuracy, timestamp: gpsTimestamp, isLive, error: gpsError } = useLiveGeolocation();
   const [radius, setRadius] = useState<Radius>(50);
   const [aircraft, setAircraft] = useState<AircraftWithDistance[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [manualSelection, setManualSelection] = useState(false);
   const [sourceStatus, setSourceStatus] = useState("Connexion Airplanes.live…");
-  const [lastUpdate, setLastUpdate] = useState("—");
   const [error, setError] = useState("");
   const [enrichedByModeS, setEnrichedByModeS] = useState<Record<string, EnrichedAircraft>>({});
   const [enrichmentStatus, setEnrichmentStatus] = useState("Enrichissement en attente");
@@ -192,6 +221,8 @@ export default function AviationPanel() {
   const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
   const trailsRef = useRef<Record<string, [number, number][]>>({});
   const [trailsVersion, setTrailsVersion] = useState(0);
+  const passageHistoryRef = useRef(new PassageHistoryStore());
+  const [passageHistoryVersion, setPassageHistoryVersion] = useState(0);
 
   useEffect(() => {
     try {
@@ -219,7 +250,6 @@ export default function AviationPanel() {
           .sort((a: AircraftWithDistance, b: AircraftWithDistance) => a.distance - b.distance);
 
         setAircraft(sorted);
-        setLastUpdate(new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
         reportDataUpdate("aviation");
 
         if (sorted.length === 0) {
@@ -238,6 +268,24 @@ export default function AviationPanel() {
           trailsRef.current[item.id] = isNew ? [...current, nextPoint].slice(-50) : current;
         }
         setTrailsVersion((value) => value + 1);
+
+        if (position) {
+          let historyChanged = false;
+          for (const item of sorted.slice(0, 100)) {
+            historyChanged = passageHistoryRef.current.record({
+              modeS: item.id,
+              latitude: item.latitude,
+              longitude: item.longitude,
+              altitudeMeters: item.barometricAltitude,
+              groundSpeedMetersPerSecond: item.velocity,
+              trackDegrees: item.trueTrack,
+              positionTimestampMs: aircraftPositionTimestamp(item.lastPositionAt),
+              observer: position,
+              observerTimestampMs: gpsTimestamp
+            }) || historyChanged;
+          }
+          if (historyChanged) setPassageHistoryVersion((value) => value + 1);
+        }
 
         const source = typeof payload.source === "string" ? payload.source : "Airplanes.live";
         setSourceStatus(response.ok ? `${source} • ${sorted.length} appareil${sorted.length > 1 ? "s" : ""}` : `${source} indisponible`);
@@ -258,7 +306,7 @@ export default function AviationPanel() {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [position, radius, manualSelection, selectedId]);
+  }, [position, radius, manualSelection, selectedId, gpsTimestamp]);
 
   useEffect(() => {
     fetch("/api/aviation-news", { cache: "no-store" }).then((response) => response.json()).then((payload) => setNews(Array.isArray(payload.news) ? payload.news : [])).catch(() => setNews([]));
@@ -362,7 +410,27 @@ export default function AviationPanel() {
     [visibleAircraft, selected, trailsVersion, showTrails]
   );
 
-  const approach = selected && position ? closestApproach(position, selected) : null;
+  const passageById = useMemo(() => {
+    const nowMs = Date.now();
+    return Object.fromEntries(aircraft.map((item) => [item.id, analyzeAircraftPassage({
+      aircraft: {
+        modeS: item.id,
+        latitude: item.latitude,
+        longitude: item.longitude,
+        altitudeMeters: item.barometricAltitude,
+        groundSpeedMetersPerSecond: item.velocity,
+        trackDegrees: item.trueTrack,
+        positionTimestampMs: aircraftPositionTimestamp(item.lastPositionAt)
+      },
+      history: passageHistoryRef.current.get(item.id),
+      observer: position,
+      gpsAccuracyMeters: accuracy,
+      nowMs
+    })]));
+  // Le compteur rend les nouveaux échantillons du store visibles sans dupliquer l’historique dans l’état React.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aircraft, position, accuracy, passageHistoryVersion]);
+  const approach = selected ? passageById[selected.id] ?? null : null;
   const bearing = selected && position ? bearingName(position, [selected.latitude, selected.longitude]) : null;
   const estimatedElevation = selected && selected.barometricAltitude !== null && selected.distance > 0
     ? Math.max(0, Math.min(90, (Math.atan2(selected.barometricAltitude, selected.distance * 1000) * 180) / Math.PI))
@@ -428,14 +496,6 @@ export default function AviationPanel() {
   function enrichmentFor(item: LiveAircraft) {
     return enrichedByModeS[item.id.replace(/^~/, "").toUpperCase()] ?? null;
   }
-
-  const approachTitle = approach?.state === "approaching"
-    ? `Dans ${formatDuration(approach.seconds ?? 0)}`
-    : approach?.state === "passed"
-      ? "Passage effectué"
-      : approach?.state === "now"
-        ? "Au plus près maintenant"
-        : "Position reçue en direct";
 
   return (
     <section className="flightwall-v61">
@@ -525,7 +585,7 @@ export default function AviationPanel() {
               <div className="fw-nearest-list">
                 {aircraft.slice(0, 5).map((item, index) => {
                   const enriched = enrichmentFor(item);
-                  const passage = position ? closestApproach(position, item) : null;
+                  const passage = passageById[item.id] ?? null;
                   const identity = enriched?.flightNumberIata ?? enriched?.callsignIcao ?? enriched?.rawCallsign ?? item.callsign;
                   const identityKind = enriched?.flightNumberIata ? "Vol IATA" : enriched?.callsignIcao ? "Callsign ICAO" : "Identifiant ADS-B";
                   const remarkable = remarkableById[item.id]?.[0];
@@ -533,7 +593,7 @@ export default function AviationPanel() {
                     <b>{remarkable ? remarkable.icon : index + 1}</b>
                     <strong>{identity}<small>{identityKind} • {enriched?.operator ?? item.operator ?? "Compagnie non identifiée"}</small></strong>
                     <span>{enriched?.routeLabel ?? "Départ / arrivée non disponibles"}<small>{enriched?.aircraftType ?? item.aircraftType ?? "Type non disponible"} • {formatAltitude(item.barometricAltitude)}</small></span>
-                    <em>{position ? `${item.distance.toFixed(1)} km` : "Distance —"}<small>{passage?.state === "approaching" ? `Passage dans ${formatDuration(passage.seconds ?? 0)}` : "Passage non estimé"} • {confidenceLabels[enriched?.routeConfidence ?? "unavailable"]}</small></em>
+                    <em>{position ? `${item.distance.toFixed(1)} km` : "Distance —"}<small>{passage?.status === "approaching" ? passage.estimatedSecondsToClosest === null ? "En rapprochement" : `Passage estimé dans ${formatDuration(passage.estimatedSecondsToClosest)}` : passage?.status === "closest" ? "Au plus près" : passage?.status === "receding" ? "En éloignement" : passage?.status === "non-convergent" ? "Non convergent" : "Analyse en attente"} • {confidenceLabels[enriched?.routeConfidence ?? "unavailable"]}</small></em>
                   </button>;
                 })}
                 {!aircraft.length && <p className="fw-empty-text">Aucun appareil reçu dans ce rayon.</p>}
@@ -571,14 +631,37 @@ export default function AviationPanel() {
                 <div><span>Mode S</span><strong>{selected.id.toUpperCase()}</strong></div>
               </div>
 
-              <div className="fw-passage-card">
-                <div><span>Passage au plus près de ma position</span><h3>{approachTitle}</h3><p>{approach?.state === "approaching" ? "L’appareil se rapproche actuellement" : approach?.state === "passed" ? "L’appareil s’éloigne actuellement" : "Calcul à partir de la position ADS-B"}</p></div>
-                <div><span>Distance minimale estimée</span><strong>{approach ? `${approach.minimumDistance.toFixed(1)} km` : "—"}</strong><small>Cap {selected.trueTrack === null ? "—" : `${Math.round(selected.trueTrack)}°`}</small></div>
+              <div className={`fw-passage-card passage-${approach?.status ?? "unavailable"}`}>
+                <div className="fw-passage-summary"><span>Passage au plus près de ma position GPS</span><h3>{passageTitle(approach)}</h3><p>{passageDetail(approach)}</p></div>
+                <div className="fw-passage-minimum">
+                  <span>{approach?.status === "receding" || approach?.status === "closest" ? "Distance minimale observée" : "Distance minimale estimée"}</span>
+                  <strong>{approach?.status === "receding" || approach?.status === "closest"
+                    ? approach.observedMinimumDistanceKm === null ? "—" : `${approach.observedMinimumDistanceKm.toFixed(1)} km`
+                    : approach?.estimatedMinimumDistanceKm === null || approach?.estimatedMinimumDistanceKm === undefined ? "—" : `≈ ${approach.estimatedMinimumDistanceKm.toFixed(1)} km`}</strong>
+                  <small>{approach?.passageSide ? `Passage probable au ${approach.passageSide}` : "Côté non estimé"}</small>
+                </div>
+                <div className="fw-passage-metrics">
+                  <div><span>Distance actuelle</span><strong>{approach?.currentDistanceKm === null || approach?.currentDistanceKm === undefined ? "—" : `${approach.currentDistanceKm.toFixed(1)} km`}</strong></div>
+                  <div><span>Évolution</span><strong>{formatDistanceEvolution(approach)}</strong></div>
+                  <div><span>Vitesse relative</span><strong>{formatRelativeSpeed(approach)}</strong></div>
+                  <div><span>Fraîcheur ADS-B</span><strong>{formatFreshness(approach?.freshnessSeconds ?? null)}</strong></div>
+                </div>
+                <div className={`fw-passage-progress ${approach?.status ?? "unavailable"}`}>
+                  <div className="fw-passage-phase-labels"><span>APPROCHE</span><span>PLUS PROCHE</span><span>ÉLOIGNEMENT</span></div>
+                  <div className="fw-passage-track" aria-label="Progression réelle du passage">
+                    <i className="approach-zone" /><i className="closest-zone" /><i className="receding-zone" />
+                    {approach?.progressPercent !== null && approach?.progressPercent !== undefined && <b style={{ left: `${approach.progressPercent}%` }} />}
+                  </div>
+                  <small>{approach?.progressPercent === null || approach?.progressPercent === undefined
+                    ? passageTitle(approach)
+                    : "Position calculée dans la zone de passage de 10 km — aucune animation fictive"}</small>
+                </div>
+                {approach?.gpsAccuracyLimited && <div className="fw-passage-warning">Estimation limitée par une précision GPS de ± {Math.round(approach.gpsAccuracyMeters ?? 0)} mètres</div>}
               </div>
 
               <div className="fw-look-grid">
                 <div><span>Où regarder ?</span><strong>{bearing?.label ?? "—"}</strong></div>
-                <div><span>Hauteur estimée</span><strong>{estimatedElevation === null ? "—" : `${Math.round(estimatedElevation)}°`}</strong></div>
+                <div><span>Angle d’élévation estimé</span><strong>{estimatedElevation === null ? "—" : `${Math.round(estimatedElevation)}°`}</strong></div>
                 <div><span>Distance actuelle</span><strong>{position ? `${selected.distance.toFixed(1)} km` : "Non déterminée"}</strong></div>
                 <div><span>Vitesse sol</span><strong>{formatSpeedKnots(selected.velocity)}</strong></div>
               </div>
@@ -602,7 +685,7 @@ export default function AviationPanel() {
               <div className="fw-source-grid">
                 <div><span>Source</span><strong>Airplanes.live</strong></div>
                 <div><span>Suivi</span><strong>ADS-B</strong></div>
-                <div><span>Dernière MAJ</span><strong>{lastUpdate}</strong></div>
+                <div><span>Position ADS-B</span><strong>{formatFreshness(approach?.freshnessSeconds ?? null)}</strong></div>
                 <div><span>Identification du vol</span><strong>{selectedEnriched?.flightNumberIata ? `${selectedEnriched.flightNumberIata} • numéro commercial IATA` : selectedEnriched?.callsignIcao ? `${selectedEnriched.callsignIcao} • callsign ICAO` : `${selected.callsign} • identifiant ADS-B`}</strong></div>
               </div>
               <div className="fw-provenance-card"><strong>Traçabilité du trajet</strong><span>Source : {selectedEnriched?.routeProvenance.source ?? "Aucune"}</span><span>Récupération : {selectedEnriched ? new Date(selectedEnriched.routeProvenance.retrievedAt).toLocaleString("fr-FR") : "—"}</span><span>Méthode : {selectedEnriched?.routeProvenance.method ?? "—"}</span><span>Fraîcheur : {selectedEnriched ? `${selectedEnriched.routeProvenance.freshnessSeconds} s` : "—"}</span></div>

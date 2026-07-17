@@ -1,10 +1,18 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLiveGeolocation } from "../hooks/useLiveGeolocation";
 import { evaluateDroneFlight } from "../lib/droneDecision";
 import { reportDataUpdate } from "../lib/buildInfo";
+import { detectRemarkable } from "../lib/aviation/remarkable";
+import {
+  aircraftPositionTimestamp,
+  analyzeAircraftPassage,
+  droneOperationalPriority,
+  PassageHistoryStore,
+  type PassageAnalysis
+} from "../lib/aviation/passageTracker";
 
 const StableMap = dynamic(() => import("./StableMap"), { ssr: false });
 
@@ -22,8 +30,9 @@ type MetarReport = {
   wxString?: string;
 };
 
-type DroneTraffic = { id:string; callsign:string; latitude:number; longitude:number; barometricAltitude:number|null; velocity:number|null; trueTrack:number|null; aircraftType?:string|null; description?:string|null };
+type DroneTraffic = { id:string; callsign:string; latitude:number; longitude:number; barometricAltitude:number|null; velocity:number|null; trueTrack:number|null; aircraftType?:string|null; description?:string|null; operator?:string|null; category?:string|null; lastPositionAt?:string|null; positionAgeSeconds?:number|null };
 type NearbyPlace = { id: string; name: string; icao: string | null; kind: "aerodrome" | "heliport"; latitude: number; longitude: number; distanceKm: number; bearing: number };
+type AnalyzedDroneTraffic = DroneTraffic & { distance: number; passage: PassageAnalysis; isHelicopter: boolean; isRemarkable: boolean; priority: number };
 
 const FRANCE_CENTER: [number, number] = [46.603354, 1.888334];
 
@@ -74,6 +83,33 @@ function categoryText(category?: string) {
   return category ? labels[category] ?? category : "catégorie non disponible";
 }
 
+function isHelicopter(item: DroneTraffic) {
+  return /heli|rotor|h145|ec145|h135|ec135|as35|aw\d{3}|bell/i.test(`${item.aircraftType ?? ""} ${item.description ?? ""} ${item.category ?? ""}`);
+}
+
+function formatPassageDuration(seconds: number | null) {
+  if (seconds === null || !Number.isFinite(seconds) || seconds < 0) return "—";
+  const rounded = Math.round(seconds);
+  if (rounded < 60) return `${rounded} s`;
+  const minutes = Math.floor(rounded / 60);
+  return `${minutes} min ${String(rounded % 60).padStart(2, "0")} s`;
+}
+
+function dronePassageLabel(analysis: PassageAnalysis) {
+  if (analysis.status === "stale") return "Position trop ancienne";
+  if (analysis.status === "waiting") return "Analyse en attente";
+  if (analysis.status === "approaching") return "En rapprochement";
+  if (analysis.status === "closest") return "Au point le plus proche";
+  if (analysis.status === "receding") return "En éloignement";
+  if (analysis.status === "non-convergent") return "Trajectoire non convergente";
+  if (analysis.status === "no-observer") return "Site non défini";
+  return "Analyse insuffisante";
+}
+
+function freshnessText(seconds: number | null) {
+  return seconds === null ? "inconnue" : `${Math.round(seconds)} s`;
+}
+
 export default function DronePanel() {
   const [mapMode, setMapMode] = useState<"official" | "map">("map");
   const { position, status: positionStatus, accuracy, altitude, timestamp, isLive, trackingEnabled, setTrackingEnabled, error: gpsError } = useLiveGeolocation();
@@ -87,6 +123,8 @@ export default function DronePanel() {
   const [commune, setCommune] = useState("");
   const [locationMessage, setLocationMessage] = useState("");
   const [nearbyPlaces, setNearbyPlaces] = useState<NearbyPlace[]>([]);
+  const passageHistoryRef = useRef(new PassageHistoryStore());
+  const [passageHistoryVersion, setPassageHistoryVersion] = useState(0);
 
   const selectedPosition = manualPoint ?? position;
   const analysisCenter = selectedPosition ?? FRANCE_CENTER;
@@ -137,15 +175,72 @@ export default function DronePanel() {
       try {
         const response = await fetch(`/api/aircraft?lat=${analysisCenter[0]}&lon=${analysisCenter[1]}&radius=100`, { cache: "no-store" });
         const payload = await response.json();
-        if (!cancelled) setTraffic(Array.isArray(payload.aircraft) ? payload.aircraft : []);
+        if (!cancelled) {
+          const receivedAtMs = Date.now();
+          const nextTraffic: DroneTraffic[] = Array.isArray(payload.aircraft) ? payload.aircraft : [];
+          setTraffic(nextTraffic);
+          if (selectedPosition) {
+            let historyChanged = false;
+            for (const item of nextTraffic) {
+              historyChanged = passageHistoryRef.current.record({
+                modeS: item.id,
+                latitude: item.latitude,
+                longitude: item.longitude,
+                altitudeMeters: item.barometricAltitude,
+                groundSpeedMetersPerSecond: item.velocity,
+                trackDegrees: item.trueTrack,
+                positionTimestampMs: aircraftPositionTimestamp(item.lastPositionAt),
+                observer: selectedPosition,
+                observerTimestampMs: manualPoint ? receivedAtMs : timestamp
+              }) || historyChanged;
+            }
+            if (historyChanged) setPassageHistoryVersion((value) => value + 1);
+          }
+        }
       } catch { if (!cancelled) setTraffic([]); }
     }
     loadTraffic(); const timer = window.setInterval(loadTraffic, 15000);
     return () => { cancelled = true; window.clearInterval(timer); };
-  }, [analysisCenter]);
+  }, [analysisCenter, selectedPosition, manualPoint, timestamp]);
 
-  const nearbyTraffic = useMemo(() => traffic.map((item) => ({ ...item, distance: distanceKm(analysisCenter, [item.latitude, item.longitude]) })).sort((a,b) => a.distance-b.distance), [analysisCenter, traffic]);
-  const alertTraffic = nearbyTraffic.filter((item) => item.distance <= 5 && (item.barometricAltitude ?? Infinity) <= 1500);
+  const nearbyTraffic = useMemo<AnalyzedDroneTraffic[]>(() => {
+    const nowMs = Date.now();
+    return traffic.map((item) => {
+      const passage = analyzeAircraftPassage({
+        aircraft: {
+          modeS: item.id,
+          latitude: item.latitude,
+          longitude: item.longitude,
+          altitudeMeters: item.barometricAltitude,
+          groundSpeedMetersPerSecond: item.velocity,
+          trackDegrees: item.trueTrack,
+          positionTimestampMs: aircraftPositionTimestamp(item.lastPositionAt)
+        },
+        history: passageHistoryRef.current.get(item.id),
+        observer: selectedPosition,
+        gpsAccuracyMeters: manualPoint ? null : accuracy,
+        nowMs
+      });
+      const helicopter = isHelicopter(item);
+      const remarkable = detectRemarkable(item).length > 0;
+      return {
+        ...item,
+        distance: distanceKm(analysisCenter, [item.latitude, item.longitude]),
+        passage,
+        isHelicopter: helicopter,
+        isRemarkable: remarkable,
+        priority: droneOperationalPriority({ analysis: passage, altitudeMeters: item.barometricAltitude, isHelicopter: helicopter, isRemarkable: remarkable })
+      };
+    }).sort((a, b) => a.priority - b.priority || a.distance - b.distance);
+  // Le compteur publie les nouveaux points du store Mode-S auprès du calcul mémorisé.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [analysisCenter, selectedPosition, manualPoint, accuracy, traffic, passageHistoryVersion]);
+  const alertTraffic = nearbyTraffic.filter((item) => {
+    const projectedDistance = item.passage.estimatedMinimumDistanceKm ?? item.distance;
+    const operationallySensitive = (item.barometricAltitude ?? Infinity) <= 1500 || item.isHelicopter || item.isRemarkable;
+    return ["approaching", "closest"].includes(item.passage.status) && projectedDistance <= 5 && operationallySensitive;
+  });
+  const relevantTraffic = nearbyTraffic.filter((item) => item.priority < 6 || item.distance <= 20).slice(0, 8);
 
   const containingZones = useMemo(
     () => [],
@@ -196,7 +291,7 @@ export default function DronePanel() {
         category: manualPoint ? "location" : "home"
       }] : []),
     ...nearbyPlaces.map((place) => ({ id: place.id, lat: place.latitude, lon: place.longitude, name: place.icao ?? place.name, detail: `${place.kind === "heliport" ? "Héliport" : "Aérodrome"} • ${place.name} • ${place.distanceKm.toFixed(1)} km`, category: "aerodrome" })),
-    ...nearbyTraffic.map((item) => ({ id:`traffic-${item.id}`, lat:item.latitude, lon:item.longitude, name:item.callsign, detail:`Alt. ${item.barometricAltitude === null ? "Non déterminée" : `${Math.round(item.barometricAltitude)} m`} • ${item.velocity === null ? "Vitesse non déterminée" : `${Math.round(item.velocity*3.6)} km/h`} • ${item.trueTrack === null ? "Cap non déterminé" : `Cap ${Math.round(item.trueTrack)}°`}`, category:/heli|h145|ec145|h135|ec135/i.test(`${item.aircraftType ?? ""} ${item.description ?? ""}`) ? "helicopter" : "aircraft", heading:item.trueTrack }))
+    ...nearbyTraffic.map((item) => ({ id:`traffic-${item.id}`, lat:item.latitude, lon:item.longitude, name:item.callsign, detail:`${dronePassageLabel(item.passage)} • ${item.distance.toFixed(1)} km • Alt. ${item.barometricAltitude === null ? "Non déterminée" : `${Math.round(item.barometricAltitude)} m`} • donnée ${freshnessText(item.passage.freshnessSeconds)}`, category:item.isHelicopter ? "helicopter" : "aircraft", heading:item.trueTrack }))
   ];
 
   function applyCoordinates() {
@@ -236,7 +331,25 @@ export default function DronePanel() {
         <div className="drone-point-actions"><button type="button" disabled={!position} onClick={() => setManualPoint(null)}>📍 Utiliser HOME</button><small>{manualPoint ? `${manualPoint[0].toFixed(5)} / ${manualPoint[1].toFixed(5)}` : position ? "Position GPS réelle" : "Position GPS indisponible"}</small></div>
         <footer>Cette synthèse est une aide opérationnelle. Elle ne remplace pas la vérification réglementaire du télépilote (AZBA, NOTAM, SUP AIP, AIP et restrictions locales).</footer>
       </section>
-      {alertTraffic.length > 0 && <section className="panel drone-traffic-alert"><strong>ALERTE TRAFIC À PROXIMITÉ</strong>{alertTraffic.slice(0,3).map((item) => <p key={item.id}><b>{item.callsign}</b> à {item.distance.toFixed(1)} km • Altitude {item.barometricAltitude === null ? "non déterminée" : `${Math.round(item.barometricAltitude)} m`} • Cap {item.trueTrack === null ? "non déterminé" : `${Math.round(item.trueTrack)}°`} • Vitesse {item.velocity === null ? "non déterminée" : `${Math.round(item.velocity*3.6)} km/h`}</p>)}</section>}
+      {alertTraffic.length > 0 && <section className="panel drone-traffic-alert"><strong>ALERTE — TRAFIC EN RAPPROCHEMENT DU SITE</strong>{alertTraffic.slice(0,3).map((item) => <p key={item.id}><b>{item.isHelicopter ? "🚁" : "✈️"} {item.callsign}</b> — {item.passage.estimatedSecondsToClosest === null ? "rapprochement mesuré" : `passage estimé dans ${formatPassageDuration(item.passage.estimatedSecondsToClosest)}`} {item.passage.estimatedMinimumDistanceKm === null ? "" : `à environ ${item.passage.estimatedMinimumDistanceKm.toFixed(1)} km`} • altitude {item.barometricAltitude === null ? "non déterminée" : `${Math.round(item.barometricAltitude)} m`} • donnée reçue il y a {freshnessText(item.passage.freshnessSeconds)}</p>)}<small>Aide à la vigilance uniquement : cette détection ADS-B n’est pas exhaustive.</small></section>}
+
+      <section className="panel drone-passage-panel">
+        <header><div><span className="eyebrow">TRAFIC CLASSÉ PAR PERTINENCE OPÉRATIONNELLE</span><h3>Rapprochement réel du site de mission</h3></div><small>{selectedPosition ? manualPoint ? "Calcul au point manuel exact" : "Calcul depuis la position GPS réelle" : "Position requise"}</small></header>
+        <div className="drone-passage-list">
+          {relevantTraffic.map((item) => <article key={item.id} className={`status-${item.passage.status}`}>
+            <div className="drone-passage-identity"><b>{item.isHelicopter ? "🚁" : item.isRemarkable ? "◆" : "✈️"}</b><strong>{item.callsign}<small>{item.aircraftType ?? item.description ?? "Type non déterminé"} • priorité {item.priority}</small></strong></div>
+            <div><span>Situation</span><strong>{dronePassageLabel(item.passage)}</strong></div>
+            <div><span>Distance</span><strong>{item.passage.currentDistanceKm === null ? "—" : `${item.passage.currentDistanceKm.toFixed(1)} km`}</strong></div>
+            <div><span>Altitude</span><strong>{item.barometricAltitude === null ? "—" : `${Math.round(item.barometricAltitude)} m`}</strong></div>
+            <div><span>Passage estimé</span><strong>{item.passage.estimatedSecondsToClosest === null ? "—" : formatPassageDuration(item.passage.estimatedSecondsToClosest)}</strong></div>
+            <div><span>Minimum estimé</span><strong>{item.passage.estimatedMinimumDistanceKm === null ? item.passage.status === "receding" && item.passage.observedMinimumDistanceKm !== null ? `${item.passage.observedMinimumDistanceKm.toFixed(1)} km observé` : "—" : `≈ ${item.passage.estimatedMinimumDistanceKm.toFixed(1)} km`}</strong></div>
+            <div><span>Fraîcheur</span><strong>{freshnessText(item.passage.freshnessSeconds)}</strong></div>
+          </article>)}
+          {!relevantTraffic.length && <p className="drone-passage-empty">Aucun trafic pertinent analysable pour le moment.</p>}
+        </div>
+        {!manualPoint && accuracy !== null && accuracy > 50 && <p className="drone-passage-gps-warning">Estimation limitée par une précision GPS de ± {Math.round(accuracy)} mètres.</p>}
+        <footer>L’absence d’aéronef ADS-B détecté ne signifie jamais que l’espace aérien est libre. Maintenez l’observation visuelle et auditive et appliquez les procédures du télépilote.</footer>
+      </section>
 
       <section className="drone-ops-overview">
         <article className="panel drone-synthesis">
@@ -327,7 +440,7 @@ export default function DronePanel() {
             <div className="check-row"><span>{isLive ? "🟢" : "🟠"}</span><div><strong>GPS</strong><small>{positionStatus}</small></div></div>
             <div className="check-row"><span>📍</span><div><strong>{manualPoint ? "Point sélectionné" : "HOME"}</strong><small>{selectedPosition ? `${selectedPosition[0].toFixed(5)} / ${selectedPosition[1].toFixed(5)}` : "Position GPS indisponible"}</small></div></div>
             <div className="check-row"><span>🧭</span><div><strong>Latitude / longitude</strong><small>{selectedPosition ? `${selectedPosition[0].toFixed(6)} / ${selectedPosition[1].toFixed(6)}` : "Position indisponible"}</small></div></div>
-            <div className="check-row"><span>🎯</span><div><strong>Précision / altitude GPS</strong><small>{!manualPoint && accuracy ? `±${Math.round(accuracy)} m • ${altitude === null ? "altitude non disponible" : `${Math.round(altitude)} m`}` : "Point manuel"}</small></div></div>
+            <div className="check-row"><span>🎯</span><div><strong>Précision / altitude GPS</strong><small>{manualPoint ? "Point manuel" : position && accuracy ? `±${Math.round(accuracy)} m • ${altitude === null ? "altitude non disponible" : `${Math.round(altitude)} m`}` : "Position GPS indisponible"}</small></div></div>
             <div className="check-row"><span>🕒</span><div><strong>Dernière position</strong><small>{timestamp ? new Date(timestamp).toLocaleTimeString("fr-FR") : "Non disponible"}</small></div></div>
             <p className="safety-note">La carte est une aide de repérage. L’AZBA, les NOTAM, SUP AIP et AIP officiels restent prioritaires.</p>
           </article>

@@ -1,7 +1,7 @@
 import { measuredFetch, registerSource, type SourceAdapter } from "../sourceAdapter";
 
 type Input = { latitude: number; longitude: number; radiusNm: number; revalidateSeconds: number };
-type Output = { ac?: unknown[] };
+type Output = { ac?: unknown[]; now?: number };
 
 const adapter: SourceAdapter<Input, Output> = {
   id: "airplanes-live", name: "Airplanes.live", enabled: process.env.AIRPLANES_LIVE_ENABLED !== "false",

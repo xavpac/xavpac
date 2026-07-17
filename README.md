@@ -1,6 +1,16 @@
-# XavPac 6.4.0
+# XavPac 6.4.1
 
 Tableau de bord Aviation, Drone SDIS 71, Moyens nationaux, CODIS, Astronomie et Météo.
+
+## Nouveautés 6.4.1 — suivi réel des passages ADS-B
+
+- Historique court isolé par identifiant Mode-S et recalculé à chaque nouvelle position.
+- Rapprochement, point le plus proche, éloignement et trajectoire non convergente fondés en priorité sur l’évolution mesurée de la distance.
+- Projection prudente avec cap, vitesse et trajectoire récente ; aucune ETA, distance minimale, direction ou progression inventée si les données manquent.
+- Fraîcheur de la position ADS-B et limitation liée à la précision GPS explicitement affichées.
+- Barre Approche → Plus proche → Éloignement uniquement dans une zone de passage dont les bornes sont calculables.
+- Classement opérationnel Drone des aéronefs qui convergent réellement vers le site, avec priorité aux basses altitudes et hélicoptères.
+- Rappel permanent que la couverture ADS-B n’est pas exhaustive et ne permet jamais de conclure que l’espace aérien est libre.
 
 ## Nouveautés 6.4.0 — fiabilisation Aviation
 

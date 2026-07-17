@@ -1,5 +1,19 @@
 # Changelog
 
+## 6.4.1 — Suivi réel des passages ADS-B
+
+- Rétablissement du suivi d’avance d’un aéronef par rapport à la position GPS exacte.
+- Historique glissant de huit minutes, limité à quarante positions et isolé par Mode-S.
+- Tendance de distance prioritaire sur l’orientation visuelle de l’icône.
+- Projection à court terme combinant cap sol, vitesse sol et trajectoire récente lorsque toutes les données sont disponibles.
+- États explicites : rapprochement, passage au plus près, éloignement, non-convergence, données insuffisantes et position périmée.
+- Mémorisation de la distance minimale observée et du temps écoulé depuis le passage.
+- Affichage Aviation de la distance, de son évolution, de la vitesse relative, de l’ETA estimée, du minimum estimé ou observé, du côté probable et de la fraîcheur ADS-B.
+- Barre de passage sans pourcentage arbitraire : le curseur n’apparaît que lorsque la traversée de la zone de dix kilomètres est calculable.
+- Classement Drone par pertinence opérationnelle et alertes de convergence vers le site de mission.
+- Avertissements permanents sur la précision GPS et les limites de couverture ADS-B.
+- Ajout des scénarios de tests directs, latéraux, divergents, anciens, incomplets, multi-appareils et hélicoptères.
+
 ## 6.4.0 — Fiabilisation Aviation
 
 - Ajout d’un agrégateur serveur unique pour les fiches Aviation.

@@ -57,7 +57,7 @@ type AirplanesLiveAircraft = {
   category?: string;
 };
 
-function normalizeAircraft(item: AirplanesLiveAircraft) {
+function normalizeAircraft(item: AirplanesLiveAircraft, sourceTimestampMs: number) {
   const latitude = numberOrNull(item.lat);
   const longitude = numberOrNull(item.lon);
 
@@ -70,6 +70,7 @@ function normalizeAircraft(item: AirplanesLiveAircraft) {
     typeof item.alt_baro === "number"
       ? altitudeFeetToMeters(item.alt_baro)
       : null;
+  const positionAgeSeconds = numberOrNull(item.seen_pos) ?? numberOrNull(item.seen);
 
   return {
     id: item.hex?.trim() || `${latitude}-${longitude}`,
@@ -98,9 +99,11 @@ function normalizeAircraft(item: AirplanesLiveAircraft) {
     operator: item.ownOp?.trim() || null,
     category: item.category?.trim() || null,
     positionSource: item.type?.trim() || "unknown",
+    lastPositionAt: positionAgeSeconds === null ? null : new Date(sourceTimestampMs - positionAgeSeconds * 1000).toISOString(),
+    positionAgeSeconds,
     lastContact:
       typeof item.seen === "number"
-        ? Math.floor(Date.now() / 1000 - item.seen)
+        ? Math.floor(sourceTimestampMs / 1000 - item.seen)
         : null
   };
 }
@@ -132,9 +135,13 @@ export async function GET(request: NextRequest) {
   try {
     const payload = await fetchAirplanesLive({ latitude: Number(latitude.toFixed(5)), longitude: Number(longitude.toFixed(5)), radiusNm, revalidateSeconds: 8 });
     const sourceAircraft = Array.isArray(payload.ac) ? payload.ac as AirplanesLiveAircraft[] : [];
+    const rawSourceTimestamp = numberOrNull(payload.now);
+    const sourceTimestampMs = rawSourceTimestamp === null
+      ? Date.now()
+      : rawSourceTimestamp > 10_000_000_000 ? rawSourceTimestamp : rawSourceTimestamp * 1000;
 
     const aircraft = sourceAircraft
-      .map((item: AirplanesLiveAircraft) => normalizeAircraft(item))
+      .map((item: AirplanesLiveAircraft) => normalizeAircraft(item, sourceTimestampMs))
       .filter((item: ReturnType<typeof normalizeAircraft>) => item !== null);
 
     return NextResponse.json(
