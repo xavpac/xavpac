@@ -3,7 +3,6 @@
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLiveGeolocation } from "../hooks/useLiveGeolocation";
-import FlightRouteWeather from "./FlightRouteWeather";
 
 const StableMap = dynamic(() => import("./StableMap"), { ssr: false });
 
@@ -31,20 +30,30 @@ type AircraftWithDistance = LiveAircraft & { distance: number };
 type Radius = 20 | 50 | 100;
 type MapStyle = "street" | "satellite" | "dark";
 
+type CityWeather = {
+  name: string;
+  latitude: number;
+  longitude: number;
+  distance: number;
+  temperature: number | null;
+  windSpeed: number | null;
+  windDirection: number | null;
+  visibility: number | null;
+  cloudCover: number | null;
+  weatherCode: number;
+  icon: string;
+  label: string;
+};
+
 type AircraftPhoto = {
   image: string;
   link?: string | null;
   photographer?: string | null;
 };
 
-const PREVIEW_AIRCRAFT: AircraftWithDistance[] = [
-  { id: "39a123", callsign: "AFR1234", country: "France", longitude: 4.76, latitude: 46.79, barometricAltitude: 10972, geometricAltitude: 11030, velocity: 253, trueTrack: 113, verticalRate: 3.25, onGround: false, squawk: "5632", registration: "F-GKXU", aircraftType: "A320", description: "Airbus A320-214", operator: "Air France", category: "A3", distance: 18.7 },
-  { id: "4ca456", callsign: "RYR45GQ", country: "Ireland", longitude: 4.35, latitude: 46.62, barometricAltitude: 9448, geometricAltitude: 9510, velocity: 245, trueTrack: 78, verticalRate: 0, onGround: false, squawk: "2241", registration: "EI-EZZ", aircraftType: "B738", description: "Boeing 737-800", operator: "Ryanair", category: "A3", distance: 23.4 },
-  { id: "896789", callsign: "UAE14Q", country: "United Arab Emirates", longitude: 5.16, latitude: 46.82, barometricAltitude: 11887, geometricAltitude: 11930, velocity: 219, trueTrack: 244, verticalRate: -1.8, onGround: false, squawk: "4031", registration: "A6-EQX", aircraftType: "B77W", description: "Boeing 777-300ER", operator: "Emirates", category: "A5", distance: 31.2 },
-  { id: "4b1234", callsign: "SAS42P", country: "Sweden", longitude: 5.09, latitude: 46.46, barometricAltitude: 9754, geometricAltitude: 9810, velocity: 226, trueTrack: 302, verticalRate: 0.3, onGround: false, squawk: "1127", registration: "SE-ROJ", aircraftType: "A320", description: "Airbus A320neo", operator: "SAS", category: "A3", distance: 36.8 },
-  { id: "39a987", callsign: "AFR27FQ", country: "France", longitude: 4.46, latitude: 46.39, barometricAltitude: 11582, geometricAltitude: 11620, velocity: 265, trueTrack: 61, verticalRate: 0, onGround: false, squawk: "2711", registration: "F-HBNK", aircraftType: "A321", description: "Airbus A321-200", operator: "Air France", category: "A3", distance: 41.6 },
-  { id: "4ca777", callsign: "TRA568D", country: "Netherlands", longitude: 4.56, latitude: 46.18, barometricAltitude: 8534, geometricAltitude: 8610, velocity: 218, trueTrack: 338, verticalRate: -2.4, onGround: false, squawk: "3045", registration: "PH-HXN", aircraftType: "B738", description: "Boeing 737-800", operator: "Transavia", category: "A3", distance: 47.1 }
-];
+type RouteAirport = { name?: string; municipality?: string; iata_code?: string; icao_code?: string };
+type RouteWeather = { temperature_2m?: number; weather_code?: number; wind_speed_10m?: number; visibility?: number };
+type FlightRoute = { origin: RouteAirport; destination: RouteAirport; originWeather: RouteWeather | null; destinationWeather: RouteWeather | null };
 
 function distanceKm(origin: [number, number], destination: [number, number]) {
   const [lat1, lon1] = origin.map((value) => (value * Math.PI) / 180);
@@ -156,6 +165,11 @@ function altitudeBand(value: number | null) {
   return 0;
 }
 
+function weatherVisibility(value: number | null) {
+  if (value === null) return "—";
+  return value >= 10000 ? "> 10 km" : `${(value / 1000).toFixed(1)} km`;
+}
+
 export default function AviationPanel() {
   const { position, status: positionStatus, accuracy, isLive, error: gpsError } = useLiveGeolocation();
   const [radius, setRadius] = useState<Radius>(50);
@@ -165,6 +179,7 @@ export default function AviationPanel() {
   const [sourceStatus, setSourceStatus] = useState("Connexion Airplanes.live…");
   const [lastUpdate, setLastUpdate] = useState("—");
   const [error, setError] = useState("");
+  const [route, setRoute] = useState<FlightRoute | null>(null);
   const [photo, setPhoto] = useState<AircraftPhoto | null>(null);
   const [photoLoading, setPhotoLoading] = useState(false);
   const [mapStyle, setMapStyle] = useState<MapStyle>("street");
@@ -172,7 +187,6 @@ export default function AviationPanel() {
   const [showCircle, setShowCircle] = useState(true);
   const [locateSignal, setLocateSignal] = useState(0);
   const [query, setQuery] = useState("");
-  const [previewMode, setPreviewMode] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [flightOnly, setFlightOnly] = useState(true);
   const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
@@ -180,8 +194,6 @@ export default function AviationPanel() {
   const [trailsVersion, setTrailsVersion] = useState(0);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    setPreviewMode(params.get("preview") === "1");
     try {
       const stored = window.localStorage.getItem("xavpac-favorites");
       if (stored) setFavoriteIds(JSON.parse(stored));
@@ -194,24 +206,12 @@ export default function AviationPanel() {
     let cancelled = false;
 
     async function refresh() {
-      if (previewMode) {
-        const sorted = PREVIEW_AIRCRAFT.filter((item) => item.distance <= radius).sort((a, b) => a.distance - b.distance);
-        setAircraft(sorted);
-        setSelectedId((current) => current && sorted.some((item) => item.id === current) ? current : sorted[0]?.id ?? null);
-        setSourceStatus(`MODE APERÇU • ${sorted.length} appareils`);
-        setLastUpdate("17:27:19");
-        setError("");
-        return;
-      }
-
-      if (!isLive) {
+      if (!position) {
         setAircraft([]);
         setSelectedId(null);
-        setSourceStatus("En attente de la position GPS…");
-        setLastUpdate("—");
+        setSourceStatus("En attente d’une position GPS réelle");
         return;
       }
-
       try {
         setError("");
         const response = await fetch(`/api/aircraft?lat=${position[0]}&lon=${position[1]}&radius=${radius}`, { cache: "no-store" });
@@ -262,9 +262,19 @@ export default function AviationPanel() {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [position, radius, manualSelection, selectedId, previewMode, isLive]);
+  }, [position, radius, manualSelection, selectedId]);
 
   const selected = useMemo(() => aircraft.find((item) => item.id === selectedId) ?? aircraft[0] ?? null, [aircraft, selectedId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!selected?.callsign) { setRoute(null); return; }
+    fetch(`/api/flight-details?callsign=${encodeURIComponent(selected.callsign)}`, { cache: "no-store" })
+      .then((response) => response.json())
+      .then((payload) => { if (!cancelled) setRoute(payload.route ?? null); })
+      .catch(() => { if (!cancelled) setRoute(null); });
+    return () => { cancelled = true; };
+  }, [selected?.callsign]);
 
   useEffect(() => {
     let cancelled = false;
@@ -274,11 +284,6 @@ export default function AviationPanel() {
         return;
       }
       setPhotoLoading(true);
-      if (previewMode) {
-        setPhoto({ image: "/aircraft/illustrative-aircraft.jpg", photographer: "Illustration XavPac" });
-        setPhotoLoading(false);
-        return;
-      }
       try {
         const params = new URLSearchParams({ hex: selected.id, registration: selected.registration ?? "" });
         const response = await fetch(`/api/aircraft-photo?${params.toString()}`, { cache: "no-store" });
@@ -292,7 +297,7 @@ export default function AviationPanel() {
     }
     refreshPhoto();
     return () => { cancelled = true; };
-  }, [selected?.id, selected?.registration, previewMode]);
+  }, [selected]);
 
   const visibleAircraft = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -303,7 +308,7 @@ export default function AviationPanel() {
 
   const mapPoints = useMemo(
     () => [
-      ...(isLive ? [{
+      ...(position ? [{
         id: "home",
         lat: position[0],
         lon: position[1],
@@ -326,7 +331,7 @@ export default function AviationPanel() {
         };
       })
     ],
-    [position, positionStatus, selected, visibleAircraft, isLive]
+    [position, positionStatus, selected, visibleAircraft]
   );
 
   const mapTrails = useMemo(
@@ -342,8 +347,8 @@ export default function AviationPanel() {
     [visibleAircraft, selected, trailsVersion, showTrails]
   );
 
-  const approach = selected ? closestApproach(position, selected) : null;
-  const bearing = selected ? bearingName(position, [selected.latitude, selected.longitude]) : null;
+  const approach = selected && position ? closestApproach(position, selected) : null;
+  const bearing = selected && position ? bearingName(position, [selected.latitude, selected.longitude]) : null;
   const estimatedElevation = selected && selected.barometricAltitude !== null && selected.distance > 0
     ? Math.max(0, Math.min(90, (Math.atan2(selected.barometricAltitude, selected.distance * 1000) * 180) / Math.PI))
     : null;
@@ -410,7 +415,6 @@ export default function AviationPanel() {
         <div className="fw-live-summary"><span className={isLive ? "live-dot" : "live-dot off"} /> {sourceStatus}</div>
       </div>
 
-      {previewMode && <div className="fw-preview-banner">APERÇU LOCAL — données de démonstration uniquement pour contrôler le rendu. La version normale utilise Airplanes.live.</div>}
       {showFilters && (
         <div className="fw-filterbar panel">
           <button type="button" className={flightOnly ? "active" : ""} onClick={() => setFlightOnly(true)}>En vol uniquement</button>
@@ -427,9 +431,9 @@ export default function AviationPanel() {
             <div className="flightwall-map-stage">
               <StableMap
                 points={mapPoints}
-                center={position}
+                center={position ?? [46.5, 2.5]}
                 radiusKm={radius}
-                showRadius={showCircle}
+                showRadius={showCircle && Boolean(position)}
                 selectedId={selected?.id}
                 trails={mapTrails}
                 onSelect={selectAircraft}
@@ -458,14 +462,14 @@ export default function AviationPanel() {
                 <div><span>✈️</span><strong>{aircraft.filter((item) => !item.onGround).length}</strong><small>En vol</small></div>
                 <div><span>🎯</span><strong>{aircraft.filter((item) => item.distance <= 20).length}</strong><small>À proximité</small></div>
                 <div><span>🛬</span><strong>{aircraft.filter((item) => item.onGround).length}</strong><small>Au sol</small></div>
-                <button type="button" disabled={!isLive} onClick={() => setLocateSignal((value) => value + 1)}><span>📍</span><strong>HOME</strong><small>{isLive ? "Ma position" : "GPS requis"}</small></button>
+                <button type="button" disabled={!position} onClick={() => setLocateSignal((value) => value + 1)}><span>📍</span><strong>HOME</strong><small>{position ? "Ma position" : "GPS requis"}</small></button>
               </div>
 
-              <button type="button" className="fw-locate-button" disabled={!isLive} title="Centrer sur ma position" onClick={() => setLocateSignal((value) => value + 1)}>📍</button>
+              <button type="button" disabled={!position} className="fw-locate-button" title="Centrer sur ma position" onClick={() => setLocateSignal((value) => value + 1)}>⌾</button>
 
               <div className="fw-position-card">
                 <span className={isLive ? "live-dot" : "live-dot off"} />
-                <div><strong>MA POSITION</strong><small>{isLive ? `${position[0].toFixed(4)} N / ${position[1].toFixed(4)} E${accuracy ? ` • ±${Math.round(accuracy)} m` : ""}` : "En attente de l’autorisation GPS"}</small></div>
+                <div><strong>📍 HOME</strong><small>{position ? `${position[0].toFixed(4)} / ${position[1].toFixed(4)}${accuracy ? ` • ±${Math.round(accuracy)} m` : ""}` : "En attente d’une position GPS réelle"}</small></div>
               </div>
             </div>
           </div>
@@ -477,7 +481,7 @@ export default function AviationPanel() {
                 <div className="mini-radar fw-large-radar">
                   <span className="radar-axis horizontal" /><span className="radar-axis vertical" />
                   <span className="radar-circle one" /><span className="radar-circle two" /><span className="radar-circle three" /><span className="radar-center" />
-                  {aircraft.slice(0, 22).map((item) => <button type="button" key={item.id} className={item.id === selected?.id ? "radar-blip selected" : "radar-blip"} style={radarCoordinates(position, item, radius)} onClick={() => selectAircraft(item.id)} title={item.callsign} />)}
+                  {position && aircraft.slice(0, 22).map((item) => <button type="button" key={item.id} className={item.id === selected?.id ? "radar-blip selected" : "radar-blip"} style={radarCoordinates(position, item, radius)} onClick={() => selectAircraft(item.id)} title={item.callsign} />)}
                 </div>
                 <div className="fw-proximity-grid">
                   <div><span>≤ 5 km</span><strong>{proximityCounts.five}</strong></div>
@@ -540,7 +544,11 @@ export default function AviationPanel() {
                 <div><span>Vitesse sol</span><strong>{formatSpeedKnots(selected.velocity)}</strong></div>
               </div>
 
-              <FlightRouteWeather flightKey={selected.callsign} />
+              <div className="fw-route-card">
+                <div><span>Départ</span><strong>{route?.origin.iata_code ?? route?.origin.icao_code ?? "—"}</strong><small>{route ? `${route.origin.municipality ?? "Ville inconnue"} • ${route.origin.name ?? "Aéroport non renseigné"}` : "Route non disponible"}</small></div>
+                <div className="fw-route-line">✈︎ <i /> ✈︎</div>
+                <div><span>Arrivée</span><strong>{route?.destination.iata_code ?? route?.destination.icao_code ?? "—"}</strong><small>{route ? `${route.destination.municipality ?? "Ville inconnue"} • ${route.destination.name ?? "Aéroport non renseigné"}` : "Route non disponible"}</small></div>
+              </div>
 
               <div className="fw-telemetry-grid">
                 <div><span>Altitude</span><strong>{formatFlightLevel(selected.barometricAltitude)}</strong><small>{formatAltitude(selected.barometricAltitude)}</small></div>
@@ -556,6 +564,15 @@ export default function AviationPanel() {
                 <div><span>N° de vol</span><strong>{selected.callsign}</strong></div>
               </div>
 
+              <div className="fw-weather-strip">
+                <header><div><span>MÉTÉO DU VOL</span><strong>Départ et arrivée uniquement</strong></div><small>Open-Meteo</small></header>
+                <div>
+                  {route && ([{ airport: route.origin, weather: route.originWeather }, { airport: route.destination, weather: route.destinationWeather }]).map(({ airport, weather }) => (
+                    <article key={airport.icao_code ?? airport.name}><span>{airport.municipality ?? airport.name ?? "Aéroport"}</span><strong>{typeof weather?.temperature_2m === "number" ? `${Math.round(weather.temperature_2m)}°C` : "—"}</strong><small>Vent {typeof weather?.wind_speed_10m === "number" ? `${Math.round(weather.wind_speed_10m)} kt` : "—"} • Vis. {weatherVisibility(weather?.visibility ?? null)}</small></article>
+                  ))}
+                  {!route && <article><span>Route indisponible</span><strong>—</strong><small>Aucune météo de substitution affichée</small></article>}
+                </div>
+              </div>
             </>
           ) : (
             <div className="focus-empty"><span>✈</span><h2>Aucun avion détecté</h2><p>Aucun appareil ADS-B reçu dans un rayon de {radius} km.</p><small>{sourceStatus}</small></div>

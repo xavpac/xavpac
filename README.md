@@ -1,46 +1,58 @@
-# XavPac Ultimate 7.3
+# XavPac 5.0
 
-Tableau de bord aviation et moyens nationaux, conçu pour Mac, PC, iPad et iPhone.
+Tableau de bord Aviation, Drone SDIS 71, Moyens nationaux, CODIS, Astronomie et Météo.
 
-## Modifications principales
+## Nouveautés 5.0
 
-- géolocalisation réelle avec punaise HOME ;
-- aucune météo des villes voisines sur la carte ;
-- aucune liste de météo locale dans l’onglet Aviation ;
-- deux blocs météo uniquement : ville de départ et ville d’arrivée ;
-- saisie manuelle des villes lorsque le flux ADS-B ne fournit pas la route ;
-- même design pour Aviation et Moyens nationaux ;
-- photos d’appareils via Planespotters lorsqu’elles sont disponibles ;
-- trafic via Airplanes.live ;
-- météo via Open-Meteo ;
-- compteur de visites conservé.
+- GPS suivi en continu lorsque le site reste ouvert.
+- Aucune position de secours fictive : HOME apparaît uniquement après une mesure GPS réelle.
+- Avions nettement plus visibles sur la carte.
+- Onglet Aviation sans METAR.
+- Onglet Drone cadré uniquement sur la Saône-et-Loire.
+- R45, R46 et R47 affichées en permanence, avec statut à vérifier sur l’AZBA officiel.
+- Onglet CODIS distinct.
+- Compteur de vues local affiché dans l’en-tête.
+- Météo à la position GPS.
 
-## Test local
+## Données et prudence
 
-```bash
-npm ci
-npm run dev
-```
+XavPac présente des données publiques et des aides de repérage. Pour les décisions opérationnelles et aéronautiques, les sources officielles restent prioritaires. L’information AZBA ne remplace pas les NOTAM, SUP AIP et AIP.
 
-Puis ouvrir `http://localhost:3000`.
-
-## Installation dans le dépôt GitHub déjà cloné
-
-Depuis la racine du dépôt XavPac dans le terminal VS Code :
+## Développement
 
 ```bash
-bash ~/Downloads/XavPac-7.3-online/INSTALLER-DANS-XAVPAC.command
+npm install
+npm run typecheck
+npm run build
 ```
 
-Le script :
 
-1. sauvegarde l’ancienne version dans Documents ;
-2. remplace les fichiers du site ;
-3. vérifie TypeScript et la compilation ;
-4. crée le commit Git ;
-5. pousse vers GitHub ;
-6. déclenche le déploiement automatique Vercel.
+## XavPac 5.1 — Aviation FlightWall et cartes lisibles
 
-## Limite transparente
+- Carte Aviation claire par défaut, avec choix Plan / Satellite / Sombre.
+- Avions nettement agrandis et renforcés pour rester visibles sur tous les fonds.
+- Interface responsive Mac, iPad et iPhone.
+- Onglet Drone avec deux vues : Saône-et-Loire et carte officielle AZBA du SIA en direct.
+- Les couleurs officielles AZBA sont affichées par le service SIA lui-même : rouge actif, bleu inactif.
+- Si le GPS est indisponible ou refusé, aucune position HOME n’est affichée.
 
-La source ADS-B publique ne fournit pas toujours les villes de départ et d’arrivée. Les deux champs restent donc modifiables manuellement. Aucune route n’est inventée.
+
+## XavPac 6.1 — Aviation FlightWall
+
+Cette version reconstruit réellement l’onglet Aviation :
+
+- carte claire par défaut, satellite et sombre au choix ;
+- avions ADS-B agrandis et orientés selon le cap ;
+- météo affichée uniquement pour les villes de départ et d’arrivée lorsqu’une route est disponible ;
+- bouton de recentrage sur la géolocalisation ;
+- traces et cercle de portée activables ;
+- fiche avion avec photo PlaneSpotters lorsque disponible ;
+- calcul indicatif du prochain passage à partir de la position, du cap et de la vitesse ADS-B ;
+- radar local, cinq appareils les plus proches et histogramme d’altitudes ;
+- mises en page dédiées aux ordinateurs, tablettes et téléphones.
+
+Les routes départ/arrivée ne sont pas inventées : elles restent indiquées comme indisponibles lorsque la source ADS-B ne les fournit pas.
+
+## XavPac 6.2 — Aviation FlightWall fidèle
+
+Cette version modifie uniquement l’onglet Aviation. Les données opérationnelles restent issues des sources publiques configurées dans le projet. Les départs et arrivées ne sont jamais inventés lorsqu’ils ne sont pas fournis. La photo provient de PlaneSpotters lorsqu’elle est disponible ; l’image de remplacement est explicitement identifiée comme une illustration.

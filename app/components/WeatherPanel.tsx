@@ -77,6 +77,7 @@ export default function WeatherPanel() {
   const [updatedAt, setUpdatedAt] = useState("");
 
   const url = useMemo(() => {
+    if (!position) return null;
     const params = new URLSearchParams({
       latitude: String(position[0]),
       longitude: String(position[1]),
@@ -110,12 +111,11 @@ export default function WeatherPanel() {
   useEffect(() => {
     let cancelled = false;
 
-    if (!isLive) {
-      setWeather(null);
-      return () => { cancelled = true; };
-    }
-
     async function loadWeather() {
+      if (!url) {
+        setWeather(null);
+        return;
+      }
       try {
         setError("");
         const response = await fetch(url, { cache: "no-store" });
@@ -136,19 +136,7 @@ export default function WeatherPanel() {
       cancelled = true;
       window.clearInterval(refresh);
     };
-  }, [url, isLive]);
-
-  if (!isLive) {
-    return (
-      <section className="hero">
-        <div>
-          <span className="eyebrow">MÉTÉO LOCALE</span>
-          <h1>Autorisez la localisation</h1>
-          <p>{gpsError || positionStatus}</p>
-        </div>
-      </section>
-    );
-  }
+  }, [url]);
 
   if (error) {
     return (
@@ -263,10 +251,10 @@ export default function WeatherPanel() {
           <article className="panel">
             <span className="eyebrow">LOCALISATION</span>
             <div className="info-list">
-              <div><span>Source</span><strong>GPS continu</strong></div>
+              <div><span>Source</span><strong>{isLive ? "GPS continu" : "GPS en attente"}</strong></div>
               <div><span>État</span><strong>{positionStatus}</strong></div>
-              <div><span>Latitude</span><strong>{position[0].toFixed(5)}°</strong></div>
-              <div><span>Longitude</span><strong>{position[1].toFixed(5)}°</strong></div>
+              <div><span>Latitude</span><strong>{position ? `${position[0].toFixed(5)}°` : "—"}</strong></div>
+              <div><span>Longitude</span><strong>{position ? `${position[1].toFixed(5)}°` : "—"}</strong></div>
             </div>
           </article>
 

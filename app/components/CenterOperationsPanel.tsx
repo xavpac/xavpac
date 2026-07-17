@@ -167,6 +167,12 @@ export default function CenterOperationsPanel() {
     let cancelled = false;
 
     async function loadSituation() {
+      if (!position) {
+        setWeather(null);
+        setNearbyAircraft([]);
+        setWeatherError("En attente d’une position GPS réelle");
+        return;
+      }
       const [latitude, longitude] = position;
       const weatherParams = new URLSearchParams({
         latitude: String(latitude),
@@ -233,14 +239,14 @@ export default function CenterOperationsPanel() {
   const level = weatherLevel(weather);
 
   const mapPoints = useMemo(() => [
-    {
+    ...(position ? [{
       id: "home",
       lat: position[0],
       lon: position[1],
       name: "Position opérationnelle",
       detail: positionStatus,
       category: "home" as const
-    },
+    }] : []),
     ...assets.map((asset) => ({
       id: asset.id,
       lat: asset.latitude,
@@ -342,7 +348,7 @@ export default function CenterOperationsPanel() {
             <div className="center-ops-map">
               <StableMap
                 points={mapPoints}
-                center={position}
+                center={position ?? [46.5, 2.5]}
                 zoom={7}
                 selectedId={selectedId}
                 onSelect={(id) => id !== "home" && setSelectedId(id)}

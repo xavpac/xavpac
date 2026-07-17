@@ -29,21 +29,21 @@ export default function AstronomyPanel() {
     let cancelled = false;
     async function load() {
       try {
-        const [stationsResponse, starlinkResponse, visualResponse, weatherResponse] = await Promise.all([
+        const [stationsResponse, starlinkResponse, visualResponse] = await Promise.all([
           fetch("/api/orbits?group=stations", { cache: "no-store" }),
           fetch("/api/orbits?group=starlink", { cache: "no-store" }),
-          fetch("/api/orbits?group=visual", { cache: "no-store" }),
-          fetch(
+          fetch("/api/orbits?group=visual", { cache: "no-store" })
+        ]);
+        const weatherResponse = position ? await fetch(
             `https://api.open-meteo.com/v1/forecast?latitude=${position[0]}&longitude=${position[1]}&current=cloud_cover,visibility,temperature_2m,wind_speed_10m&timezone=Europe%2FParis`,
             { cache: "no-store" }
-          )
-        ]);
+          ) : null;
 
         const [stations, starlink, visual, weatherPayload] = await Promise.all([
           stationsResponse.json(),
           starlinkResponse.json(),
           visualResponse.json(),
-          weatherResponse.json()
+          weatherResponse ? weatherResponse.json() : Promise.resolve({ current: null })
         ]);
 
         if (cancelled) return;

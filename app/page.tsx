@@ -74,7 +74,7 @@ export default function Page() {
         ))}
       </nav>
 
-      <footer className="footer-v4">XavPac 6.2 • Aviation FlightWall fidèle • Photos selon disponibilité • Météo des villes • Géolocalisation continue lorsque le site reste ouvert.</footer>
+      <footer className="footer-v4">XavPac 6.2 • Données aériennes réelles • Photos selon disponibilité • Météo du départ et de l’arrivée • HOME uniquement sur position GPS réelle.</footer>
     </main>
   );
 }
