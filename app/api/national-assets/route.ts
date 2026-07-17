@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { identifyNationalAsset } from "../../lib/nationalAssetIdentification";
+import { fetchAirplanesLive } from "../../lib/aviation/providers/airplanesLive";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 60;
@@ -25,7 +26,9 @@ const searchPoints = [
   { lat: 43.8, lon: 4.8, radius: 250 }
 ];
 
-const operationalPattern = /(DRAGON|PELICAN|MILAN|BENGALE|SECURITE\s*CIVILE|SÉCURITÉ\s*CIVILE|CIVIL\s*SECURITY|SAMU|SMUR|GENDARMERIE|DOUANES|POLICE|CANADAIR|DASH\s*8|CL-415|Q400|ARM[ÉE]E|AIR\s*FORCE|MILITAIRE|MILITARY|BEECHCRAFT|DRONE)/i;
+// Un modèle seul (Q400, Beechcraft, etc.) ne prouve jamais qu'il s'agit d'un moyen national.
+// Le filtre exige un indicatif opérationnel ou un organisme public français identifiable.
+const operationalPattern = /(DRAGON|PELICAN|PÉLICAN|MILAN|BENGALE|SECURITE\s*CIVILE|SÉCURITÉ\s*CIVILE|SAMU|SMUR|GENDARMERIE|DOUANES|POLICE\s*NATIONALE|ARM[ÉE]E\s+DE\s+L['’ ]AIR|FRENCH\s+AIR\s+FORCE|MARINE\s+NATIONALE)/i;
 
 function isOperational(item: RawAircraft) {
   return operationalPattern.test(
@@ -56,19 +59,7 @@ function normalize(item: RawAircraft) {
 }
 
 async function fetchPoint(point: (typeof searchPoints)[number]) {
-  const response = await fetch(
-    `https://api.airplanes.live/v2/point/${point.lat}/${point.lon}/${point.radius}`,
-    {
-      next: { revalidate: 60 },
-      signal: AbortSignal.timeout(9000),
-      headers: {
-        Accept: "application/json",
-        "User-Agent": "XavPac/4.0 non-commercial operational dashboard"
-      }
-    }
-  );
-  if (!response.ok) throw new Error(`Airplanes.live ${response.status}`);
-  const data = await response.json();
+  const data = await fetchAirplanesLive({ latitude: point.lat, longitude: point.lon, radiusNm: point.radius, revalidateSeconds: 60 });
   return Array.isArray(data.ac) ? (data.ac as RawAircraft[]) : [];
 }
 

@@ -8,8 +8,11 @@ import AstronomyPanel from "./components/AstronomyPanel";
 import WeatherPanel from "./components/WeatherPanel";
 import CenterOperationsPanel from "./components/CenterOperationsPanel";
 import ViewCounter from "./components/ViewCounter";
+import InformationPanel from "./components/InformationPanel";
+import SourceHealthPanel from "./components/SourceHealthPanel";
+import { BUILD_INFO } from "./lib/buildInfo";
 
-type Tab = "aviation" | "drone" | "operations" | "center" | "astronomy" | "weather";
+type Tab = "aviation" | "drone" | "operations" | "center" | "astronomy" | "weather" | "health" | "information";
 
 const tabs = [
   { id: "aviation" as Tab, icon: "✈", title: "Aviation", subtitle: "Avions en vol" },
@@ -17,7 +20,9 @@ const tabs = [
   { id: "operations" as Tab, icon: "🚁", title: "Moyens nationaux", subtitle: "Canadair, Dash, etc." },
   { id: "center" as Tab, icon: "☀", title: "CODIS", subtitle: "Centre opérationnel" },
   { id: "weather" as Tab, icon: "🌤️", title: "Météo", subtitle: "Prévisions" },
-  { id: "astronomy" as Tab, icon: "◔", title: "Astronomie", subtitle: "Ciel & étoiles" }
+  { id: "astronomy" as Tab, icon: "◔", title: "Astronomie", subtitle: "Ciel & étoiles" },
+  { id: "health" as Tab, icon: "♥", title: "Santé", subtitle: "Sources" },
+  { id: "information" as Tab, icon: "ⓘ", title: "Informations", subtitle: "Version & build" }
 ];
 
 export default function Page() {
@@ -36,8 +41,8 @@ export default function Page() {
         <div className="brand-v4">
           <span className="brand-plane">✈</span>
           <div>
-            <h1>XavPac <b>6.3</b></h1>
-            <p>Aviation en temps réel</p>
+            <h1>XavPac <b>{BUILD_INFO.version}</b></h1>
+            <p>Build #{BUILD_INFO.number} • {BUILD_INFO.date} {BUILD_INFO.time}</p>
           </div>
         </div>
         <div className="header-live-area">
@@ -65,16 +70,18 @@ export default function Page() {
       {active === "center" && <CenterOperationsPanel />}
       {active === "astronomy" && <AstronomyPanel />}
       {active === "weather" && <WeatherPanel />}
+      {active === "information" && <InformationPanel />}
+      {active === "health" && <SourceHealthPanel />}
 
       <nav className="mobile-bottom-nav" aria-label="Navigation mobile">
-        {tabs.slice(0, 5).map((tab) => (
+        {[...tabs.slice(0, 4), tabs[tabs.length - 1]].map((tab) => (
           <button type="button" key={tab.id} className={active === tab.id ? "active" : ""} onClick={() => setActive(tab.id)}>
             <span>{tab.icon}</span><small>{tab.title === "Moyens nationaux" ? "Moyens" : tab.title}</small>
           </button>
         ))}
       </nav>
 
-      <footer className="footer-v4">XavPac 6.3 • Tableau de bord aéronautique et opérationnel • Données réelles selon disponibilité • HOME uniquement sur position GPS réelle.</footer>
+      <footer className="footer-v4">XavPac {BUILD_INFO.version} • Build #{BUILD_INFO.number} • {BUILD_INFO.environment} • Données réelles selon disponibilité.</footer>
     </main>
   );
 }

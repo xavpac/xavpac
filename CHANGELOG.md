@@ -1,5 +1,27 @@
 # Changelog
 
+## 6.4.0 — Fiabilisation Aviation
+
+- Ajout d’un agrégateur serveur unique pour les fiches Aviation.
+- Enrichissement gratuit via ADSBDB et OpenSky optionnel.
+- Distinction entre callsign ADS-B, callsign ICAO, numéro IATA et immatriculation.
+- Cohérence des trajets entre carte, appareils proches et fiche détaillée.
+- Ajout d’un niveau de confiance et de la source du trajet.
+- Annuaire local des compagnies et logos sans dépendance Kiwi.
+- Cache serveur, déduplication et concurrence limitée.
+- Correction exacte des taux verticaux en pieds par minute.
+- Échappement des données externes dans les marqueurs Leaflet.
+- Correction des libellés météo Drone et GPS CODIS.
+- Ajout du contrat `SourceAdapter` et de commutateurs indépendants par fournisseur.
+- Ajout de la provenance structurée : source, récupération, confiance, méthode et fraîcheur.
+- Ajout des indicateurs de couverture et de qualité pondérée des routes.
+- Ajout d’une mémoire locale de spotting avec déduplication par passage.
+- Les routes apprises localement restent toujours « Déduites » et exigent trois observations cohérentes.
+- Détection explicable des appareils remarquables et mise en évidence cartographique.
+- Ajout de l’onglet Santé des sources avec latence, succès, échecs, requêtes, quotas et taux d’erreur.
+- Adaptation d’Airplanes.live, ADSBDB, OpenSky, PlaneSpotters et CelesTrak derrière des fournisseurs désactivables.
+- Ajout du calcul orbital SGP4 des passages ISS et Starlink à partir du GPS réel.
+
 ## 6.1.0
 
 - Reconstruction complète de l’onglet Aviation dans l’esprit FlightWall.

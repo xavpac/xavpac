@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState } from "react";
 import { useLiveGeolocation } from "../hooks/useLiveGeolocation";
 import { evaluateDroneFlight } from "../lib/droneDecision";
+import { reportDataUpdate } from "../lib/buildInfo";
 
 const StableMap = dynamic(() => import("./StableMap"), { ssr: false });
 
@@ -21,72 +22,10 @@ type MetarReport = {
   wxString?: string;
 };
 
-type RtbaZone = {
-  id: string;
-  name: string;
-  status: "unknown";
-  floor: string;
-  ceiling: string;
-  positions: [number, number][];
-};
+type DroneTraffic = { id:string; callsign:string; latitude:number; longitude:number; barometricAltitude:number|null; velocity:number|null; trueTrack:number|null; aircraftType?:string|null; description?:string|null };
+type NearbyPlace = { id: string; name: string; icao: string | null; kind: "aerodrome" | "heliport"; latitude: number; longitude: number; distanceKm: number; bearing: number };
 
-const SAONE_ET_LOIRE_CENTER: [number, number] = [46.63, 4.56];
-const MACON_CHARNAY: [number, number] = [46.295, 4.795];
-const SAONE_ET_LOIRE_BOUNDS: [[number, number], [number, number]] = [
-  [45.88, 3.60],
-  [47.25, 5.55]
-];
-
-// Contour simplifié destiné au cadrage départemental de la carte.
-const SAONE_ET_LOIRE_CONTOUR: [number, number][] = [
-  [46.12, 3.87], [46.39, 3.71], [46.70, 3.76], [46.96, 3.93],
-  [47.17, 4.25], [47.15, 4.63], [47.09, 5.08], [46.91, 5.37],
-  [46.65, 5.43], [46.42, 5.25], [46.18, 5.34], [45.98, 5.06],
-  [46.02, 4.67], [45.94, 4.25], [46.12, 3.87]
-];
-
-// Les trois secteurs sont affichés en permanence pour le repérage visuel.
-// Leur activation et leurs limites réglementaires doivent être confirmées sur le SIA/AZBA.
-const rtbaZones: RtbaZone[] = [
-  {
-    id: "rtba-r45",
-    name: "RTBA R45",
-    status: "unknown",
-    floor: "Voir publication SIA",
-    ceiling: "Voir publication SIA",
-    positions: [[46.20, 3.90], [46.56, 3.86], [46.82, 4.30], [46.54, 4.72], [46.18, 4.46]]
-  },
-  {
-    id: "rtba-r46",
-    name: "RTBA R46",
-    status: "unknown",
-    floor: "Voir publication SIA",
-    ceiling: "Voir publication SIA",
-    positions: [[46.64, 4.42], [47.02, 4.52], [47.13, 5.05], [46.78, 5.35], [46.52, 4.94]]
-  },
-  {
-    id: "rtba-r47",
-    name: "RTBA R47",
-    status: "unknown",
-    floor: "Voir publication SIA",
-    ceiling: "Voir publication SIA",
-    positions: [[46.12, 4.68], [46.42, 4.78], [46.55, 5.28], [46.20, 5.44], [45.98, 5.02]]
-  }
-];
-
-function pointInPolygon(point: [number, number], polygon: [number, number][]) {
-  const [latitude, longitude] = point;
-  let inside = false;
-  for (let current = 0, previous = polygon.length - 1; current < polygon.length; previous = current++) {
-    const [currentLat, currentLon] = polygon[current];
-    const [previousLat, previousLon] = polygon[previous];
-    const intersects =
-      currentLon > longitude !== previousLon > longitude &&
-      latitude < ((previousLat - currentLat) * (longitude - currentLon)) / (previousLon - currentLon) + currentLat;
-    if (intersects) inside = !inside;
-  }
-  return inside;
-}
+const FRANCE_CENTER: [number, number] = [46.603354, 1.888334];
 
 function distanceKm(origin: [number, number], destination: [number, number]) {
   const [lat1, lon1] = origin.map((value) => value * Math.PI / 180);
@@ -136,30 +75,42 @@ function categoryText(category?: string) {
 }
 
 export default function DronePanel() {
-  const [mapMode, setMapMode] = useState<"official" | "department">("official");
-  const { position, status: positionStatus, accuracy, isLive, error: gpsError } = useLiveGeolocation();
+  const [mapMode, setMapMode] = useState<"official" | "map">("map");
+  const { position, status: positionStatus, accuracy, altitude, timestamp, isLive, trackingEnabled, setTrackingEnabled, error: gpsError } = useLiveGeolocation();
   const [metar, setMetar] = useState<MetarReport | null>(null);
-  const [metarStatus, setMetarStatus] = useState("Chargement du METAR…");
+  const [metarStatus, setMetarStatus] = useState("Chargement de la météo locale…");
+  const [traffic, setTraffic] = useState<DroneTraffic[]>([]);
   const [lastUpdated, setLastUpdated] = useState("—");
   const [manualPoint, setManualPoint] = useState<[number, number] | null>(null);
   const [requestedHeight, setRequestedHeight] = useState(60);
+  const [coordinateInput, setCoordinateInput] = useState("");
+  const [commune, setCommune] = useState("");
+  const [locationMessage, setLocationMessage] = useState("");
+  const [nearbyPlaces, setNearbyPlaces] = useState<NearbyPlace[]>([]);
+
+  const selectedPosition = manualPoint ?? position;
+  const analysisCenter = selectedPosition ?? FRANCE_CENTER;
 
   useEffect(() => {
     let cancelled = false;
     async function loadMetar() {
       try {
-        const response = await fetch("/api/airport-weather?ids=LFLM", { cache: "no-store" });
+        if (!selectedPosition) { setMetar(null); setMetarStatus("Point à sélectionner"); return; }
+        const params = new URLSearchParams({ latitude: String(selectedPosition[0]), longitude: String(selectedPosition[1]), current: "temperature_2m,wind_speed_10m,wind_gusts_10m,visibility,surface_pressure,cloud_cover", wind_speed_unit: "kn", timezone: "auto" });
+        const response = await fetch(`https://api.open-meteo.com/v1/forecast?${params}`, { cache: "no-store" });
         const payload = await response.json();
-        const report = Array.isArray(payload.metar) ? payload.metar[0] : null;
+        const current = payload.current;
+        const report = current ? { temp: current.temperature_2m, wspd: current.wind_speed_10m, wgst: current.wind_gusts_10m, visib: typeof current.visibility === "number" ? current.visibility / 1609.34 : undefined, altim: current.surface_pressure } : null;
         if (!cancelled) {
           setMetar(report);
-          setMetarStatus(response.ok && report ? "Observation LFLM reçue" : "METAR indisponible");
+          setMetarStatus(response.ok && report ? "Open-Meteo au point exact" : "Météo indisponible");
           setLastUpdated(new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
+          reportDataUpdate("drone");
         }
       } catch {
         if (!cancelled) {
           setMetar(null);
-          setMetarStatus("METAR indisponible");
+          setMetarStatus("Météo locale indisponible");
         }
       }
     }
@@ -169,70 +120,74 @@ export default function DronePanel() {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, []);
+  }, [selectedPosition]);
 
-  const selectedPosition = manualPoint ?? position;
+  useEffect(() => {
+    let cancelled = false;
+    if (!selectedPosition) { setNearbyPlaces([]); return; }
+    fetch(`/api/nearby-aeronautical-places?lat=${selectedPosition[0]}&lon=${selectedPosition[1]}`, { cache: "no-store" })
+      .then((response) => response.json()).then((payload) => { if (!cancelled) setNearbyPlaces(Array.isArray(payload.places) ? payload.places : []); })
+      .catch(() => { if (!cancelled) setNearbyPlaces([]); });
+    return () => { cancelled = true; };
+  }, [selectedPosition]);
 
-  const insideDepartment = useMemo(
-    () => selectedPosition ? pointInPolygon(selectedPosition, SAONE_ET_LOIRE_CONTOUR) : false,
-    [selectedPosition]
-  );
+  useEffect(() => {
+    let cancelled = false;
+    async function loadTraffic() {
+      try {
+        const response = await fetch(`/api/aircraft?lat=${analysisCenter[0]}&lon=${analysisCenter[1]}&radius=100`, { cache: "no-store" });
+        const payload = await response.json();
+        if (!cancelled) setTraffic(Array.isArray(payload.aircraft) ? payload.aircraft : []);
+      } catch { if (!cancelled) setTraffic([]); }
+    }
+    loadTraffic(); const timer = window.setInterval(loadTraffic, 15000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [analysisCenter]);
+
+  const nearbyTraffic = useMemo(() => traffic.map((item) => ({ ...item, distance: distanceKm(analysisCenter, [item.latitude, item.longitude]) })).sort((a,b) => a.distance-b.distance), [analysisCenter, traffic]);
+  const alertTraffic = nearbyTraffic.filter((item) => item.distance <= 5 && (item.barometricAltitude ?? Infinity) <= 1500);
 
   const containingZones = useMemo(
-    () => selectedPosition ? rtbaZones.filter((zone) => pointInPolygon(selectedPosition, zone.positions)) : [],
-    [selectedPosition]
+    () => [],
+    []
   );
 
   const decision = useMemo(() => evaluateDroneFlight({
     hasPosition: Boolean(selectedPosition),
-    zones: rtbaZones.map((zone) => ({ name: zone.name, status: zone.status, containsPoint: selectedPosition ? pointInPolygon(selectedPosition, zone.positions) : false })),
-    aerodromeDistanceKm: selectedPosition ? distanceKm(selectedPosition, MACON_CHARNAY) : null,
+    zones: [],
+    aerodromeDistanceKm: nearbyPlaces.find((place) => place.kind === "aerodrome")?.distanceKm ?? null,
     requestedHeightM: requestedHeight,
     weatherAvailable: Boolean(metar),
     flightCategory: metar?.flightCategory,
     gustKnots: metar?.wgst ?? metar?.wspd,
     visibilityKm: typeof metar?.visib === "number" ? metar.visib * 1.60934 : null,
-    restrictionsChecked: false
-  }), [metar, requestedHeight, selectedPosition]);
+    restrictionsChecked: false,
+    nearbyAircraftCount: alertTraffic.length
+  }), [alertTraffic.length, metar, nearbyPlaces, requestedHeight, selectedPosition]);
 
   const ceilingMeters = useMemo(() => {
     const layers = metar?.clouds?.filter((cloud) => ["BKN", "OVC", "VV"].includes(cloud.cover ?? "") && typeof cloud.base === "number") ?? [];
     return layers.length ? Math.min(...layers.map((cloud) => (cloud.base ?? 0) * 0.3048)) : null;
   }, [metar]);
 
-  const nearestAerodromeDistance = selectedPosition ? distanceKm(selectedPosition, MACON_CHARNAY) : null;
+  const nearestAerodrome = nearbyPlaces.find((place) => place.kind === "aerodrome") ?? null;
+  const nearestHeliport = nearbyPlaces.find((place) => place.kind === "heliport") ?? null;
   const checklist = [
-    { label: "Position", state: selectedPosition ? "OK" : "Non disponible" },
-    { label: "RTBA", state: containingZones.length ? "À vérifier" : selectedPosition ? "À vérifier" : "Non disponible" },
-    { label: "NOTAM", state: "À vérifier" },
-    { label: "Météo", state: !metar ? "Non disponible" : decision.level === "forbidden" ? "Bloquant" : "OK" },
-    { label: "Hauteur", state: requestedHeight > 120 ? "Bloquant" : "OK" },
-    { label: "Autorisation", state: "À vérifier" },
-    { label: "Sécurité", state: decision.level === "forbidden" ? "Bloquant" : "À vérifier" }
+    { label: "Position", state: selectedPosition ? "Conforme" : "À vérifier", detail: selectedPosition ? "Point d’analyse défini" : "GPS ou point manuel requis" },
+    { label: "RTBA / espaces", state: "À vérifier", detail: "Contrôle SIA officiel requis" },
+    { label: "NOTAM", state: "À vérifier", detail: "Récupération automatique indisponible" },
+    { label: "Météo", state: !metar ? "À vérifier" : decision.level === "forbidden" ? "Bloquant" : "Conforme", detail: metar ? "Observation du point reçue" : "Donnée absente" },
+    { label: "Hauteur", state: requestedHeight > 120 ? "Bloquant" : "Conforme", detail: requestedHeight > 120 ? "Hauteur supérieure à 120 m" : "Hauteur demandée ≤ 120 m" },
+    { label: "Autorisation", state: "À vérifier", detail: "À confirmer par le télépilote" },
+    { label: "Sécurité", state: decision.level === "forbidden" ? "Bloquant" : "À vérifier", detail: alertTraffic.length ? "Trafic proche détecté" : "Surveillance continue nécessaire" }
   ] as const;
 
-  const message = !position
-    ? "En attente d’une position GPS réelle. Aucun emplacement HOME n’est affiché."
-    : !insideDepartment
-    ? "Votre position GPS est hors Saône-et-Loire. La carte reste volontairement limitée au département 71."
-    : containingZones.length
-      ? `Votre position recoupe ${containingZones.map((zone) => zone.name).join(" et ")}. Vérifiez impérativement l’activation sur l’AZBA officiel.`
-      : "Votre position ne recoupe aucun des secteurs RTBA représentés. Vérifiez malgré tout l’AZBA officiel avant le vol.";
-
-  const zonesForMap = [
-    {
-      id: "saone-et-loire",
-      name: "Saône-et-Loire (71)",
-      status: "boundary" as const,
-      floor: "Limite départementale simplifiée",
-      ceiling: "—",
-      positions: SAONE_ET_LOIRE_CONTOUR
-    },
-    ...rtbaZones
-  ];
+  const message = !selectedPosition
+    ? "Position GPS indisponible : recherchez une commune, saisissez des coordonnées ou cliquez sur la carte."
+    : "Analyse du point sélectionné en France. Les NOTAM et espaces réglementés officiels restent à vérifier.";
 
   const mapPoints = [
-    ...(insideDepartment && selectedPosition ? [{
+    ...(selectedPosition ? [{
         id: manualPoint ? "selected-point" : "home",
         lat: selectedPosition[0],
         lon: selectedPosition[1],
@@ -240,16 +195,33 @@ export default function DronePanel() {
         detail: manualPoint ? "Point choisi manuellement" : positionStatus,
         category: manualPoint ? "location" : "home"
       }] : []),
-    { id: "aerodrome-lflm", lat: MACON_CHARNAY[0], lon: MACON_CHARNAY[1], name: "LFLM", detail: "Aérodrome Mâcon-Charnay", category: "aerodrome" }
+    ...nearbyPlaces.map((place) => ({ id: place.id, lat: place.latitude, lon: place.longitude, name: place.icao ?? place.name, detail: `${place.kind === "heliport" ? "Héliport" : "Aérodrome"} • ${place.name} • ${place.distanceKm.toFixed(1)} km`, category: "aerodrome" })),
+    ...nearbyTraffic.map((item) => ({ id:`traffic-${item.id}`, lat:item.latitude, lon:item.longitude, name:item.callsign, detail:`Alt. ${item.barometricAltitude === null ? "Non déterminée" : `${Math.round(item.barometricAltitude)} m`} • ${item.velocity === null ? "Vitesse non déterminée" : `${Math.round(item.velocity*3.6)} km/h`} • ${item.trueTrack === null ? "Cap non déterminé" : `Cap ${Math.round(item.trueTrack)}°`}`, category:/heli|h145|ec145|h135|ec135/i.test(`${item.aircraftType ?? ""} ${item.description ?? ""}`) ? "helicopter" : "aircraft", heading:item.trueTrack }))
   ];
+
+  function applyCoordinates() {
+    const values = coordinateInput.split(/[;,\s]+/).map(Number).filter(Number.isFinite);
+    if (values.length < 2 || values[0] < 41 || values[0] > 52 || values[1] < -6 || values[1] > 10) { setLocationMessage("Coordonnées invalides pour la France."); return; }
+    setManualPoint([values[0], values[1]]); setLocationMessage("Coordonnées appliquées."); setMapMode("map");
+  }
+
+  async function searchCommune() {
+    if (!commune.trim()) return;
+    try {
+      const response = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(commune)}&count=5&language=fr&countryCode=FR`);
+      const payload = await response.json(); const result = payload.results?.[0];
+      if (!result) { setLocationMessage("Commune introuvable."); return; }
+      setManualPoint([result.latitude, result.longitude]); setLocationMessage(`${result.name}${result.admin1 ? ` — ${result.admin1}` : ""}`); setMapMode("map");
+    } catch { setLocationMessage("Recherche de commune indisponible."); }
+  }
 
   return (
     <>
       <section className="hero drone-hero-v4">
         <div>
-          <span className="eyebrow">DRONE SDIS 71</span>
-          <h1>Saône-et-Loire uniquement</h1>
-          <p>Carte départementale fixe, toutes les zones RTBA affichées et position GPS suivie en continu.</p>
+          <span className="eyebrow">ASSISTANT TÉLÉPILOTE — FRANCE</span>
+          <h1>Analyse opérationnelle nationale</h1>
+          <p>GPS réel ou point manuel, trafic aérien, météo exacte et contrôles réglementaires.</p>
         </div>
         <div className={`drone-decision-status ${decision.level}`}>
           <span>{decision.level === "possible" ? "🟢" : decision.level === "forbidden" ? "🔴" : "🟠"}</span>
@@ -264,6 +236,7 @@ export default function DronePanel() {
         <div className="drone-point-actions"><button type="button" disabled={!position} onClick={() => setManualPoint(null)}>📍 Utiliser HOME</button><small>{manualPoint ? `${manualPoint[0].toFixed(5)} / ${manualPoint[1].toFixed(5)}` : position ? "Position GPS réelle" : "Position GPS indisponible"}</small></div>
         <footer>Cette synthèse est une aide opérationnelle. Elle ne remplace pas la vérification réglementaire du télépilote (AZBA, NOTAM, SUP AIP, AIP et restrictions locales).</footer>
       </section>
+      {alertTraffic.length > 0 && <section className="panel drone-traffic-alert"><strong>ALERTE TRAFIC À PROXIMITÉ</strong>{alertTraffic.slice(0,3).map((item) => <p key={item.id}><b>{item.callsign}</b> à {item.distance.toFixed(1)} km • Altitude {item.barometricAltitude === null ? "non déterminée" : `${Math.round(item.barometricAltitude)} m`} • Cap {item.trueTrack === null ? "non déterminé" : `${Math.round(item.trueTrack)}°`} • Vitesse {item.velocity === null ? "non déterminée" : `${Math.round(item.velocity*3.6)} km/h`}</p>)}</section>}
 
       <section className="drone-ops-overview">
         <article className="panel drone-synthesis">
@@ -277,15 +250,15 @@ export default function DronePanel() {
             <p><span>Visibilité</span><strong>{metar?.visib !== undefined ? visibilityText(metar.visib) : "Non déterminé"}</strong></p>
             <p><span>Plafond</span><strong>{ceilingMeters !== null ? `${Math.round(ceilingMeters)} m` : "Non déterminé"}</strong></p>
             <p><span>Pluie</span><strong>{metar?.wxString ? metar.wxString : "Non déterminé"}</strong></p>
-            <p><span>RTBA</span><strong>{containingZones.length ? "Statut à vérifier" : "Aucune intersection schématique"}</strong></p>
-            <p><span>Aérodrome proche</span><strong>{nearestAerodromeDistance !== null ? `LFLM • ${nearestAerodromeDistance.toFixed(1)} km` : "Non déterminé"}</strong></p>
-            <p><span>Héliport</span><strong>Non déterminé</strong></p>
+            <p><span>RTBA / espaces</span><strong>Vérification officielle requise</strong></p>
+            <p><span>Aérodrome proche</span><strong>{nearestAerodrome ? `${nearestAerodrome.name} • ${nearestAerodrome.distanceKm.toFixed(1)} km • ${Math.round(nearestAerodrome.bearing)}°${nearestAerodrome.icao ? ` • ${nearestAerodrome.icao}` : ""}` : "Non déterminé"}</strong></p>
+            <p><span>Héliport</span><strong>{nearestHeliport ? `${nearestHeliport.name} • ${nearestHeliport.distanceKm.toFixed(1)} km • ${Math.round(nearestHeliport.bearing)}°${nearestHeliport.icao ? ` • ${nearestHeliport.icao}` : ""}` : "Non déterminé"}</strong></p>
             <p><span>Mise à jour</span><strong>{lastUpdated}</strong></p>
           </div>
         </article>
         <article className="panel drone-checklist">
           <header><span className="eyebrow">CHECKLIST TÉLÉPILOTE</span><h3>Contrôles indispensables</h3></header>
-          <div>{checklist.map((item) => <p key={item.label}><strong>{item.label}</strong><span className={`check-state ${item.state.toLowerCase().replace(" ", "-").replace("à", "a")}`}>{item.state}</span></p>)}</div>
+          <div>{checklist.map((item) => <p key={item.label}><strong>{item.label}<small>{item.detail}</small></strong><span className={`check-state ${item.state.toLowerCase().replace(" ", "-").replace("à", "a")}`}>{item.state}</span></p>)}</div>
           <footer>Cette application constitue une aide à la décision et ne remplace pas la vérification réglementaire du télépilote.</footer>
         </article>
       </section>
@@ -296,16 +269,18 @@ export default function DronePanel() {
         <article className="panel drone-map-card-v4">
           <div className="panel-title rtba-panel-title-v51">
             <div>
-              <span className="eyebrow">ESPACE AÉRIEN 71</span>
-              <h3>RTBA — carte opérationnelle</h3>
-              <p className="muted">Le mode officiel affiche les couleurs d’activation publiées par le SIA. Le mode 71 reste cadré sur la Saône-et-Loire.</p>
+              <span className="eyebrow">ESPACE AÉRIEN FRANCE</span>
+              <h3>Carte du point analysé</h3>
+              <p className="muted">Trafic et aérodromes OpenStreetMap autour du point. L’AZBA officiel reste disponible séparément.</p>
             </div>
             <div className="rtba-mode-switch">
               <button type="button" className={mapMode === "official" ? "active" : ""} onClick={() => setMapMode("official")}>AZBA officiel live</button>
-              <button type="button" className={mapMode === "department" ? "active" : ""} onClick={() => setMapMode("department")}>Vue Saône-et-Loire</button>
+              <button type="button" className={mapMode === "map" ? "active" : ""} onClick={() => setMapMode("map")}>Carte France</button>
             </div>
-            <div className="drone-map-actions"><button type="button" disabled={!position} onClick={() => setManualPoint(null)}>Ma position</button><button type="button" disabled={!position} onClick={() => setManualPoint(null)}>Recentrer</button><button type="button" onClick={() => setMapMode("department")}>Choisir un point</button></div>
+            <div className="drone-map-actions"><button type="button" disabled={!position} onClick={() => { setManualPoint(null); setMapMode("map"); }}>Recentrer</button><button type="button" onClick={() => setTrackingEnabled(!trackingEnabled)}>{trackingEnabled ? "Désactiver suivi GPS" : "Activer suivi GPS"}</button></div>
           </div>
+
+          <div className="drone-location-tools"><label>Commune <input value={commune} onChange={(event) => setCommune(event.target.value)} placeholder="Ex. Bordeaux" /><button type="button" onClick={searchCommune}>Rechercher</button></label><label>Latitude, longitude <input value={coordinateInput} onChange={(event) => setCoordinateInput(event.target.value)} placeholder="44.8378, -0.5792" /><button type="button" onClick={applyCoordinates}>Appliquer</button></label>{locationMessage && <small>{locationMessage}</small>}</div>
 
           {mapMode === "official" ? (
             <div className="azba-live-shell">
@@ -329,33 +304,21 @@ export default function DronePanel() {
               <div className="drone-map-v4 drone-map-locked-v5">
                 <StableMap
                   points={mapPoints}
-                  zones={zonesForMap}
-                  center={SAONE_ET_LOIRE_CENTER}
-                  zoom={8}
-                  fixedBounds={SAONE_ET_LOIRE_BOUNDS}
-                  maxBounds={SAONE_ET_LOIRE_BOUNDS}
-                  lockBounds
-                  showZoneLabels
+                  zones={[]}
+                  center={analysisCenter}
+                  zoom={selectedPosition ? 10 : 6}
                   mapVariant="layers"
                   onMapClick={(point) => setManualPoint(point)}
                 />
               </div>
               <div className="rtba-legend-v4">
-                <span className="department">━━ Limite du département 71</span>
-                <span className="unknown">┅┅ Repérage schématique — statut non inventé</span>
-                <span>Pour les limites et couleurs exactes en direct : mode AZBA officiel live.</span>
+                <span className="unknown">Espaces réglementés : non reproduits sans source officielle fiable</span>
+                <span>Pour les limites et couleurs exactes : mode AZBA officiel live.</span>
               </div>
             </>
           )}
 
-          <div className="rtba-zone-list-v5">
-            {rtbaZones.map((zone) => (
-              <article key={zone.id}>
-                <span>🛩️</span>
-                <div><strong>{zone.name}</strong><small>Visible • statut à vérifier sur le SIA</small></div>
-              </article>
-            ))}
-          </div>
+          <div className="rtba-zone-list-v5"><article><span>⚠️</span><div><strong>NOTAM</strong><small>Vérification automatique indisponible — consulter la source officielle.</small></div></article><article><span>🛩️</span><div><strong>CTR, TMA, R, P, D, militaires et temporaires</strong><small>Consulter les cartes et publications officielles SIA avant toute décision.</small></div></article></div>
         </article>
 
         <aside className="drone-side-v4">
@@ -363,17 +326,18 @@ export default function DronePanel() {
             <span className="eyebrow">GÉOLOCALISATION CONTINUE</span>
             <div className="check-row"><span>{isLive ? "🟢" : "🟠"}</span><div><strong>GPS</strong><small>{positionStatus}</small></div></div>
             <div className="check-row"><span>📍</span><div><strong>{manualPoint ? "Point sélectionné" : "HOME"}</strong><small>{selectedPosition ? `${selectedPosition[0].toFixed(5)} / ${selectedPosition[1].toFixed(5)}` : "Position GPS indisponible"}</small></div></div>
-            <div className="check-row"><span>🗺️</span><div><strong>Département</strong><small>{insideDepartment ? "Position dans le 71" : "Position hors du 71"}</small></div></div>
-            <div className="check-row"><span>🛩️</span><div><strong>RTBA</strong><small>{containingZones.length ? `${containingZones.length} secteur(s) recoupé(s)` : "Aucun secteur représenté à la position"}</small></div></div>
+            <div className="check-row"><span>🧭</span><div><strong>Latitude / longitude</strong><small>{selectedPosition ? `${selectedPosition[0].toFixed(6)} / ${selectedPosition[1].toFixed(6)}` : "Position indisponible"}</small></div></div>
+            <div className="check-row"><span>🎯</span><div><strong>Précision / altitude GPS</strong><small>{!manualPoint && accuracy ? `±${Math.round(accuracy)} m • ${altitude === null ? "altitude non disponible" : `${Math.round(altitude)} m`}` : "Point manuel"}</small></div></div>
+            <div className="check-row"><span>🕒</span><div><strong>Dernière position</strong><small>{timestamp ? new Date(timestamp).toLocaleTimeString("fr-FR") : "Non disponible"}</small></div></div>
             <p className="safety-note">La carte est une aide de repérage. L’AZBA, les NOTAM, SUP AIP et AIP officiels restent prioritaires.</p>
           </article>
 
           <article className="panel metar-card-v4">
             <div className="panel-title">
               <div>
-                <span className="eyebrow">MÉTÉO AÉRONAUTIQUE</span>
-                <h3>METAR traduit en français</h3>
-                <p className="muted">Uniquement dans l’onglet Drone • LFLM Mâcon-Charnay</p>
+                <span className="eyebrow">MÉTÉO LOCALE INDICATIVE</span>
+                <h3>Prévision Open-Meteo au point analysé</h3>
+                <p className="muted">Ce produit n’est pas un METAR et ne remplace pas une observation aéronautique officielle.</p>
               </div>
               <span className="metar-status">{metarStatus}</span>
             </div>
@@ -390,7 +354,7 @@ export default function DronePanel() {
                   <div className="wide"><span>Lecture générale</span><strong>{categoryText(metar.flightCategory)}</strong></div>
                 </div>
                 {metar.wxString && <div className="weather-alert-v4">Phénomène signalé : {metar.wxString}</div>}
-                <details className="raw-report-v4"><summary>Voir le METAR brut</summary><code>{metar.rawOb ?? "—"}</code></details>
+              {metar.rawOb && <details className="raw-report-v4"><summary>Voir la donnée brute</summary><code>{metar.rawOb}</code></details>}
               </>
             ) : (
               <div className="metar-empty">Aucune observation aéronautique disponible.</div>

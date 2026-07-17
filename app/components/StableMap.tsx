@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import L from "leaflet";
+import { escapeHtml } from "../lib/security/escapeHtml";
 import {
   Circle,
   MapContainer,
@@ -112,10 +113,10 @@ function aircraftSvg(color: string, heading: number, helicopter = false) {
 function homeIcon() {
   return L.divIcon({
     className: "xavpac-map-icon-root",
-    html: `<div class="xavpac-home-marker"><span class="xavpac-home-core">📍</span><strong>HOME</strong><span class="xavpac-home-ring"></span></div>`,
-    iconSize: [96, 48],
-    iconAnchor: [48, 24],
-    popupAnchor: [0, -22]
+    html: `<div class="xavpac-home-marker compact"><span class="xavpac-home-core">•</span></div>`,
+    iconSize: [24, 24],
+    iconAnchor: [12, 12],
+    popupAnchor: [0, -12]
   });
 }
 
@@ -125,8 +126,8 @@ function weatherIcon(point: MapPoint) {
     className: "xavpac-map-icon-root",
     html: `
       <div class="xavpac-weather-marker">
-        <strong>${point.name}</strong>
-        <span>${point.weatherIcon ?? "🌤️"} ${temperature}</span>
+        <strong>${escapeHtml(point.name)}</strong>
+        <span>${escapeHtml(point.weatherIcon ?? "🌤️")} ${escapeHtml(temperature)}</span>
       </div>`,
     iconSize: [122, 46],
     iconAnchor: [61, 23],
@@ -136,7 +137,7 @@ function weatherIcon(point: MapPoint) {
 
 function operationalIcon(point: MapPoint, selected: boolean, faded: boolean) {
   const category = String(point.category).replace("national-", "");
-  const colors: Record<string, string> = { canadair: "#ef4d5f", dash: "#ff9f43", dragon: "#3aa7ff", gendarmerie: "#244d9b", samu: "#36c98f", beechcraft: "#c6a35b", military: "#8993a1", drone: "#8b6cff", unknown: "#7b93aa" };
+  const colors: Record<string, string> = { canadair: "#ef4d5f", dash: "#ff9f43", dragon: "#3aa7ff", gendarmerie: "#244d9b", samu: "#36c98f", beechcraft: "#c6a35b", military: "#8993a1", customs: "#39b3a3", drone: "#8b6cff", unknown: "#7b93aa" };
   const color = colors[category] ?? colors.unknown;
   const shapes: Record<string, string> = {
     canadair: '<path d="M8 34h18l7-19 6 1-2 18h18l5 6-23 2-2 13h-5l-3-13-24-2z"/>',
@@ -146,16 +147,17 @@ function operationalIcon(point: MapPoint, selected: boolean, faded: boolean) {
     samu: '<path d="M9 35h29c8 0 13 4 16 11H28c-8 0-14-4-19-11zm26-17h4v18h-4zM13 22h43v3H13z"/><path d="M47 13h5v14h-5zM42 18h15v5H42z"/>',
     beechcraft: '<path d="M7 34h21l3-19h5l3 19h18l4 5-22 3-2 13h-7l-3-13-23-3z"/>',
     military: '<path d="M32 6l7 25 18 9-2 6-18-4-2 14h-6l-2-14-19 4-2-6 19-9z"/>',
+    customs: '<path d="M7 34h21l3-19h5l3 19h18l4 5-22 3-2 13h-7l-3-13-23-3z"/><circle cx="49" cy="18" r="7"/>',
     drone: '<path d="M19 19h26v26H19zM8 11h14v5H8zm34 0h14v5H42zM8 48h14v5H8zm34 0h14v5H42z"/>',
     unknown: '<path d="M32 7l7 22 20 10-3 6-19-5-2 17h-6l-2-17-20 5-3-6 21-10z"/>'
   };
-  return L.divIcon({ className: "xavpac-map-icon-root", html: `<div class="national-map-marker ${selected ? "selected" : ""} ${faded ? "faded" : ""}"><svg viewBox="0 0 64 64" fill="${color}">${shapes[category] ?? shapes.unknown}</svg><strong>${point.name}</strong></div>`, iconSize: [72, 58], iconAnchor: [36, 29], popupAnchor: [0, -28] });
+  return L.divIcon({ className: "xavpac-map-icon-root", html: `<div class="national-map-marker ${selected ? "selected" : ""} ${faded ? "faded" : ""}"><svg viewBox="0 0 64 64" fill="${color}">${shapes[category] ?? shapes.unknown}</svg><strong>${escapeHtml(point.name)}</strong></div>`, iconSize: [72, 58], iconAnchor: [36, 29], popupAnchor: [0, -28] });
 }
 
 function pointIcon(point: MapPoint, selected: boolean, faded: boolean) {
   if (point.category === "home") return homeIcon();
   if (point.category === "location") return L.divIcon({ className: "xavpac-map-icon-root", html: `<div class="xavpac-selected-location">📍<strong>POINT</strong></div>`, iconSize: [72, 44], iconAnchor: [36, 40] });
-  if (point.category === "aerodrome") return L.divIcon({ className: "xavpac-map-icon-root", html: `<div class="xavpac-aerodrome-marker"><span>+</span><strong>${point.name}</strong></div>`, iconSize: [74, 42], iconAnchor: [37, 21] });
+  if (point.category === "aerodrome") return L.divIcon({ className: "xavpac-map-icon-root", html: `<div class="xavpac-aerodrome-marker"><span>+</span><strong>${escapeHtml(point.name)}</strong></div>`, iconSize: [74, 42], iconAnchor: [37, 21] });
   if (point.category === "weather") return weatherIcon(point);
   if (String(point.category).startsWith("national-")) return operationalIcon(point, selected, faded);
 
@@ -166,11 +168,11 @@ function pointIcon(point: MapPoint, selected: boolean, faded: boolean) {
   return L.divIcon({
     className: "xavpac-map-icon-root",
     html: `
-      <div class="xavpac-aircraft-marker ${selected ? "is-selected" : ""} ${faded ? "is-faded" : ""}">
+      <div class="xavpac-aircraft-marker ${selected ? "is-selected" : ""} ${point.category === "remarkable" ? "is-remarkable" : ""} ${faded ? "is-faded" : ""}">
         <div class="xavpac-aircraft-svg">${aircraftSvg(color, heading, helicopter)}</div>
         <div class="xavpac-aircraft-label">
-          <strong>${point.name || "ADS-B"}</strong>
-          <span>${point.detail}</span>
+          <strong>${escapeHtml(point.name || "ADS-B")}</strong>
+          <span>${escapeHtml(point.detail)}</span>
         </div>
       </div>`,
     iconSize: [148, 108],

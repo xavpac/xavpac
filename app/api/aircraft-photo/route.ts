@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { enforceRateLimit } from "../../lib/api/guard";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -13,6 +14,8 @@ type PlaneSpottersPhoto = {
 type PlaneSpottersPayload = { photos?: PlaneSpottersPhoto[] };
 
 export async function GET(request: NextRequest) {
+  const limited = enforceRateLimit(request, "aircraft-photo", 30, 60_000);
+  if (limited) return limited;
   const hex = (request.nextUrl.searchParams.get("hex") ?? "").replace(/[^a-fA-F0-9]/g, "").toLowerCase();
   const registration = (request.nextUrl.searchParams.get("registration") ?? "").trim();
 
@@ -30,7 +33,7 @@ export async function GET(request: NextRequest) {
     const response = await fetch(lookup, {
       cache: "no-store",
       signal: AbortSignal.timeout(6500),
-      headers: { Accept: "application/json", "User-Agent": "XavPac/6.1" }
+      headers: { Accept: "application/json", "User-Agent": `XavPac/${process.env.NEXT_PUBLIC_XAVPAC_VERSION ?? "development"}` }
     });
 
     if (!response.ok) {

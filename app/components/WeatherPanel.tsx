@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useLiveGeolocation } from "../hooks/useLiveGeolocation";
+import { reportDataUpdate } from "../lib/buildInfo";
 
 type CurrentWeather = {
   temperature_2m: number;
@@ -124,6 +125,7 @@ export default function WeatherPanel() {
         if (!cancelled) {
           setWeather(data);
           setUpdatedAt(new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }));
+          reportDataUpdate("weather");
         }
       } catch {
         if (!cancelled) setError("Impossible de charger les données météo en direct.");

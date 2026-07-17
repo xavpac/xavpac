@@ -1,4 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { feetPerMinuteToMetersPerSecond, feetToMeters, knotsToMetersPerSecond } from "../../lib/aviation/units";
+import { enforceRateLimit } from "../../lib/api/guard";
+import { fetchAirplanesLive } from "../../lib/aviation/providers/airplanesLive";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -16,18 +19,24 @@ function altitudeFeetToMeters(value: unknown) {
     return null;
   }
 
-  return value * 0.3048;
+  return feetToMeters(value);
 }
 
-function knotsToMetersPerSecond(value: unknown) {
+function speedKnotsToMetersPerSecond(value: unknown) {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     return null;
   }
 
-  return value * 0.514444;
+  return knotsToMetersPerSecond(value);
+}
+
+function verticalFeetPerMinuteToMetersPerSecond(value: unknown) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  return feetPerMinuteToMetersPerSecond(value);
 }
 
 type AirplanesLiveAircraft = {
+  type?: string;
   hex?: string;
   flight?: string;
   lat?: number;
@@ -79,15 +88,16 @@ function normalizeAircraft(item: AirplanesLiveAircraft) {
     barometricAltitude,
     geometricAltitude: altitudeFeetToMeters(item.alt_geom),
     onGround,
-    velocity: knotsToMetersPerSecond(item.gs),
+    velocity: speedKnotsToMetersPerSecond(item.gs),
     trueTrack: numberOrNull(item.track),
-    verticalRate: knotsToMetersPerSecond(item.baro_rate ?? item.geom_rate),
+    verticalRate: verticalFeetPerMinuteToMetersPerSecond(item.baro_rate ?? item.geom_rate),
     squawk: item.squawk?.trim() || null,
     registration: item.r?.trim() || null,
     aircraftType: item.t?.trim() || null,
     description: item.desc?.trim() || null,
     operator: item.ownOp?.trim() || null,
     category: item.category?.trim() || null,
+    positionSource: item.type?.trim() || "unknown",
     lastContact:
       typeof item.seen === "number"
         ? Math.floor(Date.now() / 1000 - item.seen)
@@ -96,6 +106,8 @@ function normalizeAircraft(item: AirplanesLiveAircraft) {
 }
 
 export async function GET(request: NextRequest) {
+  const limited = enforceRateLimit(request, "aircraft", 30, 60_000);
+  if (limited) return limited;
   const params = request.nextUrl.searchParams;
   const latitude = Number(params.get("lat") ?? "46.346");
   const longitude = Number(params.get("lon") ?? "4.977");
@@ -117,36 +129,9 @@ export async function GET(request: NextRequest) {
 
   // Airplanes.live attend un rayon en milles nautiques.
   const radiusNm = clamp(Math.ceil(radiusKm / 1.852), 3, 54);
-  const endpoint =
-    `https://api.airplanes.live/v2/point/` +
-    `${latitude.toFixed(5)}/${longitude.toFixed(5)}/${radiusNm}`;
-
   try {
-    const response = await fetch(endpoint, {
-      cache: "no-store",
-      signal: AbortSignal.timeout(9000),
-      headers: {
-        Accept: "application/json",
-        "User-Agent": "XavPac/4.0 (non-commercial aviation dashboard)"
-      }
-    });
-
-    if (!response.ok) {
-      return NextResponse.json(
-        {
-          error: `Airplanes.live indisponible (${response.status}).`,
-          aircraft: [],
-          source: "Airplanes.live"
-        },
-        {
-          status: 502,
-          headers: { "Cache-Control": "no-store" }
-        }
-      );
-    }
-
-    const payload = await response.json();
-    const sourceAircraft = Array.isArray(payload.ac) ? payload.ac : [];
+    const payload = await fetchAirplanesLive({ latitude: Number(latitude.toFixed(5)), longitude: Number(longitude.toFixed(5)), radiusNm, revalidateSeconds: 8 });
+    const sourceAircraft = Array.isArray(payload.ac) ? payload.ac as AirplanesLiveAircraft[] : [];
 
     const aircraft = sourceAircraft
       .map((item: AirplanesLiveAircraft) => normalizeAircraft(item))
@@ -162,9 +147,7 @@ export async function GET(request: NextRequest) {
       },
       {
         headers: {
-          "Cache-Control": "no-store, max-age=0",
-          "CDN-Cache-Control": "no-store",
-          "Vercel-CDN-Cache-Control": "no-store"
+          "Cache-Control": "public, max-age=5, s-maxage=8, stale-while-revalidate=4"
         }
       }
     );

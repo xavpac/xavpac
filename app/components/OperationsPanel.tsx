@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState } from "react";
 import { useLiveGeolocation } from "../hooks/useLiveGeolocation";
+import { reportDataUpdate } from "../lib/buildInfo";
 
 const StableMap = dynamic(() => import("./StableMap"), { ssr: false });
 
@@ -26,7 +27,7 @@ type NationalAsset = {
     model: string | null;
     operator: string | null;
     probableMission: string | null;
-    confidence: "confirmed" | "to-confirm";
+    confidence: "confirmed" | "probable" | "to-confirm";
     evidence: string[];
   };
 };
@@ -42,6 +43,7 @@ function markerCategory(asset: NationalAsset) {
   if (badge.includes("SAMU")) return "national-samu";
   if (badge.includes("BEECHCRAFT")) return "national-beechcraft";
   if (badge.includes("MILITAIRE")) return "national-military";
+  if (badge.includes("DOUANE")) return "national-customs";
   if (badge.includes("DRONE")) return "national-drone";
   return "national-unknown";
 }
@@ -65,6 +67,18 @@ function formatAltitude(value: number | null) {
 
 function formatSpeed(value: number | null) {
   return value === null ? "—" : `${Math.round(value)} km/h`;
+}
+function passageMinutes(home:[number,number], asset:NationalAsset) {
+  if (!asset.speed || asset.track === null || asset.speed < 10) return null;
+  const north=(home[0]-asset.latitude)*111.32, east=(home[1]-asset.longitude)*111.32*Math.cos(asset.latitude*Math.PI/180), angle=asset.track*Math.PI/180;
+  const vn=Math.cos(angle)*asset.speed, ve=Math.sin(angle)*asset.speed, hours=(north*vn+east*ve)/(vn*vn+ve*ve);
+  return hours>0 && hours<=1 ? Math.round(hours*60) : null;
+}
+
+function confidenceLabel(value: NationalAsset["identification"]["confidence"]) {
+  if (value === "confirmed") return "Confirmé";
+  if (value === "probable") return "Probable";
+  return "À confirmer";
 }
 
 export default function OperationsPanel() {
@@ -106,6 +120,7 @@ export default function OperationsPanel() {
             second: "2-digit"
           })
         );
+        if (response.ok) reportDataUpdate("operations");
       } catch {
         if (!cancelled) {
           setAssets([]);
@@ -145,7 +160,7 @@ export default function OperationsPanel() {
     void Promise.all([
       fetch(`/api/aircraft-photo?${photoParams}`).then((response) => response.json()),
       fetch(`/api/flight-details?callsign=${encodeURIComponent(selected.callsign)}&aircraft=${encodeURIComponent(selected.registration || selected.id)}&weather=0`).then((response) => response.json())
-    ]).then(([photoPayload, routePayload]) => { if (!cancelled) { setPhoto(photoPayload.photo?.image ?? null); setRoute(routePayload.route ?? null); } }).catch(() => { if (!cancelled) { setPhoto(null); setRoute(null); } });
+    ]).then(([photoPayload, routePayload]) => { if (!cancelled) { setPhoto(photoPayload.photo?.image ?? routePayload.aircraft?.url_photo ?? routePayload.aircraft?.url_photo_thumbnail ?? null); setRoute(routePayload.route ?? null); } }).catch(() => { if (!cancelled) { setPhoto(null); setRoute(null); } });
     return () => { cancelled = true; };
   }, [selected]);
 
@@ -235,7 +250,7 @@ export default function OperationsPanel() {
               <div className="fw-nearest-list">
                 {visibleAssets.slice(0, 8).map((asset, index) => (
                   <button type="button" key={asset.id} onClick={() => setSelectedId(asset.id)} className={asset.id === selected?.id ? "selected" : ""}>
-                    <b>{index + 1}</b><strong>{asset.identification.badge}</strong><span>{`${asset.operator ?? "Opérateur non déterminé"} • ${asset.registration ?? "Immat. non déterminée"} • ${formatAltitude(asset.altitude)} • ${formatSpeed(asset.speed)} • ${asset.track === null ? "Cap —" : `Cap ${Math.round(asset.track)}°`} • ${asset.onGround ? "Au sol" : "En vol"}`}</span><em>{position ? `${distanceKm(position, [asset.latitude, asset.longitude]).toFixed(0)} km` : "Distance : Non déterminé"}</em>
+                    <b>{index + 1}</b><strong>{asset.identification.badge}</strong><span>{`${asset.operator ?? "Opérateur non déterminé"} • ${asset.callsign} • ${asset.registration ?? "Immat. non déterminée"} • ${formatAltitude(asset.altitude)} • ${formatSpeed(asset.speed)} • ${asset.track === null ? "Cap —" : `Cap ${Math.round(asset.track)}°`} • ${asset.lastSeenSeconds === null ? "MAJ non déterminée" : `MAJ ${Math.round(asset.lastSeenSeconds)} s`} • ${confidenceLabel(asset.identification.confidence)}`}</span><em>{position ? `${distanceKm(position, [asset.latitude, asset.longitude]).toFixed(0)} km` : "Distance : Non déterminé"}</em>
                   </button>
                 ))}
                 {!visibleAssets.length && <p className="fw-empty-text">Aucun résultat pour cette recherche.</p>}
@@ -266,8 +281,8 @@ export default function OperationsPanel() {
 
               <div className="national-detail-photo">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={photo ?? "/aircraft-placeholder.svg"} alt={`Moyen ${selected.callsign}`} />
-                <small>{photo ? "Photo selon immatriculation" : "Photo non disponible"}</small>
+                <img src={photo ?? "/aircraft/generic-aircraft.jpg"} alt={`Moyen ${selected.callsign}`} onError={(event) => { event.currentTarget.src = "/aircraft/generic-aircraft.jpg"; }} />
+                <small>{photo ? "Photo exacte ou même modèle • fiche appareil ADSBDB / PlaneSpotters" : "Illustration • photographie générique CC0"}</small>
               </div>
 
               <div className="fw-identity-grid">
@@ -276,16 +291,16 @@ export default function OperationsPanel() {
                 <div><span>Catégorie</span><strong>{selected.identification.category}</strong></div>
               </div>
 
-              <div className="national-mission-card"><span>Mission probable</span><strong>{selected.identification.probableMission ?? "Non déterminable avec fiabilité"}</strong><small>{selected.identification.evidence.length ? `Identification : ${selected.identification.evidence.join(", ")}` : "Données insuffisantes"}</small></div>
+              <div className="national-mission-card"><span>Mission probable</span><strong>{selected.identification.probableMission ?? "Mission non déterminée."}</strong><small>{selected.identification.evidence.length ? `Identification : ${selected.identification.evidence.join(", ")}` : "Données insuffisantes"}</small></div>
 
               <div className="national-operational-grid">
                 <div><span>Organisme</span><strong>{selected.identification.operator ?? selected.operator ?? "Non déterminé"}</strong></div>
-                <div><span>Constructeur</span><strong>{selected.description?.split(" ")[0] ?? "Non déterminé"}</strong></div>
+                <div><span>Constructeur</span><strong>Non déterminé</strong></div>
                 <div><span>Base</span><strong>Non déterminé</strong></div>
                 <div><span>Départ</span><strong>{route?.origin?.municipality ?? "Non déterminé"}</strong></div>
                 <div><span>Destination</span><strong>{route?.destination?.municipality ?? "Non déterminé"}</strong></div>
                 <div><span>Distance HOME</span><strong>{position ? `${distanceKm(position, [selected.latitude, selected.longitude]).toFixed(1)} km` : "Non déterminé"}</strong></div>
-                <div><span>Passage estimé</span><strong>Non déterminé</strong></div>
+                <div><span>Passage estimé</span><strong>{position && passageMinutes(position,selected)!==null ? `${passageMinutes(position,selected)} min` : "Non déterminé"}</strong></div>
                 <div><span>Dernière détection</span><strong>{selected.lastSeenSeconds === null ? "Non déterminé" : `il y a ${Math.round(selected.lastSeenSeconds)} s`}</strong></div>
               </div>
 
@@ -305,7 +320,7 @@ export default function OperationsPanel() {
                 <div><span>Source</span><strong>Airplanes.live</strong></div>
                 <div><span>Suivi</span><strong>ADS-B public</strong></div>
                 <div><span>Dernière MAJ</span><strong>{updatedAt}</strong></div>
-                <div><span>Statut</span><strong>{selected.onGround ? "Au sol" : "En vol"}</strong></div>
+                <div><span>Identification</span><strong>{confidenceLabel(selected.identification.confidence)}</strong></div>
               </div>
             </>
           ) : (

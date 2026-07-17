@@ -1,6 +1,6 @@
 {
   "name": "xavpac",
-  "version": "8.0.0",
+  "version": "6.4.0",
   "private": true,
   "packageManager": "pnpm@10.13.1",
   "engines": {
@@ -12,14 +12,19 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit --incremental false",
-    "check": "npm run lint && npm run typecheck && npm run build"
+    "check": "npm run lint && npm run typecheck && npm run test && npm run build",
+    "test": "node --experimental-strip-types --test tests/**/*.test.ts",
+    "version:patch": "npm version patch --no-git-tag-version",
+    "version:minor": "npm version minor --no-git-tag-version",
+    "version:major": "npm version major --no-git-tag-version"
   },
   "dependencies": {
     "leaflet": "^1.9.4",
     "next": "^14.2.15",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-leaflet": "^4.2.1"
+    "react-leaflet": "^4.2.1",
+    "satellite.js": "7.0.1"
   },
   "devDependencies": {
     "@types/leaflet": "^1.9.12",

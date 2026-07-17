@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { fetchCelesTrak } from "../../lib/aviation/providers/celestrak";
 
 export const dynamic = "force-dynamic";
 
@@ -15,23 +16,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const response = await fetch(
-      `https://celestrak.org/NORAD/elements/gp.php?GROUP=${group.toUpperCase()}&FORMAT=JSON`,
-      {
-        cache: "no-store",
-        headers: {
-          Accept: "application/json",
-          "User-Agent": "XavPac/4.0"
-        }
-      }
-    );
-
-    if (!response.ok) {
-      throw new Error(`CelesTrak ${response.status}`);
-    }
-
-    const data = await response.json();
-    const records = Array.isArray(data) ? data : [];
+    const records = await fetchCelesTrak(group as "stations" | "starlink" | "visual");
 
     return NextResponse.json({
       source: "CelesTrak",

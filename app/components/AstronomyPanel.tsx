@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useLiveGeolocation } from "../hooks/useLiveGeolocation";
+import { reportDataUpdate } from "../lib/buildInfo";
 
 type OrbitRecord = {
   OBJECT_NAME?: string;
@@ -15,6 +16,7 @@ type SkyWeather = {
   temperature_2m?: number;
   wind_speed_10m?: number;
 };
+type VisiblePass = { name:string; start:string; maximum:string; end:string; direction:string; maxElevation:number; durationSeconds:number };
 
 export default function AstronomyPanel() {
   const { position, status: positionStatus, error: gpsError } = useLiveGeolocation();
@@ -23,6 +25,8 @@ export default function AstronomyPanel() {
   const [visibleCount, setVisibleCount] = useState<number | null>(null);
   const [orbitStatus, setOrbitStatus] = useState("Connexion CelesTrak…");
   const [weather, setWeather] = useState<SkyWeather | null>(null);
+  const [issPasses, setIssPasses] = useState<VisiblePass[]>([]);
+  const [starlinkPasses, setStarlinkPasses] = useState<VisiblePass[]>([]);
 
 
   useEffect(() => {
@@ -38,12 +42,14 @@ export default function AstronomyPanel() {
             `https://api.open-meteo.com/v1/forecast?latitude=${position[0]}&longitude=${position[1]}&current=cloud_cover,visibility,temperature_2m,wind_speed_10m&timezone=Europe%2FParis`,
             { cache: "no-store" }
           ) : null;
+        const passesResponse = position ? await fetch(`/api/passes?lat=${position[0]}&lon=${position[1]}`, { cache: "no-store" }) : null;
 
-        const [stations, starlink, visual, weatherPayload] = await Promise.all([
+        const [stations, starlink, visual, weatherPayload, passesPayload] = await Promise.all([
           stationsResponse.json(),
           starlinkResponse.json(),
           visualResponse.json(),
-          weatherResponse ? weatherResponse.json() : Promise.resolve({ current: null })
+          weatherResponse ? weatherResponse.json() : Promise.resolve({ current: null }),
+          passesResponse ? passesResponse.json() : Promise.resolve({ iss: [], starlink: [] })
         ]);
 
         if (cancelled) return;
@@ -56,11 +62,14 @@ export default function AstronomyPanel() {
         setStarlinkCount(typeof starlink.count === "number" ? starlink.count : null);
         setVisibleCount(typeof visual.count === "number" ? visual.count : null);
         setWeather(weatherPayload.current ?? null);
+        setIssPasses(Array.isArray(passesPayload.iss) ? passesPayload.iss : []);
+        setStarlinkPasses(Array.isArray(passesPayload.starlink) ? passesPayload.starlink : []);
         setOrbitStatus(
           stationsResponse.ok && starlinkResponse.ok && visualResponse.ok
             ? "Catalogue orbital actualisé"
             : "Catalogue orbital partiellement disponible"
         );
+        if (stationsResponse.ok || starlinkResponse.ok || visualResponse.ok) reportDataUpdate("astronomy");
       } catch {
         if (!cancelled) setOrbitStatus("Sources astronomiques indisponibles");
       }
@@ -124,10 +133,13 @@ export default function AstronomyPanel() {
             <div><span>Identifiant ISS</span><strong>{iss?.NORAD_CAT_ID ?? "25544"}</strong></div>
           </div>
 
-          <div className="honesty-card-v4">
-            <strong>Pas d’horaire inventé</strong>
-            <p>Les passages précis seront affichés uniquement lorsqu’un calcul orbital local fiable sera activé. Le catalogue ci-dessus est réellement actualisé.</p>
+          <div className="astronomy-pass-grid">
+            <article><span>ISS — prochain passage visible</span>{issPasses[0] ? <><h3>{new Date(issPasses[0].start).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}</h3><p>Début {new Date(issPasses[0].start).toLocaleString("fr-FR")} • Maximum {new Date(issPasses[0].maximum).toLocaleTimeString("fr-FR")} • Fin {new Date(issPasses[0].end).toLocaleTimeString("fr-FR")}</p><small>{issPasses[0].direction} • {issPasses[0].maxElevation}° • {Math.round(issPasses[0].durationSeconds/60)} min</small></> : <strong>Aucun passage visible prochainement.</strong>}</article>
+            <article><span>Starlink</span>{starlinkPasses[0] ? <><h3>{new Date(starlinkPasses[0].start).toLocaleString("fr-FR")}</h3><p>{starlinkPasses[0].direction} • {starlinkPasses[0].maxElevation}° • {Math.round(starlinkPasses[0].durationSeconds/60)} min</p><small>Passage individuel calculé — aucun train confirmé par la source.</small></> : <strong>Aucun passage visible prochainement.</strong>}</article>
           </div>
+          <details className="passes-seven-days"><summary>Voir les passages des 7 prochains jours</summary>{[...issPasses,...starlinkPasses].sort((a,b)=>a.start.localeCompare(b.start)).map((pass)=><p key={`${pass.name}-${pass.start}`}><strong>{pass.name}</strong> • {new Date(pass.start).toLocaleString("fr-FR")} • {pass.direction} • {pass.maxElevation}°</p>)}</details>
+
+          <div className="honesty-card-v4"><strong>Calcul orbital réel</strong><p>Propagation SGP4 depuis CelesTrak. Un passage est dit visible seulement si l’objet est éclairé, au-dessus de 10° et l’observateur dans le crépuscule ou la nuit.</p></div>
         </article>
 
         <aside className="astronomy-side-v4">

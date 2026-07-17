@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { enforceRateLimit } from "../../lib/api/guard";
 
 export const dynamic = "force-dynamic";
 
@@ -27,7 +28,7 @@ async function airportWeather(airport: Airport) {
   const url = new URL("https://api.open-meteo.com/v1/forecast");
   url.searchParams.set("latitude", String(airport.latitude));
   url.searchParams.set("longitude", String(airport.longitude));
-  url.searchParams.set("current", "temperature_2m,weather_code,wind_speed_10m,visibility");
+  url.searchParams.set("current", "temperature_2m,weather_code,wind_speed_10m,wind_gusts_10m,visibility,surface_pressure,cloud_cover");
   url.searchParams.set("wind_speed_unit", "kn");
   url.searchParams.set("timezone", "auto");
   const response = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(6500) });
@@ -37,26 +38,31 @@ async function airportWeather(airport: Airport) {
 }
 
 export async function GET(request: NextRequest) {
+  const limited = enforceRateLimit(request, "flight-details", 30, 60_000);
+  if (limited) return limited;
   const callsign = (request.nextUrl.searchParams.get("callsign") ?? "").trim().toUpperCase();
   const aircraftKey = (request.nextUrl.searchParams.get("aircraft") ?? "").replace(/[^A-Z0-9-]/gi, "").toUpperCase();
   const includeWeather = request.nextUrl.searchParams.get("weather") !== "0";
-  if (!/^[A-Z0-9]{3,10}$/.test(callsign)) {
-    return NextResponse.json({ route: null, error: "Indicatif invalide." }, { status: 400 });
+  const validCallsign = /^[A-Z0-9]{2,10}$/.test(callsign);
+  if (!validCallsign && !aircraftKey) {
+    return NextResponse.json({ route: null, aircraft: null, error: "Mode-S, immatriculation ou indicatif requis." }, { status: 400 });
   }
 
   try {
-    const endpoint = aircraftKey
+    const endpoint = aircraftKey && validCallsign
       ? `https://api.adsbdb.com/v0/aircraft/${encodeURIComponent(aircraftKey)}?callsign=${encodeURIComponent(callsign)}`
-      : `https://api.adsbdb.com/v0/callsign/${encodeURIComponent(callsign)}`;
+      : aircraftKey
+        ? `https://api.adsbdb.com/v0/aircraft/${encodeURIComponent(aircraftKey)}`
+        : `https://api.adsbdb.com/v0/callsign/${encodeURIComponent(callsign)}`;
     const response = await fetch(endpoint, {
       next: { revalidate: 3600 },
       signal: AbortSignal.timeout(6500),
-      headers: { Accept: "application/json", "User-Agent": "XavPac/6.2" }
+      headers: { Accept: "application/json", "User-Agent": `XavPac/${process.env.NEXT_PUBLIC_XAVPAC_VERSION ?? "development"}` }
     });
     if (!response.ok) return NextResponse.json({ route: null, source: "ADSBDB" });
     const payload = await response.json();
-    const route = payload.response?.flightroute ?? payload.response;
-    const aircraft = (payload.response?.aircraft ?? null) as AdsbDbAircraft | null;
+    const route = validCallsign ? payload.response?.flightroute ?? (aircraftKey ? null : payload.response) : null;
+    const aircraft = (payload.response?.aircraft ?? (aircraftKey && !validCallsign ? payload.response : null)) as AdsbDbAircraft | null;
     const origin = route?.origin as Airport | undefined;
     const destination = route?.destination as Airport | undefined;
     const airlineName = typeof route?.airline?.name === "string" ? route.airline.name.trim() : null;

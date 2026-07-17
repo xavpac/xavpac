@@ -308,7 +308,7 @@ export default function CenterOperationsPanel() {
           <div>
             <small>INDICATEUR TECHNIQUE LOCAL</small>
             <strong>{level.label}</strong>
-            <em>{isLive ? "GPS continu" : "Position de secours"} • mise à jour {updatedAt}</em>
+            <em>{isLive ? "GPS continu" : "GPS indisponible"} • mise à jour {updatedAt}</em>
           </div>
         </div>
       </section>

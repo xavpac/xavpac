@@ -1,5 +1,5 @@
 export type DroneZoneAssessment = { name: string; containsPoint: boolean; status: "active" | "inactive" | "unknown" };
-export type DroneDecisionInput = { hasPosition: boolean; zones: DroneZoneAssessment[]; aerodromeDistanceKm: number | null; requestedHeightM: number; weatherAvailable: boolean; flightCategory?: string | null; gustKnots?: number | null; visibilityKm?: number | null; restrictionsChecked: boolean };
+export type DroneDecisionInput = { hasPosition: boolean; zones: DroneZoneAssessment[]; aerodromeDistanceKm: number | null; requestedHeightM: number; weatherAvailable: boolean; flightCategory?: string | null; gustKnots?: number | null; visibilityKm?: number | null; restrictionsChecked: boolean; nearbyAircraftCount?: number };
 export type DroneDecision = { level: "possible" | "check" | "forbidden"; label: "VOL POSSIBLE" | "VOL À VÉRIFIER" | "VOL NON AUTORISÉ"; reasons: string[] };
 
 export function evaluateDroneFlight(input: DroneDecisionInput): DroneDecision {
@@ -15,6 +15,8 @@ export function evaluateDroneFlight(input: DroneDecisionInput): DroneDecision {
   else if (input.hasPosition) positive.push("Hors zone RTBA active connue");
   if (input.aerodromeDistanceKm !== null && input.aerodromeDistanceKm <= 5) checks.push("Proximité d’un aérodrome");
   if (!input.restrictionsChecked) checks.push("Restrictions aéronautiques non vérifiées automatiquement");
+  if ((input.nearbyAircraftCount ?? 0) > 0) checks.push(`${input.nearbyAircraftCount} aéronef${input.nearbyAircraftCount === 1 ? "" : "s"} à proximité`);
+  else if (input.hasPosition) positive.push("Aucun aéronef dangereux détecté à proximité");
   if (!input.weatherAvailable) checks.push("Météo opérationnelle indisponible");
   else {
     const category = input.flightCategory?.toUpperCase();

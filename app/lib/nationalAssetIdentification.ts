@@ -12,7 +12,7 @@ export type NationalIdentity = {
   model: string | null;
   operator: string | null;
   probableMission: string | null;
-  confidence: "confirmed" | "to-confirm";
+  confidence: "confirmed" | "probable" | "to-confirm";
   evidence: string[];
 };
 
@@ -43,7 +43,7 @@ export function identifyNationalAsset(input: NationalIdentityInput): NationalIde
       model,
       operator: value.operator || (civilSecurity ? "Sécurité civile" : null),
       probableMission: /^(PELICAN|P[ÉE]LICAN)/.test(value.callsign) ? "Lutte contre les feux de forêt" : null,
-      confidence: model || civilSecurity ? "confirmed" : "to-confirm",
+      confidence: model || civilSecurity ? "confirmed" : "probable",
       evidence: [model ? "modèle ADS-B CL-415" : "indicatif PELICAN"]
     };
   }
@@ -56,7 +56,7 @@ export function identifyNationalAsset(input: NationalIdentityInput): NationalIde
       model,
       operator: value.operator || (civilSecurity ? "Sécurité civile" : null),
       probableMission: null,
-      confidence: model || civilSecurity ? "confirmed" : "to-confirm",
+      confidence: model || civilSecurity ? "confirmed" : "probable",
       evidence: [model ? "modèle ADS-B Q400/DH8D" : "indicatif MILAN"]
     };
   }
@@ -74,6 +74,9 @@ export function identifyNationalAsset(input: NationalIdentityInput): NationalIde
   }
   if (/SAMU|SMUR/.test(`${value.callsign} ${value.operatorUpper}`)) {
     return { category: "Hélicoptère SAMU", badge: "HÉLICOPTÈRE SAMU", model: input.aircraftType || input.description || null, operator: value.operator, probableMission: "Transport médical d’urgence", confidence: "confirmed", evidence: ["indicatif ou opérateur SAMU/SMUR"] };
+  }
+  if (/DOUANE|CUSTOMS/.test(`${value.callsign} ${value.operatorUpper}`)) {
+    return { category: "Aéronef des Douanes", badge: "DOUANES", model: input.aircraftType || input.description || null, operator: value.operator || "Douane française", probableMission: null, confidence: "confirmed", evidence: ["opérateur Douanes"] };
   }
   if (/DRONE|UAV|UNMANNED/.test(value.type)) {
     return { category: "Drone opérationnel", badge: "DRONE OPÉRATIONNEL", model: input.aircraftType || input.description || null, operator: value.operator, probableMission: null, confidence: "confirmed", evidence: ["type ADS-B drone/UAV"] };
