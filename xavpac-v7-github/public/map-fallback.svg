@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 700">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#102a25"/>
+      <stop offset="1" stop-color="#081a20"/>
+    </linearGradient>
+    <filter id="glow"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>
+  <rect width="1200" height="700" fill="url(#bg)"/>
+  <g opacity=".22" fill="#4f765d">
+    <path d="M0 45L230 80 350 10 530 130 710 55 900 95 1200 0V240L1010 220 890 330 690 260 530 340 360 230 170 300 0 230Z"/>
+    <path d="M0 420L170 360 320 430 480 365 620 470 810 390 980 475 1200 390V700H0Z"/>
+  </g>
+  <g fill="none" stroke="#4b6681" stroke-width="2" opacity=".32">
+    <path d="M60 650C220 490 350 560 470 390S730 180 1140 95"/>
+    <path d="M40 180C280 220 310 340 540 320S850 250 1160 370"/>
+    <path d="M180 40C240 210 380 230 470 510S780 660 1150 600"/>
+  </g>
+  <g fill="none" stroke="#d44968" stroke-width="3" opacity=".45">
+    <path d="M100 610C350 500 410 420 620 370S900 250 1120 110"/>
+    <path d="M120 100C330 210 480 160 690 280S930 500 1110 650"/>
+  </g>
+  <g fill="#d8e1e6" opacity=".72" font-family="Arial, sans-serif" font-size="18">
+    <text x="270" y="180">Le Creusot</text><text x="510" y="210">Chalon-sur-Saône</text>
+    <text x="390" y="360">Cluny</text><text x="610" y="405">Mâcon</text>
+    <text x="850" y="420">Bourg-en-Bresse</text><text x="170" y="480">Paray-le-Monial</text>
+    <text x="710" y="285">Tournus</text><text x="920" y="260">Louhans</text>
+  </g>
+  <g stroke="#4ed5ff" stroke-width="2" opacity=".36" filter="url(#glow)">
+    <path d="M40 530L360 410 650 505 1030 310"/><path d="M160 110L450 260 830 170 1140 350"/>
+  </g>
+</svg>
