@@ -18,7 +18,8 @@ import {
 } from "../lib/aviation/passageTracker";
 
 const StableMap = dynamic(() => import("./StableMap"), { ssr: false });
-const OPERATIONAL_MAP_CENTER: [number, number] = [46.63, 4.56];
+const FRANCE_OVERVIEW_CENTER: [number, number] = [46.603354, 1.888334];
+const MANUAL_OBSERVER_KEY = "xavpac:manual-observer";
 
 type Radius = 20 | 50 | 100;
 
@@ -99,7 +100,7 @@ function formatDuration(seconds: number) {
 }
 
 function passageTitle(analysis: PassageAnalysis | null) {
-  if (!analysis || analysis.status === "no-observer") return "Position GPS réelle requise";
+  if (!analysis || analysis.status === "no-observer") return "Position d’observation requise";
   if (analysis.status === "stale") return "Position aéronef trop ancienne pour estimer le passage";
   if (analysis.status === "waiting") return "Analyse du rapprochement en attente de nouvelles positions";
   if (analysis.status === "approaching") return analysis.estimatedSecondsToClosest === null
@@ -114,7 +115,7 @@ function passageTitle(analysis: PassageAnalysis | null) {
 }
 
 function passageDetail(analysis: PassageAnalysis | null) {
-  if (!analysis) return "Le calcul utilise uniquement votre position GPS réelle.";
+  if (!analysis) return "Le calcul utilise uniquement la position d’observation affichée.";
   if (analysis.status === "non-convergent") return "L’appareil ne devrait pas passer à proximité immédiate de votre position.";
   if (analysis.status === "insufficient") return "Distance stable ou données de trajectoire insuffisantes.";
   if (analysis.status === "approaching" && analysis.estimatedSecondsToClosest === null) return "Rapprochement mesuré ; estimation temporelle indisponible sans cap et vitesse complets.";
@@ -176,8 +177,12 @@ function weatherVisibility(value: number | null) {
 }
 
 export default function AviationPanel() {
-  const { position, status: positionStatus, accuracy, timestamp: gpsTimestamp, isLive, error: gpsError } = useLiveGeolocation();
+  const { position, status: positionStatus, accuracy, timestamp: gpsTimestamp, isLive, retryGeolocation, error: gpsError } = useLiveGeolocation();
   const [radius, setRadius] = useState<Radius>(50);
+  const [manualObserver, setManualObserver] = useState<[number, number] | null>(null);
+  const [observerCommune, setObserverCommune] = useState("");
+  const [observerCoordinates, setObserverCoordinates] = useState("");
+  const [observerMessage, setObserverMessage] = useState("");
   const [aircraft, setAircraft] = useState<AircraftWithDistance[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [manualSelection, setManualSelection] = useState(false);
@@ -197,11 +202,28 @@ export default function AviationPanel() {
   const [trailsVersion, setTrailsVersion] = useState(0);
   const passageHistoryRef = useRef(new PassageHistoryStore());
   const [passageHistoryVersion, setPassageHistoryVersion] = useState(0);
+  const observerPosition = manualObserver ?? position;
+  const observerStatus = manualObserver
+    ? `Position corrigée • ${manualObserver[0].toFixed(5)} / ${manualObserver[1].toFixed(5)}`
+    : positionStatus;
+  const observerAccuracy = manualObserver ? null : accuracy;
 
   useEffect(() => {
     try {
       const stored = window.localStorage.getItem("xavpac-favorites");
       if (stored) setFavoriteIds(JSON.parse(stored));
+      const storedObserver = window.sessionStorage.getItem(MANUAL_OBSERVER_KEY);
+      if (storedObserver) {
+        const value = JSON.parse(storedObserver) as unknown;
+        if (Array.isArray(value) && value.length === 2 && value.every(Number.isFinite)) {
+          const point: [number, number] = [Number(value[0]), Number(value[1])];
+          if (point[0] >= 41 && point[0] <= 52 && point[1] >= -6 && point[1] <= 10) {
+            setManualObserver(point);
+            setObserverCoordinates(`${point[0]}, ${point[1]}`);
+            setObserverMessage("Position corrigée restaurée pour cet onglet.");
+          }
+        }
+      }
     } catch {
       setFavoriteIds([]);
     }
@@ -211,9 +233,15 @@ export default function AviationPanel() {
     let cancelled = false;
 
     async function refresh() {
+      if (!observerPosition) {
+        setAircraft([]);
+        setSelectedId(null);
+        setSourceStatus("Position requise pour rechercher les avions proches");
+        return;
+      }
       try {
         setError("");
-        const center = position ?? OPERATIONAL_MAP_CENTER;
+        const center = observerPosition;
         const response = await fetch(`/api/aircraft?lat=${center[0]}&lon=${center[1]}&radius=${radius}`, { cache: "no-store" });
         const payload = await response.json();
         if (cancelled) return;
@@ -243,7 +271,7 @@ export default function AviationPanel() {
         }
         setTrailsVersion((value) => value + 1);
 
-        if (position) {
+        if (observerPosition) {
           let historyChanged = false;
           for (const item of sorted.slice(0, 100)) {
             historyChanged = passageHistoryRef.current.record({
@@ -254,8 +282,8 @@ export default function AviationPanel() {
               groundSpeedMetersPerSecond: item.velocity,
               trackDegrees: item.trueTrack,
               positionTimestampMs: aircraftPositionTimestamp(item.lastPositionAt),
-              observer: position,
-              observerTimestampMs: gpsTimestamp
+              observer: observerPosition,
+              observerTimestampMs: manualObserver ? Date.now() : gpsTimestamp
             }) || historyChanged;
           }
           if (historyChanged) setPassageHistoryVersion((value) => value + 1);
@@ -280,7 +308,7 @@ export default function AviationPanel() {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [position, radius, manualSelection, selectedId, gpsTimestamp]);
+  }, [observerPosition, manualObserver, radius, manualSelection, selectedId, gpsTimestamp]);
 
   useEffect(() => {
     fetch("/api/aviation-news", { cache: "no-store" }).then((response) => response.json()).then((payload) => setNews(Array.isArray(payload.news) ? payload.news : [])).catch(() => setNews([]));
@@ -344,12 +372,12 @@ export default function AviationPanel() {
 
   const mapPoints = useMemo(
     () => [
-      ...(position ? [{
+      ...(observerPosition ? [{
         id: "home",
-        lat: position[0],
-        lon: position[1],
-        name: "Votre position",
-        detail: positionStatus,
+        lat: observerPosition[0],
+        lon: observerPosition[1],
+        name: manualObserver ? "Votre position corrigée" : "Votre position GPS",
+        detail: observerStatus,
         color: "#3aa7ff",
         category: "home"
       }] : []),
@@ -368,7 +396,7 @@ export default function AviationPanel() {
         };
       })
     ],
-    [position, positionStatus, enrichedByModeS, selected, visibleAircraft]
+    [observerPosition, manualObserver, observerStatus, enrichedByModeS, selected, visibleAircraft]
   );
 
   const mapTrails = useMemo(
@@ -397,15 +425,15 @@ export default function AviationPanel() {
         positionTimestampMs: aircraftPositionTimestamp(item.lastPositionAt)
       },
       history: passageHistoryRef.current.get(item.id),
-      observer: position,
-      gpsAccuracyMeters: accuracy,
+      observer: observerPosition,
+      gpsAccuracyMeters: observerAccuracy,
       nowMs
     })]));
   // Le compteur rend les nouveaux échantillons du store visibles sans dupliquer l’historique dans l’état React.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [aircraft, position, accuracy, passageHistoryVersion]);
+  }, [aircraft, observerPosition, observerAccuracy, passageHistoryVersion]);
   const approach = selected ? passageById[selected.id] ?? null : null;
-  const bearing = selected && position ? bearingName(position, [selected.latitude, selected.longitude]) : null;
+  const bearing = selected && observerPosition ? bearingName(observerPosition, [selected.latitude, selected.longitude]) : null;
   const estimatedElevation = selected && selected.barometricAltitude !== null && selected.distance > 0
     ? Math.max(0, Math.min(90, (Math.atan2(selected.barometricAltitude, selected.distance * 1000) * 180) / Math.PI))
     : null;
@@ -459,6 +487,52 @@ export default function AviationPanel() {
     return enrichedByModeS[item.id.replace(/^~/, "").toUpperCase()] ?? null;
   }
 
+  function setObserverPoint(point: [number, number], message: string) {
+    setManualObserver(point);
+    setObserverCoordinates(`${point[0]}, ${point[1]}`);
+    setObserverMessage(message);
+    passageHistoryRef.current.clear();
+    trailsRef.current = {};
+    setPassageHistoryVersion((value) => value + 1);
+    try { window.sessionStorage.setItem(MANUAL_OBSERVER_KEY, JSON.stringify(point)); } catch {}
+  }
+
+  function applyObserverCoordinates() {
+    const values = observerCoordinates.split(/[;,\s]+/).map(Number).filter(Number.isFinite);
+    if (values.length < 2 || values[0] < 41 || values[0] > 52 || values[1] < -6 || values[1] > 10) {
+      setObserverMessage("Coordonnées invalides pour la France.");
+      return;
+    }
+    setObserverPoint([values[0], values[1]], "Position corrigée avec vos coordonnées.");
+  }
+
+  async function searchObserverCommune() {
+    if (!observerCommune.trim()) return;
+    setObserverMessage("Recherche de la commune…");
+    try {
+      const response = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(observerCommune)}&count=5&language=fr&countryCode=FR`);
+      const payload = await response.json();
+      const result = payload.results?.[0];
+      if (!result || !Number.isFinite(result.latitude) || !Number.isFinite(result.longitude)) {
+        setObserverMessage("Commune introuvable.");
+        return;
+      }
+      setObserverPoint([result.latitude, result.longitude], `${result.name}${result.admin1 ? ` — ${result.admin1}` : ""}`);
+    } catch {
+      setObserverMessage("Recherche de commune momentanément indisponible.");
+    }
+  }
+
+  function useGpsObserver() {
+    setManualObserver(null);
+    setObserverMessage("Nouvelle demande GPS envoyée au navigateur.");
+    passageHistoryRef.current.clear();
+    trailsRef.current = {};
+    setPassageHistoryVersion((value) => value + 1);
+    try { window.sessionStorage.removeItem(MANUAL_OBSERVER_KEY); } catch {}
+    retryGeolocation();
+  }
+
   return (
     <section className="flightwall-v61">
       <div className="flightwall-commandbar panel">
@@ -469,7 +543,7 @@ export default function AviationPanel() {
           <button type="button" className="fw-action">🔔 Remarquables <b>{Object.values(remarkableById).filter((items) => items.length).length}</b></button>
           <button type="button" className="fw-action" onClick={toggleFullscreen}>⛶ Plein écran</button>
         </div>
-        <div className="fw-live-summary"><span className={isLive ? "live-dot" : "live-dot off"} /> {sourceStatus} • {enrichmentStatus}</div>
+        <div className="fw-live-summary"><span className={isLive || manualObserver ? "live-dot" : "live-dot off"} /> {sourceStatus} • {enrichmentStatus}</div>
       </div>
 
       {showFilters && (
@@ -480,7 +554,17 @@ export default function AviationPanel() {
         </div>
       )}
 
-      {(gpsError || error) && <div className="aviation-warning-v5">{gpsError || error}</div>}
+      {((!manualObserver && gpsError) || error) && <div className="aviation-warning-v5">{(!manualObserver && gpsError) || error}</div>}
+
+      <div className={`aviation-location-panel panel ${observerPosition ? "ready" : "missing"}`}>
+        <div className="aviation-location-state"><span>POSITION D’OBSERVATION</span><strong>{observerStatus}</strong><small>{observerPosition ? "Les avions, distances et passages sont calculés depuis ce point." : "Aucun trafic local n’est affiché tant que votre position n’est pas fiable."}</small></div>
+        <div className="aviation-location-inputs">
+          <label>Commune <span><input value={observerCommune} onChange={(event) => setObserverCommune(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void searchObserverCommune(); } }} placeholder="Ex. Mâcon" /><button type="button" onClick={() => void searchObserverCommune()}>Me placer</button></span></label>
+          <label>Latitude, longitude <span><input value={observerCoordinates} onChange={(event) => setObserverCoordinates(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); applyObserverCoordinates(); } }} placeholder="46.306, 4.831" /><button type="button" onClick={applyObserverCoordinates}>Appliquer</button></span></label>
+          <button type="button" className="aviation-gps-retry" onClick={useGpsObserver}>{manualObserver ? "Reprendre le GPS" : "Relancer le GPS"}</button>
+        </div>
+        {observerMessage && <p>{observerMessage}</p>}
+      </div>
 
       <div className="flightwall-main-grid">
         <div className="flightwall-left">
@@ -488,7 +572,7 @@ export default function AviationPanel() {
             <div className="flightwall-map-stage">
               <StableMap
                   points={mapPoints}
-                  center={position ?? OPERATIONAL_MAP_CENTER}
+                  center={observerPosition ?? FRANCE_OVERVIEW_CENTER}
                   radiusKm={radius}
                   showRadius={showCircle}
                   selectedId={selected?.id}
@@ -512,11 +596,11 @@ export default function AviationPanel() {
 
               <div className="fw-map-counters">
                 <div><span>✈️</span><strong>{aircraft.filter((item) => !item.onGround).length}</strong><small>En vol</small></div>
-                <div><span>🎯</span><strong>{position ? aircraft.filter((item) => item.distance <= 20).length : "—"}</strong><small>À proximité</small></div>
+                <div><span>🎯</span><strong>{observerPosition ? aircraft.filter((item) => item.distance <= 20).length : "—"}</strong><small>À proximité</small></div>
                 <div><span>🛬</span><strong>{aircraft.filter((item) => item.onGround).length}</strong><small>Au sol</small></div>
               </div>
 
-              <button type="button" disabled={!position} className="fw-locate-button" title="Recentrer sur ma position" aria-label="Recentrer sur ma position" onClick={() => setLocateSignal((value) => value + 1)}>📍</button>
+              <button type="button" disabled={!observerPosition} className="fw-locate-button" title="Recentrer sur ma position" aria-label="Recentrer sur ma position" onClick={() => setLocateSignal((value) => value + 1)}>📍</button>
 
             </div>
           </div>
@@ -528,7 +612,7 @@ export default function AviationPanel() {
                 <div className="mini-radar fw-large-radar">
                   <span className="radar-axis horizontal" /><span className="radar-axis vertical" />
                   <span className="radar-circle one" /><span className="radar-circle two" /><span className="radar-circle three" /><span className="radar-center" />
-                  {position && aircraft.slice(0, 22).map((item) => <button type="button" key={item.id} className={item.id === selected?.id ? "radar-blip selected" : "radar-blip"} style={radarCoordinates(position, item, radius)} onClick={() => selectAircraft(item.id)} title={item.callsign} />)}
+                  {observerPosition && aircraft.slice(0, 22).map((item) => <button type="button" key={item.id} className={item.id === selected?.id ? "radar-blip selected" : "radar-blip"} style={radarCoordinates(observerPosition, item, radius)} onClick={() => selectAircraft(item.id)} title={item.callsign} />)}
                 </div>
                 <div className="fw-proximity-grid">
                   <div><span>≤ 5 km</span><strong>{proximityCounts.five}</strong></div>
@@ -553,7 +637,7 @@ export default function AviationPanel() {
                     <b>{remarkable ? remarkable.icon : index + 1}</b>
                     <strong>{identity}<small>{identityKind} • {enriched?.operator ?? item.operator ?? "Compagnie non identifiée"}</small></strong>
                     <span>{enriched?.routeLabel ?? "Départ / arrivée non disponibles"}<small>{enriched?.aircraftType ?? item.aircraftType ?? "Type non disponible"} • {formatAltitude(item.barometricAltitude)}</small></span>
-                    <em>{position ? `${item.distance.toFixed(1)} km` : "Distance —"}<small>{passage?.status === "approaching" ? passage.estimatedSecondsToClosest === null ? "En rapprochement" : `Passage estimé dans ${formatDuration(passage.estimatedSecondsToClosest)}` : passage?.status === "closest" ? "Au plus près" : passage?.status === "receding" ? "En éloignement" : passage?.status === "non-convergent" ? "Non convergent" : "Analyse en attente"} • {routeQualifiers[enriched?.routeConfidence ?? "unavailable"]}</small></em>
+                    <em>{observerPosition ? `${item.distance.toFixed(1)} km` : "Distance —"}<small>{passage?.status === "approaching" ? passage.estimatedSecondsToClosest === null ? "En rapprochement" : `Passage estimé dans ${formatDuration(passage.estimatedSecondsToClosest)}` : passage?.status === "closest" ? "Au plus près" : passage?.status === "receding" ? "En éloignement" : passage?.status === "non-convergent" ? "Non convergent" : "Analyse en attente"} • {routeQualifiers[enriched?.routeConfidence ?? "unavailable"]}</small></em>
                   </button>;
                 })}
                 {!aircraft.length && <p className="fw-empty-text">Aucun appareil reçu dans ce rayon.</p>}
@@ -592,7 +676,7 @@ export default function AviationPanel() {
               </div>
 
               <div className={`fw-passage-card passage-${approach?.status ?? "unavailable"}`}>
-                <div className="fw-passage-summary"><span>Passage au plus près de ma position GPS</span><h3>{passageTitle(approach)}</h3><p>{passageDetail(approach)}</p></div>
+                <div className="fw-passage-summary"><span>Passage au plus près de ma position</span><h3>{passageTitle(approach)}</h3><p>{passageDetail(approach)}</p></div>
                 <div className="fw-passage-minimum">
                   <span>{approach?.status === "receding" || approach?.status === "closest" ? "Distance minimale observée" : "Distance minimale estimée"}</span>
                   <strong>{approach?.status === "receding" || approach?.status === "closest"
@@ -622,7 +706,7 @@ export default function AviationPanel() {
               <div className="fw-look-grid">
                 <div><span>Où regarder ?</span><strong>{bearing?.label ?? "—"}</strong></div>
                 <div><span>Angle d’élévation estimé</span><strong>{estimatedElevation === null ? "—" : `${Math.round(estimatedElevation)}°`}</strong></div>
-                <div><span>Distance actuelle</span><strong>{position ? `${selected.distance.toFixed(1)} km` : "Non déterminée"}</strong></div>
+                <div><span>Distance actuelle</span><strong>{observerPosition ? `${selected.distance.toFixed(1)} km` : "Non déterminée"}</strong></div>
                 <div><span>Vitesse sol</span><strong>{formatSpeedKnots(selected.velocity)}</strong></div>
               </div>
 
@@ -665,7 +749,7 @@ export default function AviationPanel() {
         </aside>
       </div>
 
-      <div className="flightwall-statusline"><span>Données en direct et temps réel</span><span>GPS : {positionStatus}</span><span><i className="live-dot" /> Prochaine actualisation : 10 s</span></div>
+      <div className="flightwall-statusline"><span>Données en direct et temps réel</span><span>Position : {observerStatus}</span><span><i className="live-dot" /> Prochaine actualisation : 10 s</span></div>
     </section>
   );
 }

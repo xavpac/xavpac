@@ -1,6 +1,8 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
+
+const MAX_USABLE_ACCURACY_METERS = 2000;
 
 export type LiveGeolocation = {
   position: [number, number] | null;
@@ -11,6 +13,7 @@ export type LiveGeolocation = {
   isLive: boolean;
   trackingEnabled: boolean;
   setTrackingEnabled: (enabled: boolean) => void;
+  retryGeolocation: () => void;
   error: string;
 };
 
@@ -24,7 +27,9 @@ function useLiveGeolocationSource(): LiveGeolocation {
   const [timestamp, setTimestamp] = useState<number | null>(null);
   const [isLive, setIsLive] = useState(false);
   const [trackingEnabled, setTrackingEnabled] = useState(true);
+  const [requestVersion, setRequestVersion] = useState(0);
   const [error, setError] = useState("");
+  const hasUsablePosition = useRef(false);
 
   useEffect(() => {
     if (!trackingEnabled) {
@@ -42,6 +47,18 @@ function useLiveGeolocationSource(): LiveGeolocation {
 
     const watchId = navigator.geolocation.watchPosition(
       (result) => {
+        const roundedAccuracy = Math.round(result.coords.accuracy);
+        if (result.coords.accuracy > MAX_USABLE_ACCURACY_METERS) {
+          if (!hasUsablePosition.current) setPosition(null);
+          setAccuracy(result.coords.accuracy);
+          setAltitude(result.coords.altitude);
+          setTimestamp(result.timestamp);
+          setIsLive(false);
+          setError(`Position GPS trop imprécise (±${roundedAccuracy.toLocaleString("fr-FR")} m). Corrigez-la par commune ou coordonnées.`);
+          setStatus(`GPS trop imprécis • ±${roundedAccuracy.toLocaleString("fr-FR")} m`);
+          return;
+        }
+        hasUsablePosition.current = true;
         setPosition([result.coords.latitude, result.coords.longitude]);
         setAccuracy(result.coords.accuracy);
         setAltitude(result.coords.altitude);
@@ -51,13 +68,20 @@ function useLiveGeolocationSource(): LiveGeolocation {
         setStatus(`HOME • GPS réel ±${Math.round(result.coords.accuracy)} m`);
       },
       (geolocationError) => {
-        setPosition(null);
+        if (!hasUsablePosition.current || geolocationError.code === geolocationError.PERMISSION_DENIED) setPosition(null);
         setIsLive(false);
-        setAccuracy(null);
-        setAltitude(null);
-        setTimestamp(null);
-        setError("Position GPS indisponible");
-        setStatus("Position GPS indisponible");
+        if (!hasUsablePosition.current) {
+          setAccuracy(null);
+          setAltitude(null);
+          setTimestamp(null);
+        }
+        const message = geolocationError.code === geolocationError.PERMISSION_DENIED
+          ? "Localisation refusée. Autorisez la position dans les réglages du navigateur, puis relancez le GPS."
+          : geolocationError.code === geolocationError.TIMEOUT
+            ? "Le GPS n’a pas répondu à temps. Relancez-le ou indiquez votre commune."
+            : "Le navigateur ne parvient pas à déterminer votre position. Indiquez votre commune ou vos coordonnées.";
+        setError(message);
+        setStatus(message);
       },
       {
         enableHighAccuracy: true,
@@ -67,9 +91,16 @@ function useLiveGeolocationSource(): LiveGeolocation {
     );
 
     return () => navigator.geolocation.clearWatch(watchId);
-  }, [trackingEnabled]);
+  }, [trackingEnabled, requestVersion]);
 
-  return { position, status, accuracy, altitude, timestamp, isLive, trackingEnabled, setTrackingEnabled, error };
+  function retryGeolocation() {
+    setError("");
+    setStatus("Nouvelle demande de localisation…");
+    setTrackingEnabled(true);
+    setRequestVersion((value) => value + 1);
+  }
+
+  return { position, status, accuracy, altitude, timestamp, isLive, trackingEnabled, setTrackingEnabled, retryGeolocation, error };
 }
 
 export function LiveGeolocationProvider({ children }: { children: React.ReactNode }) {

@@ -1196,6 +1196,22 @@ a { color: inherit; }
 }
 .fw-filterbar span { margin-left: auto; color: #94aac0; font-size: 9px; }
 
+.aviation-location-panel { display:grid; grid-template-columns:minmax(250px,.72fr) minmax(520px,1.28fr); gap:12px; align-items:center; padding:11px 13px; border-color:rgba(77,190,255,.25); background:linear-gradient(135deg,rgba(7,36,58,.94),rgba(5,22,38,.96)); }
+.aviation-location-panel.missing { border-color:rgba(255,189,89,.42); background:linear-gradient(135deg,rgba(66,43,12,.93),rgba(27,24,20,.96)); }
+.aviation-location-state span,.aviation-location-state strong,.aviation-location-state small { display:block; }
+.aviation-location-state span { color:#50c8ff; font-size:7px; font-weight:900; letter-spacing:.1em; }
+.aviation-location-panel.missing .aviation-location-state span { color:#ffc76d; }
+.aviation-location-state strong { margin-top:4px; color:#f4f9fc; font-size:11px; }
+.aviation-location-state small { margin-top:4px; color:#90a9bc; font-size:7px; line-height:1.45; }
+.aviation-location-inputs { display:grid; grid-template-columns:minmax(170px,1fr) minmax(210px,1fr) auto; gap:7px; align-items:end; }
+.aviation-location-inputs label { color:#8eabc0; font-size:7px; font-weight:850; text-transform:uppercase; }
+.aviation-location-inputs label>span { display:flex; margin-top:4px; }
+.aviation-location-inputs input { min-width:0; width:100%; height:34px; box-sizing:border-box; padding:0 9px; border:1px solid rgba(103,166,212,.28); border-radius:7px 0 0 7px; color:#eef9ff; background:rgba(2,15,27,.82); font-size:9px; outline:0; }
+.aviation-location-inputs input:focus { border-color:#3dc4ff; }
+.aviation-location-inputs button { min-height:34px; padding:0 10px; border:1px solid rgba(61,196,255,.35); border-radius:0 7px 7px 0; color:#effaff; background:#0b639a; font-size:8px; font-weight:850; white-space:nowrap; cursor:pointer; }
+.aviation-location-inputs .aviation-gps-retry { border-radius:7px; background:rgba(20,76,112,.72); }
+.aviation-location-panel>p { grid-column:1/-1; margin:0; color:#b8cfdd; font-size:8px; }
+
 .operations-hero { min-height: 112px; background: linear-gradient(180deg, rgba(3,14,27,.995), rgba(5,22,39,.995)); }
 .operations-console { grid-template-columns: minmax(0, 1.88fr) minmax(360px, .98fr); gap: 8px; }
 .national-map-card, .national-side .panel { border-radius: 17px; }
@@ -1490,6 +1506,8 @@ a { color: inherit; }
   .fw-altitude-card { grid-column: 1 / -1; }
   .fw-map-search { width: 43%; }
   .fw-map-style { right: 52px; }
+  .aviation-location-panel { grid-template-columns:1fr; }
+  .aviation-location-panel>p { grid-column:auto; }
 }
 
 @media (max-width: 680px) {
@@ -1534,6 +1552,9 @@ a { color: inherit; }
   .fw-weather-strip > div { display: flex; overflow-x: auto; }
   .fw-weather-strip article { min-width: 112px; }
   .fw-filterbar { border-radius: 0; overflow-x: auto; }
+  .aviation-location-panel { padding:10px; border-radius:12px; }
+  .aviation-location-inputs { grid-template-columns:1fr; }
+  .aviation-location-inputs .aviation-gps-retry { width:100%; }
   .flightwall-statusline { display: none; }
 }
 
