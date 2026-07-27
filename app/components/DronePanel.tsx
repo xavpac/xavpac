@@ -61,7 +61,7 @@ type OfficialNotam = {
   translationSource: "sofia" | "assisted";
 };
 
-const FRANCE_CENTER: [number, number] = [46.603354, 1.888334];
+const FRANCE_OVERVIEW_CENTER: [number, number] = [46.603354, 1.888334];
 
 function directionText(value?: number | string) {
   if (value === undefined || value === null) return "inconnue";
@@ -130,7 +130,7 @@ function freshnessText(seconds: number | null) {
 
 export default function DronePanel() {
   const [mapMode, setMapMode] = useState<"official" | "map">("map");
-  const { position, status: positionStatus, accuracy, altitude, timestamp, isLive, trackingEnabled, setTrackingEnabled, error: gpsError } = useLiveGeolocation();
+  const { position, status: positionStatus, accuracy, altitude, timestamp, isLive, trackingEnabled, setTrackingEnabled, retryGeolocation, error: gpsError } = useLiveGeolocation();
   const [metar, setMetar] = useState<MetarReport | null>(null);
   const [metarStatus, setMetarStatus] = useState("Chargement de la météo locale…");
   const [traffic, setTraffic] = useState<LiveAircraft[]>([]);
@@ -152,7 +152,7 @@ export default function DronePanel() {
   const [passageHistoryVersion, setPassageHistoryVersion] = useState(0);
 
   const selectedPosition = manualPoint ?? position;
-  const analysisCenter = selectedPosition ?? FRANCE_CENTER;
+  const mapCenter = selectedPosition ?? FRANCE_OVERVIEW_CENTER;
   const notamLocationKey = selectedPosition ? `${selectedPosition[0].toFixed(3)}:${selectedPosition[1].toFixed(3)}` : "";
 
   useEffect(() => {
@@ -251,39 +251,44 @@ export default function DronePanel() {
 
   useEffect(() => {
     let cancelled = false;
+    const observer = selectedPosition;
+    if (!observer) {
+      setTraffic([]);
+      return;
+    }
+    const observerCoordinates: [number, number] = [observer[0], observer[1]];
     async function loadTraffic() {
       try {
-        const response = await fetch(`/api/aircraft?lat=${analysisCenter[0]}&lon=${analysisCenter[1]}&radius=100`, { cache: "no-store" });
+        const response = await fetch(`/api/aircraft?lat=${observerCoordinates[0]}&lon=${observerCoordinates[1]}&radius=100`, { cache: "no-store" });
         const payload = await response.json();
         if (!cancelled) {
           const receivedAtMs = Date.now();
           const nextTraffic: LiveAircraft[] = Array.isArray(payload.aircraft) ? payload.aircraft : [];
           setTraffic(nextTraffic);
-          if (selectedPosition) {
-            let historyChanged = false;
-            for (const item of nextTraffic) {
-              historyChanged = passageHistoryRef.current.record({
-                modeS: item.id,
-                latitude: item.latitude,
-                longitude: item.longitude,
-                altitudeMeters: item.barometricAltitude,
-                groundSpeedMetersPerSecond: item.velocity,
-                trackDegrees: item.trueTrack,
-                positionTimestampMs: aircraftPositionTimestamp(item.lastPositionAt),
-                observer: selectedPosition,
-                observerTimestampMs: manualPoint ? receivedAtMs : timestamp
-              }) || historyChanged;
-            }
-            if (historyChanged) setPassageHistoryVersion((value) => value + 1);
+          let historyChanged = false;
+          for (const item of nextTraffic) {
+            historyChanged = passageHistoryRef.current.record({
+              modeS: item.id,
+              latitude: item.latitude,
+              longitude: item.longitude,
+              altitudeMeters: item.barometricAltitude,
+              groundSpeedMetersPerSecond: item.velocity,
+              trackDegrees: item.trueTrack,
+              positionTimestampMs: aircraftPositionTimestamp(item.lastPositionAt),
+              observer: observerCoordinates,
+              observerTimestampMs: manualPoint ? receivedAtMs : timestamp
+            }) || historyChanged;
           }
+          if (historyChanged) setPassageHistoryVersion((value) => value + 1);
         }
       } catch { if (!cancelled) setTraffic([]); }
     }
     loadTraffic(); const timer = window.setInterval(loadTraffic, 15000);
     return () => { cancelled = true; window.clearInterval(timer); };
-  }, [analysisCenter, selectedPosition, manualPoint, timestamp]);
+  }, [selectedPosition, manualPoint, timestamp]);
 
   const nearbyTraffic = useMemo<AnalyzedDroneTraffic[]>(() => {
+    if (!selectedPosition) return [];
     const nowMs = Date.now();
     return traffic.map((item) => {
       const passage = analyzeAircraftPassage({
@@ -305,7 +310,7 @@ export default function DronePanel() {
       const remarkable = detectRemarkable(item).length > 0;
       return {
         ...item,
-        distance: distanceKm(analysisCenter, [item.latitude, item.longitude]),
+        distance: distanceKm(selectedPosition, [item.latitude, item.longitude]),
         passage,
         isHelicopter: helicopter,
         isRemarkable: remarkable,
@@ -314,7 +319,7 @@ export default function DronePanel() {
     }).sort((a, b) => a.priority - b.priority || a.distance - b.distance);
   // Le compteur publie les nouveaux points du store Mode-S auprès du calcul mémorisé.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [analysisCenter, selectedPosition, manualPoint, accuracy, traffic, passageHistoryVersion]);
+  }, [selectedPosition, manualPoint, accuracy, traffic, passageHistoryVersion]);
   const alertTraffic = nearbyTraffic.filter((item) => {
     const projectedDistance = item.passage.estimatedMinimumDistanceKm ?? item.distance;
     const operationallySensitive = (item.barometricAltitude ?? Infinity) <= 1500 || item.isHelicopter || item.isRemarkable;
@@ -560,10 +565,15 @@ export default function DronePanel() {
               <button type="button" className={mapMode === "official" ? "active" : ""} onClick={() => setMapMode("official")}>AZBA officiel live</button>
               <button type="button" className={mapMode === "map" ? "active" : ""} onClick={() => setMapMode("map")}>Carte France</button>
             </div>
-            <div className="drone-map-actions"><button type="button" disabled={!position} onClick={() => { setManualPoint(null); setMapMode("map"); }}>Recentrer</button><button type="button" onClick={() => setTrackingEnabled(!trackingEnabled)}>{trackingEnabled ? "Désactiver suivi GPS" : "Activer suivi GPS"}</button></div>
+            <div className="drone-map-actions">
+              <button type="button" disabled={!position} onClick={() => { setManualPoint(null); setMapMode("map"); }}>Recentrer</button>
+              <button type="button" onClick={() => position ? setTrackingEnabled(!trackingEnabled) : retryGeolocation()}>{position ? trackingEnabled ? "Désactiver suivi GPS" : "Activer suivi GPS" : "Relancer le GPS"}</button>
+            </div>
           </div>
 
           <div className="drone-location-tools"><label>Commune <input value={commune} onChange={(event) => setCommune(event.target.value)} placeholder="Ex. Bordeaux" /><button type="button" onClick={searchCommune}>Rechercher</button></label><label>Latitude, longitude <input value={coordinateInput} onChange={(event) => setCoordinateInput(event.target.value)} placeholder="44.8378, -0.5792" /><button type="button" onClick={applyCoordinates}>Appliquer</button></label>{locationMessage && <small>{locationMessage}</small>}</div>
+
+          {!selectedPosition && <div className="drone-location-warning"><span>📍</span><div><strong>La carte montre la France, pas votre position.</strong><small>Relancez le GPS, recherchez votre commune, saisissez vos coordonnées ou cliquez directement sur votre point exact.</small></div><button type="button" onClick={retryGeolocation}>Relancer le GPS</button></div>}
 
           {mapMode === "official" ? (
             <div className="azba-live-shell">
@@ -588,7 +598,7 @@ export default function DronePanel() {
                 <StableMap
                   points={mapPoints}
                   zones={RTBA_ZONES.map((zone) => ({ ...zone, status: "unknown" as const }))}
-                  center={analysisCenter}
+                  center={mapCenter}
                   zoom={selectedPosition ? 10 : 6}
                   mapVariant="layers"
                   showZoneLabels
