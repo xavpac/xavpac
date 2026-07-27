@@ -6,6 +6,16 @@ import { useLiveGeolocation } from "../hooks/useLiveGeolocation";
 import { evaluateDroneFlight } from "../lib/droneDecision";
 import { reportDataUpdate } from "../lib/buildInfo";
 import { detectRemarkable } from "../lib/aviation/remarkable";
+import { distanceKm } from "../lib/aviation/geometry";
+import type { LiveAircraft } from "../lib/aviation/liveAircraft";
+import { readNotamInFrench } from "../lib/aviation/notam";
+import {
+  assessRtba,
+  RTBA_ACTIVATION_URL,
+  RTBA_SOURCE_LABEL,
+  RTBA_SOURCE_URL,
+  RTBA_ZONES
+} from "../lib/aviation/rtba";
 import {
   aircraftPositionTimestamp,
   analyzeAircraftPassage,
@@ -30,20 +40,28 @@ type MetarReport = {
   wxString?: string;
 };
 
-type DroneTraffic = { id:string; callsign:string; latitude:number; longitude:number; barometricAltitude:number|null; velocity:number|null; trueTrack:number|null; aircraftType?:string|null; description?:string|null; operator?:string|null; category?:string|null; lastPositionAt?:string|null; positionAgeSeconds?:number|null };
 type NearbyPlace = { id: string; name: string; icao: string | null; kind: "aerodrome" | "heliport"; latitude: number; longitude: number; distanceKm: number; bearing: number };
-type AnalyzedDroneTraffic = DroneTraffic & { distance: number; passage: PassageAnalysis; isHelicopter: boolean; isRemarkable: boolean; priority: number };
+type AnalyzedDroneTraffic = LiveAircraft & { distance: number; passage: PassageAnalysis; isHelicopter: boolean; isRemarkable: boolean; priority: number };
+type OfficialNotam = {
+  id: string;
+  reference: string;
+  itemA: string;
+  category: string;
+  qCode: string;
+  startsAt: string;
+  endsAt: string;
+  lowerFl: number | null;
+  upperFl: number | null;
+  distanceToCenterKm: number | null;
+  distanceToAreaKm: number | null;
+  impactsPoint: boolean;
+  activeNow: boolean;
+  originalText: string;
+  frenchText: string;
+  translationSource: "sofia" | "assisted";
+};
 
 const FRANCE_CENTER: [number, number] = [46.603354, 1.888334];
-
-function distanceKm(origin: [number, number], destination: [number, number]) {
-  const [lat1, lon1] = origin.map((value) => value * Math.PI / 180);
-  const [lat2, lon2] = destination.map((value) => value * Math.PI / 180);
-  const dLat = lat2 - lat1;
-  const dLon = lon2 - lon1;
-  const value = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
-  return 6371 * 2 * Math.atan2(Math.sqrt(value), Math.sqrt(1 - value));
-}
 
 function directionText(value?: number | string) {
   if (value === undefined || value === null) return "inconnue";
@@ -83,7 +101,7 @@ function categoryText(category?: string) {
   return category ? labels[category] ?? category : "catégorie non disponible";
 }
 
-function isHelicopter(item: DroneTraffic) {
+function isHelicopter(item: LiveAircraft) {
   return /heli|rotor|h145|ec145|h135|ec135|as35|aw\d{3}|bell/i.test(`${item.aircraftType ?? ""} ${item.description ?? ""} ${item.category ?? ""}`);
 }
 
@@ -115,7 +133,7 @@ export default function DronePanel() {
   const { position, status: positionStatus, accuracy, altitude, timestamp, isLive, trackingEnabled, setTrackingEnabled, error: gpsError } = useLiveGeolocation();
   const [metar, setMetar] = useState<MetarReport | null>(null);
   const [metarStatus, setMetarStatus] = useState("Chargement de la météo locale…");
-  const [traffic, setTraffic] = useState<DroneTraffic[]>([]);
+  const [traffic, setTraffic] = useState<LiveAircraft[]>([]);
   const [lastUpdated, setLastUpdated] = useState("—");
   const [manualPoint, setManualPoint] = useState<[number, number] | null>(null);
   const [requestedHeight, setRequestedHeight] = useState(60);
@@ -123,12 +141,19 @@ export default function DronePanel() {
   const [commune, setCommune] = useState("");
   const [locationMessage, setLocationMessage] = useState("");
   const [nearbyPlaces, setNearbyPlaces] = useState<NearbyPlace[]>([]);
+  const [notamText, setNotamText] = useState("");
+  const [officialNotams, setOfficialNotams] = useState<OfficialNotam[]>([]);
+  const [officialNotamStatus, setOfficialNotamStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [officialNotamMessage, setOfficialNotamMessage] = useState("Position requise pour interroger SOFIA.");
+  const [officialNotamUpdatedAt, setOfficialNotamUpdatedAt] = useState<string | null>(null);
+  const [notamRefreshVersion, setNotamRefreshVersion] = useState(0);
   const passageHistoryRef = useRef(new PassageHistoryStore());
   const passageReferenceRef = useRef("gps");
   const [passageHistoryVersion, setPassageHistoryVersion] = useState(0);
 
   const selectedPosition = manualPoint ?? position;
   const analysisCenter = selectedPosition ?? FRANCE_CENTER;
+  const notamLocationKey = selectedPosition ? `${selectedPosition[0].toFixed(3)}:${selectedPosition[1].toFixed(3)}` : "";
 
   useEffect(() => {
     const reference = manualPoint ? `manual:${manualPoint[0].toFixed(5)}:${manualPoint[1].toFixed(5)}` : "gps";
@@ -179,6 +204,52 @@ export default function DronePanel() {
   }, [selectedPosition]);
 
   useEffect(() => {
+    if (!notamLocationKey) {
+      setOfficialNotams([]);
+      setOfficialNotamStatus("idle");
+      setOfficialNotamMessage("Position requise pour interroger SOFIA.");
+      setOfficialNotamUpdatedAt(null);
+      return;
+    }
+    const [latitude, longitude] = notamLocationKey.split(":").map(Number);
+    let cancelled = false;
+    let controller = new AbortController();
+
+    async function loadOfficialNotams() {
+      controller.abort();
+      controller = new AbortController();
+      setOfficialNotamStatus("loading");
+      setOfficialNotamMessage("Recherche officielle autour du point…");
+      try {
+        const response = await fetch(`/api/notams?lat=${latitude}&lon=${longitude}`, { cache: "no-store", signal: controller.signal });
+        const payload = await response.json();
+        if (cancelled) return;
+        if (!response.ok) throw new Error(typeof payload.error === "string" ? payload.error : "Recherche SOFIA indisponible.");
+        const nextNotams = Array.isArray(payload.notams) ? payload.notams as OfficialNotam[] : [];
+        setOfficialNotams(nextNotams);
+        setOfficialNotamStatus("success");
+        setOfficialNotamMessage(nextNotams.length
+          ? `${nextNotams.length} NOTAM officiel${nextNotams.length === 1 ? "" : "s"} retourné${nextNotams.length === 1 ? "" : "s"} dans le briefing.`
+          : "Aucun NOTAM retourné par SOFIA pour cette recherche.");
+        setOfficialNotamUpdatedAt(typeof payload.queriedAt === "string" ? payload.queriedAt : new Date().toISOString());
+      } catch (error) {
+        if (cancelled || error instanceof Error && error.name === "AbortError") return;
+        setOfficialNotams([]);
+        setOfficialNotamStatus("error");
+        setOfficialNotamMessage(error instanceof Error ? error.message : "Recherche SOFIA indisponible.");
+      }
+    }
+
+    loadOfficialNotams();
+    const timer = window.setInterval(loadOfficialNotams, 10 * 60 * 1000);
+    return () => {
+      cancelled = true;
+      controller.abort();
+      window.clearInterval(timer);
+    };
+  }, [notamLocationKey, notamRefreshVersion]);
+
+  useEffect(() => {
     let cancelled = false;
     async function loadTraffic() {
       try {
@@ -186,7 +257,7 @@ export default function DronePanel() {
         const payload = await response.json();
         if (!cancelled) {
           const receivedAtMs = Date.now();
-          const nextTraffic: DroneTraffic[] = Array.isArray(payload.aircraft) ? payload.aircraft : [];
+          const nextTraffic: LiveAircraft[] = Array.isArray(payload.aircraft) ? payload.aircraft : [];
           setTraffic(nextTraffic);
           if (selectedPosition) {
             let historyChanged = false;
@@ -251,14 +322,16 @@ export default function DronePanel() {
   });
   const relevantTraffic = nearbyTraffic.filter((item) => item.priority < 6 || item.distance <= 20).slice(0, 8);
 
-  const containingZones = useMemo(
-    () => [],
-    []
+  const rtbaAssessment = useMemo(
+    () => selectedPosition ? assessRtba(selectedPosition, requestedHeight) : null,
+    [requestedHeight, selectedPosition]
   );
+  const containingZones = useMemo(() => rtbaAssessment?.matches ?? [], [rtbaAssessment]);
+  const notamReading = useMemo(() => readNotamInFrench(notamText), [notamText]);
 
   const decision = useMemo(() => evaluateDroneFlight({
     hasPosition: Boolean(selectedPosition),
-    zones: [],
+    zones: containingZones.map((zone) => ({ name: zone.id, containsPoint: zone.affectsRequestedHeight, status: "unknown" as const })),
     aerodromeDistanceKm: nearbyPlaces.find((place) => place.kind === "aerodrome")?.distanceKm ?? null,
     requestedHeightM: requestedHeight,
     weatherAvailable: Boolean(metar),
@@ -267,7 +340,7 @@ export default function DronePanel() {
     visibilityKm: typeof metar?.visib === "number" ? metar.visib * 1.60934 : null,
     restrictionsChecked: false,
     nearbyAircraftCount: alertTraffic.length
-  }), [alertTraffic.length, metar, nearbyPlaces, requestedHeight, selectedPosition]);
+  }), [alertTraffic.length, containingZones, metar, nearbyPlaces, requestedHeight, selectedPosition]);
 
   const ceilingMeters = useMemo(() => {
     const layers = metar?.clouds?.filter((cloud) => ["BKN", "OVC", "VV"].includes(cloud.cover ?? "") && typeof cloud.base === "number") ?? [];
@@ -278,8 +351,8 @@ export default function DronePanel() {
   const nearestHeliport = nearbyPlaces.find((place) => place.kind === "heliport") ?? null;
   const checklist = [
     { label: "Position", state: selectedPosition ? "Conforme" : "À vérifier", detail: selectedPosition ? "Point d’analyse défini" : "GPS ou point manuel requis" },
-    { label: "RTBA / espaces", state: "À vérifier", detail: "Contrôle SIA officiel requis" },
-    { label: "NOTAM", state: "À vérifier", detail: "Récupération automatique indisponible" },
+    { label: "RTBA / espaces", state: !selectedPosition || rtbaAssessment?.level === "coverage-unavailable" || containingZones.some((zone) => zone.affectsRequestedHeight) ? "À vérifier" : "Conforme", detail: rtbaAssessment ? rtbaAssessment.level === "inside-volume" ? `${containingZones.filter((zone) => zone.affectsRequestedHeight).map((zone) => zone.id).join(", ")} — activation AZBA à vérifier` : rtbaAssessment.level === "below-floor" ? "Dans le contour horizontal, sous le plancher publié" : rtbaAssessment.level === "outside-local" ? "Aucun contour LF-R45 local au point" : "Couverture locale insuffisante" : "Position requise" },
+    { label: "NOTAM", state: "À vérifier", detail: officialNotamStatus === "loading" ? "Recherche SOFIA en cours" : officialNotamStatus === "success" ? `${officialNotams.length} NOTAM officiel${officialNotams.length === 1 ? "" : "s"} reçu${officialNotams.length === 1 ? "" : "s"}` : officialNotamStatus === "error" ? "SOFIA temporairement indisponible" : notamReading ? "Lecture française disponible — original prioritaire" : "Position requise" },
     { label: "Météo", state: !metar ? "À vérifier" : decision.level === "forbidden" ? "Bloquant" : "Conforme", detail: metar ? "Observation du point reçue" : "Donnée absente" },
     { label: "Hauteur", state: requestedHeight > 120 ? "Bloquant" : "Conforme", detail: requestedHeight > 120 ? "Hauteur supérieure à 120 m" : "Hauteur demandée ≤ 120 m" },
     { label: "Autorisation", state: "À vérifier", detail: "À confirmer par le télépilote" },
@@ -288,7 +361,21 @@ export default function DronePanel() {
 
   const message = !selectedPosition
     ? "Position GPS indisponible : recherchez une commune, saisissez des coordonnées ou cliquez sur la carte."
-    : "Analyse du point sélectionné en France. Les NOTAM et espaces réglementés officiels restent à vérifier.";
+    : rtbaAssessment?.level === "inside-volume"
+      ? "Le point et la hauteur demandée intersectent un volume RTBA publié. Vérifiez impérativement son activation officielle."
+      : rtbaAssessment?.level === "below-floor"
+        ? "Le point est dans une emprise RTBA horizontale, mais la hauteur demandée reste sous son plancher publié."
+        : "Analyse géographique effectuée. Les activations, NOTAM et autres restrictions officielles restent à vérifier.";
+
+  const rtbaSummary = !rtbaAssessment
+    ? "POSITION REQUISE"
+    : rtbaAssessment.level === "inside-volume"
+      ? "DANS UN VOLUME RTBA PUBLIÉ"
+      : rtbaAssessment.level === "below-floor"
+        ? "SOUS LE PLANCHER RTBA PUBLIÉ"
+        : rtbaAssessment.level === "outside-local"
+          ? "HORS DES CONTOURS LF-R45 LOCAUX"
+          : "COUVERTURE RTBA LOCALE INSUFFISANTE";
 
   const mapPoints = [
     ...(selectedPosition ? [{
@@ -340,6 +427,80 @@ export default function DronePanel() {
         <div className="drone-point-actions"><button type="button" disabled={!position} onClick={() => setManualPoint(null)}>📍 Utiliser HOME</button><small>{manualPoint ? `${manualPoint[0].toFixed(5)} / ${manualPoint[1].toFixed(5)}` : position ? "Position GPS réelle" : "Position GPS indisponible"}</small></div>
         <footer>Cette synthèse est une aide opérationnelle. Elle ne remplace pas la vérification réglementaire du télépilote (AZBA, NOTAM, SUP AIP, AIP et restrictions locales).</footer>
       </section>
+
+      <section className="drone-airspace-brief">
+        <article className={`panel rtba-answer-card ${rtbaAssessment?.level ?? "no-position"}`}>
+          <header>
+            <div><span className="eyebrow">RÉPONSE RTBA AU POINT EXACT</span><h2>{rtbaSummary}</h2></div>
+            <span className="rtba-answer-icon">{!rtbaAssessment ? "📍" : rtbaAssessment.level === "inside-volume" ? "⚠️" : rtbaAssessment.level === "below-floor" ? "↕️" : rtbaAssessment.level === "outside-local" ? "✓" : "?"}</span>
+          </header>
+          {selectedPosition ? <p className="rtba-coordinate">Point analysé : <strong>{selectedPosition[0].toFixed(6)} / {selectedPosition[1].toFixed(6)}</strong> • hauteur demandée : <strong>{requestedHeight} m</strong></p> : <p>Activez le GPS ou choisissez un point sur la carte.</p>}
+          {containingZones.length > 0 ? (
+            <div className="rtba-match-list">
+              {containingZones.map((zone) => <div key={zone.id}>
+                <strong>{zone.id} — {zone.name}</strong>
+                <span>Contour horizontal : OUI</span>
+                <span>Volume à {requestedHeight} m : {zone.affectsRequestedHeight ? "OUI — activation à vérifier" : `NON — plancher ${zone.floor}`}</span>
+                <small>{zone.floor} → {zone.ceiling}</small>
+              </div>)}
+            </div>
+          ) : rtbaAssessment ? (
+            <p className="rtba-nearest">Tronçon analysé le plus proche : <strong>{rtbaAssessment.nearest[0]?.zone.id ?? "non déterminé"}</strong>{rtbaAssessment.nearest[0] ? ` à environ ${rtbaAssessment.nearest[0].distanceKm.toFixed(1)} km` : ""}.</p>
+          ) : null}
+          <div className="rtba-activation-warning">
+            <strong>Activation actuelle : NON DÉTERMINÉE DANS XAVPAC</strong>
+            <span>Les zones LF-R45 sont activées par NOTAM. La présence dans le contour ne suffit pas à savoir si elles sont actives maintenant.</span>
+          </div>
+          <div className="rtba-official-actions">
+            <a href={RTBA_ACTIVATION_URL} target="_blank" rel="noreferrer">Vérifier l’AZBA officiel maintenant ↗</a>
+            <a href={RTBA_SOURCE_URL} target="_blank" rel="noreferrer">Voir les limites AIP ↗</a>
+          </div>
+          <footer>{RTBA_SOURCE_LABEL}. Couverture embarquée : LF-R45 Bourgogne, Mâconnais et Jura. Hors de ce secteur, XavPac ne conclut jamais « hors RTBA ».</footer>
+        </article>
+
+        <article className="panel notam-fr-card">
+          <header><div><span className="eyebrow">NOTAM OFFICIELS EN FRANÇAIS</span><h2>Récupération automatique au point</h2></div><a href="https://sofia-briefing.aviation-civile.gouv.fr/sofia/pages/notamsearcharea.html" target="_blank" rel="noreferrer">Ouvrir SOFIA Briefing ↗</a></header>
+          <p>Dès qu’une position est disponible, XavPac interroge SOFIA pour un vol VFR entre FL 000 et FL 010, dans un rayon de 10 NM et sur les 12 prochaines heures.</p>
+          <div className={`notam-auto-status ${officialNotamStatus}`}>
+            <span>{officialNotamStatus === "loading" ? "◌" : officialNotamStatus === "success" ? "●" : officialNotamStatus === "error" ? "!" : "📍"}</span>
+            <div><strong>{officialNotamMessage}</strong><small>{officialNotamUpdatedAt ? `SOFIA consulté à ${new Date(officialNotamUpdatedAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}` : "Coordonnées envoyées uniquement au service officiel SIA/DSNA."}</small></div>
+            <button type="button" disabled={!selectedPosition || officialNotamStatus === "loading"} onClick={() => setNotamRefreshVersion((value) => value + 1)}>Actualiser</button>
+          </div>
+          {officialNotams.length > 0 && <div className="official-notam-list">
+            {officialNotams.slice(0, 6).map((notam) => <article key={notam.id} className={notam.activeNow ? "active-now" : "upcoming"}>
+              <header><div><span>{notam.category} • {notam.qCode}</span><strong>{notam.reference}</strong></div><b>{notam.activeNow ? "VALIDE MAINTENANT" : "À VENIR"}</b></header>
+              <div className="official-notam-meta"><span>Zone : {notam.itemA}</span><span>{notam.impactsPoint ? "Le périmètre déclaré couvre le point" : notam.distanceToAreaKm === null ? "Distance non déterminée" : `Périmètre à ≈ ${notam.distanceToAreaKm.toFixed(1)} km`}</span><span>FL {String(notam.lowerFl ?? 0).padStart(3, "0")} → FL {String(notam.upperFl ?? 999).padStart(3, "0")}</span></div>
+              <p>{notam.frenchText}</p>
+              <small>{notam.startsAt} → {notam.endsAt} • {notam.translationSource === "sofia" ? "Texte français fourni par SOFIA" : "Lecture assistée XavPac"}</small>
+              <details><summary>Voir le texte original</summary><pre>{notam.originalText}</pre></details>
+            </article>)}
+            {officialNotams.length > 6 && <small className="official-notam-more">+ {officialNotams.length - 6} autre{officialNotams.length - 6 === 1 ? "" : "s"} NOTAM dans le briefing officiel.</small>}
+          </div>}
+          {officialNotamStatus === "success" && officialNotams.length === 0 && <div className="notam-empty">Aucun NOTAM retourné par cette recherche officielle. Vérifiez néanmoins les SUP AIP, l’AZBA et les autres restrictions applicables.</div>}
+          {officialNotamStatus === "error" && <div className="notam-source-error">SOFIA est indisponible depuis XavPac. Utilisez le lien officiel ci-dessus avant toute décision de vol.</div>}
+          <details className="notam-manual-tool">
+            <summary>Traduire manuellement un autre NOTAM</summary>
+            <label htmlFor="notam-input">NOTAM original</label>
+            <textarea id="notam-input" value={notamText} onChange={(event) => setNotamText(event.target.value)} rows={7} spellCheck={false} placeholder={'Ex. B) AAMMJJHHMM  C) AAMMJJHHMM\nE) TEXTE OPÉRATIONNEL DU NOTAM\nF) SFC  G) 1500FT AMSL'} />
+            {notamReading && <div className="notam-reading">
+              <div className="notam-facts">
+                <p><span>Référence</span><strong>{notamReading.identifier ?? "non reconnue"}</strong></p>
+                <p><span>Zone / FIR</span><strong>{notamReading.location ?? "non reconnue"}</strong></p>
+                <p><span>Début</span><strong>{notamReading.startsAt ?? "non reconnu"}</strong></p>
+                <p><span>Fin</span><strong>{notamReading.endsAt ?? "non reconnue"}</strong></p>
+                <p><span>Plancher</span><strong>{notamReading.lowerLimit ?? "non reconnu"}</strong></p>
+                <p><span>Plafond</span><strong>{notamReading.upperLimit ?? "non reconnu"}</strong></p>
+              </div>
+              {notamReading.schedule && <p className="notam-schedule"><span>Horaires</span><strong>{notamReading.schedule}</strong></p>}
+              <div className="notam-french-text"><span>Lecture française du champ E)</span><strong>{notamReading.frenchText ?? "Contenu non reconnu"}</strong></div>
+              <details><summary>Afficher le NOTAM original</summary><pre>{notamText}</pre></details>
+              {notamReading.warnings.map((warning) => <small key={warning}>⚠️ {warning}</small>)}
+            </div>}
+          </details>
+          <footer>Source : SOFIA-Briefing, SIA/DSNA. L’accès automatisé dépend de la disponibilité du service public. Le briefing officiel et le jugement du télépilote restent prioritaires.</footer>
+        </article>
+      </section>
+
       {alertTraffic.length > 0 && <section className="panel drone-traffic-alert"><strong>ALERTE — TRAFIC EN RAPPROCHEMENT DU SITE</strong>{alertTraffic.slice(0,3).map((item) => <p key={item.id}><b>{item.isHelicopter ? "🚁" : "✈️"} {item.callsign}</b> — {item.passage.estimatedSecondsToClosest === null ? "rapprochement mesuré" : `passage estimé dans ${formatPassageDuration(item.passage.estimatedSecondsToClosest)}`} {item.passage.estimatedMinimumDistanceKm === null ? "" : `à environ ${item.passage.estimatedMinimumDistanceKm.toFixed(1)} km`} • altitude {item.barometricAltitude === null ? "non déterminée" : `${Math.round(item.barometricAltitude)} m`} • donnée reçue il y a {freshnessText(item.passage.freshnessSeconds)}</p>)}<small>Aide à la vigilance uniquement : cette détection ADS-B n’est pas exhaustive.</small></section>}
 
       <section className="panel drone-passage-panel">
@@ -372,7 +533,7 @@ export default function DronePanel() {
             <p><span>Visibilité</span><strong>{metar?.visib !== undefined ? visibilityText(metar.visib) : "Non déterminé"}</strong></p>
             <p><span>Plafond</span><strong>{ceilingMeters !== null ? `${Math.round(ceilingMeters)} m` : "Non déterminé"}</strong></p>
             <p><span>Pluie</span><strong>{metar?.wxString ? metar.wxString : "Non déterminé"}</strong></p>
-            <p><span>RTBA / espaces</span><strong>Vérification officielle requise</strong></p>
+            <p><span>RTBA / espaces</span><strong>{rtbaSummary}</strong></p>
             <p><span>Aérodrome proche</span><strong>{nearestAerodrome ? `${nearestAerodrome.name} • ${nearestAerodrome.distanceKm.toFixed(1)} km • ${Math.round(nearestAerodrome.bearing)}°${nearestAerodrome.icao ? ` • ${nearestAerodrome.icao}` : ""}` : "Non déterminé"}</strong></p>
             <p><span>Héliport</span><strong>{nearestHeliport ? `${nearestHeliport.name} • ${nearestHeliport.distanceKm.toFixed(1)} km • ${Math.round(nearestHeliport.bearing)}°${nearestHeliport.icao ? ` • ${nearestHeliport.icao}` : ""}` : "Non déterminé"}</strong></p>
             <p><span>Mise à jour</span><strong>{lastUpdated}</strong></p>
@@ -408,11 +569,11 @@ export default function DronePanel() {
             <div className="azba-live-shell">
               <div className="azba-live-banner">
                 <span><b>● OFFICIEL EN DIRECT</b> — rouge : active • bleu : inactive</span>
-                <a href="https://www.sia.aviation-civile.gouv.fr/azbaEx/" target="_blank" rel="noreferrer">Ouvrir en plein écran ↗</a>
+                <a href={RTBA_ACTIVATION_URL} target="_blank" rel="noreferrer">Ouvrir en plein écran ↗</a>
               </div>
               <iframe
                 className="azba-live-frame"
-                src="https://www.sia.aviation-civile.gouv.fr/azbaEx/"
+                src={RTBA_ACTIVATION_URL}
                 title="Carte officielle AZBA du SIA"
                 loading="lazy"
                 referrerPolicy="no-referrer-when-downgrade"
@@ -426,21 +587,22 @@ export default function DronePanel() {
               <div className="drone-map-v4 drone-map-locked-v5">
                 <StableMap
                   points={mapPoints}
-                  zones={[]}
+                  zones={RTBA_ZONES.map((zone) => ({ ...zone, status: "unknown" as const }))}
                   center={analysisCenter}
                   zoom={selectedPosition ? 10 : 6}
                   mapVariant="layers"
+                  showZoneLabels
                   onMapClick={(point) => setManualPoint(point)}
                 />
               </div>
               <div className="rtba-legend-v4">
-                <span className="unknown">Espaces réglementés : non reproduits sans source officielle fiable</span>
-                <span>Pour les limites et couleurs exactes : mode AZBA officiel live.</span>
+                <span className="unknown">Contours gris : géométrie LF-R45 issue de l’AIP • statut d’activation inconnu</span>
+                <span>Rouge/bleu et horaires : mode AZBA officiel live.</span>
               </div>
             </>
           )}
 
-          <div className="rtba-zone-list-v5"><article><span>⚠️</span><div><strong>NOTAM</strong><small>Vérification automatique indisponible — consulter la source officielle.</small></div></article><article><span>🛩️</span><div><strong>CTR, TMA, R, P, D, militaires et temporaires</strong><small>Consulter les cartes et publications officielles SIA avant toute décision.</small></div></article></div>
+          <div className="rtba-zone-list-v5"><article><span>📐</span><div><strong>RTBA LF-R45 AU POINT</strong><small>{rtbaSummary}. La géométrie et l’activation sont affichées séparément.</small></div></article><article><span>⚠️</span><div><strong>NOTAM</strong><small>Lecture française disponible plus haut après récupération du texte officiel sur SOFIA.</small></div></article><article><span>🛩️</span><div><strong>AUTRES ESPACES</strong><small>CTR, TMA, R, P, D, zones UAS et temporaires restent à contrôler sur les publications officielles.</small></div></article></div>
         </article>
 
         <aside className="drone-side-v4">

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { enforceRateLimit } from "../../lib/api/guard";
+import { planespottersUserAgent } from "../../lib/aviation/providers/planespottersUserAgent";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -33,7 +34,7 @@ export async function GET(request: NextRequest) {
     const response = await fetch(lookup, {
       cache: "no-store",
       signal: AbortSignal.timeout(6500),
-      headers: { Accept: "application/json", "User-Agent": `XavPac/${process.env.NEXT_PUBLIC_XAVPAC_VERSION ?? "development"}` }
+      headers: { Accept: "application/json", "User-Agent": planespottersUserAgent() }
     });
 
     if (!response.ok) {

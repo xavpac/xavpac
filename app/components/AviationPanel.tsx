@@ -7,6 +7,9 @@ import { reportDataUpdate } from "../lib/buildInfo";
 import type { EnrichedAircraft, RouteConfidence } from "../lib/aviation/types";
 import { deducedRoute, recordObservations } from "../lib/aviation/observations";
 import { detectRemarkable } from "../lib/aviation/remarkable";
+import { distanceKm } from "../lib/aviation/geometry";
+import type { AircraftWithDistance, LiveAircraft } from "../lib/aviation/liveAircraft";
+import type { MapStyle } from "../lib/map/types";
 import {
   aircraftPositionTimestamp,
   analyzeAircraftPassage,
@@ -17,32 +20,7 @@ import {
 const StableMap = dynamic(() => import("./StableMap"), { ssr: false });
 const OPERATIONAL_MAP_CENTER: [number, number] = [46.63, 4.56];
 
-type LiveAircraft = {
-  id: string;
-  callsign: string;
-  country: string;
-  longitude: number;
-  latitude: number;
-  barometricAltitude: number | null;
-  geometricAltitude?: number | null;
-  velocity: number | null;
-  trueTrack: number | null;
-  verticalRate?: number | null;
-  onGround: boolean;
-  squawk?: string | null;
-  registration?: string | null;
-  aircraftType?: string | null;
-  description?: string | null;
-  operator?: string | null;
-  category?: string | null;
-  positionSource?: string;
-  lastPositionAt?: string | null;
-  positionAgeSeconds?: number | null;
-};
-
-type AircraftWithDistance = LiveAircraft & { distance: number };
 type Radius = 20 | 50 | 100;
-type MapStyle = "street" | "satellite" | "dark";
 
 type RouteAirport = { name?: string; municipality?: string; iata_code?: string; icao_code?: string };
 type RouteWeather = { time?: string; temperature_2m?: number; weather_code?: number; wind_speed_10m?: number; wind_gusts_10m?: number; visibility?: number; surface_pressure?: number; cloud_cover?: number };
@@ -67,15 +45,6 @@ function weatherCondition(code?: number) {
   if ([71, 73, 75, 77, 85, 86].includes(code)) return "Neige";
   if ([95, 96, 99].includes(code)) return "Orage";
   return "Conditions variables";
-}
-
-function distanceKm(origin: [number, number], destination: [number, number]) {
-  const [lat1, lon1] = origin.map((value) => (value * Math.PI) / 180);
-  const [lat2, lon2] = destination.map((value) => (value * Math.PI) / 180);
-  const deltaLat = lat2 - lat1;
-  const deltaLon = lon2 - lon1;
-  const a = Math.sin(deltaLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(deltaLon / 2) ** 2;
-  return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 function formatAltitude(value: number | null) {

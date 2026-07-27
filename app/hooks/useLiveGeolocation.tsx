@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 
 export type LiveGeolocation = {
   position: [number, number] | null;
@@ -14,7 +14,9 @@ export type LiveGeolocation = {
   error: string;
 };
 
-export function useLiveGeolocation(): LiveGeolocation {
+const LiveGeolocationContext = createContext<LiveGeolocation | null>(null);
+
+function useLiveGeolocationSource(): LiveGeolocation {
   const [position, setPosition] = useState<[number, number] | null>(null);
   const [status, setStatus] = useState("Autorisez la localisation pour afficher HOME");
   const [accuracy, setAccuracy] = useState<number | null>(null);
@@ -68,4 +70,15 @@ export function useLiveGeolocation(): LiveGeolocation {
   }, [trackingEnabled]);
 
   return { position, status, accuracy, altitude, timestamp, isLive, trackingEnabled, setTrackingEnabled, error };
+}
+
+export function LiveGeolocationProvider({ children }: { children: React.ReactNode }) {
+  const geolocation = useLiveGeolocationSource();
+  return <LiveGeolocationContext.Provider value={geolocation}>{children}</LiveGeolocationContext.Provider>;
+}
+
+export function useLiveGeolocation(): LiveGeolocation {
+  const geolocation = useContext(LiveGeolocationContext);
+  if (!geolocation) throw new Error("useLiveGeolocation doit être utilisé dans LiveGeolocationProvider");
+  return geolocation;
 }

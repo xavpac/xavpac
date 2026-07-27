@@ -1880,6 +1880,81 @@ a { color: inherit; }
 .drone-decision-panel footer { grid-column: 1 / -1; border-top: 1px solid var(--line); padding-top: 9px; }
 @media (max-width: 900px) { .drone-decision-panel { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 620px) { .drone-decision-panel { grid-template-columns: 1fr; } .drone-decision-panel footer { grid-column: 1; } }
+.drone-airspace-brief { display:grid; grid-template-columns:minmax(0,1.05fr) minmax(0,.95fr); gap:12px; margin-bottom:12px; }
+.rtba-answer-card,.notam-fr-card { min-width:0; }
+.rtba-answer-card>header,.notam-fr-card>header { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
+.rtba-answer-card h2,.notam-fr-card h2 { margin:4px 0 0; font-size:18px; }
+.rtba-answer-card.inside-volume { border-color:rgba(255,97,121,.62); background:linear-gradient(145deg,rgba(102,24,39,.22),rgba(4,23,39,.94)); }
+.rtba-answer-card.below-floor { border-color:rgba(255,189,89,.55); background:linear-gradient(145deg,rgba(105,67,14,.18),rgba(4,23,39,.94)); }
+.rtba-answer-card.outside-local { border-color:rgba(85,229,161,.45); }
+.rtba-answer-card.coverage-unavailable,.rtba-answer-card.no-position { border-color:rgba(138,160,180,.38); }
+.rtba-answer-icon { font-size:30px; }
+.rtba-coordinate,.rtba-nearest,.rtba-answer-card>p,.notam-fr-card>p { color:var(--muted); font-size:9px; line-height:1.5; }
+.rtba-coordinate strong,.rtba-nearest strong { color:#eef8ff; }
+.rtba-match-list { display:grid; gap:6px; margin:10px 0; }
+.rtba-match-list>div { display:grid; grid-template-columns:1.3fr .75fr 1.25fr; gap:8px; align-items:center; padding:9px 10px; border:1px solid rgba(255,189,89,.22); border-radius:9px; background:rgba(255,255,255,.025); }
+.rtba-match-list strong,.rtba-match-list span,.rtba-match-list small { display:block; }
+.rtba-match-list strong { color:#fff1d1; font-size:9px; }
+.rtba-match-list span { color:#d4e2ec; font-size:8px; }
+.rtba-match-list small { grid-column:1/-1; color:#8eabc0; font-size:7px; }
+.rtba-activation-warning { display:grid; gap:4px; margin-top:10px; padding:10px; border-left:3px solid #ffbd59; border-radius:8px; background:rgba(255,189,89,.09); }
+.rtba-activation-warning strong { color:#ffd47f; font-size:10px; }
+.rtba-activation-warning span { color:#e4cda6; font-size:8px; line-height:1.45; }
+.rtba-official-actions { display:flex; gap:7px; flex-wrap:wrap; margin-top:10px; }
+.rtba-official-actions a,.notam-fr-card>header a { padding:8px 10px; border:1px solid rgba(88,212,255,.34); border-radius:8px; color:#bfeeff; background:rgba(19,111,157,.16); font-size:8px; font-weight:850; text-decoration:none; }
+.rtba-answer-card>footer { margin-top:10px; padding-top:8px; border-top:1px solid var(--line); color:#849eaf; font-size:7px; line-height:1.45; }
+.notam-fr-card label { display:block; margin:10px 0 5px; color:#9ec3d8; font-size:8px; font-weight:850; text-transform:uppercase; }
+.notam-fr-card textarea { box-sizing:border-box; width:100%; resize:vertical; padding:10px; border:1px solid rgba(93,151,199,.28); border-radius:9px; color:#eaf7ff; background:rgba(1,14,25,.76); font:9px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; }
+.notam-fr-card textarea:focus { outline:2px solid rgba(88,212,255,.35); border-color:#58d4ff; }
+.notam-reading { display:grid; gap:8px; margin-top:10px; }
+.notam-facts { display:grid; grid-template-columns:repeat(3,1fr); gap:5px; }
+.notam-facts p,.notam-schedule { margin:0; padding:8px; border-radius:8px; background:rgba(255,255,255,.028); }
+.notam-facts span,.notam-facts strong,.notam-schedule span,.notam-schedule strong { display:block; }
+.notam-facts span,.notam-schedule span { color:#79afcb; font-size:7px; text-transform:uppercase; }
+.notam-facts strong,.notam-schedule strong { margin-top:4px; color:#f1f7fb; font-size:8px; }
+.notam-french-text { display:grid; gap:5px; padding:10px; border:1px solid rgba(85,229,161,.25); border-radius:9px; background:rgba(44,142,98,.09); }
+.notam-french-text span { color:#70dca9; font-size:7px; font-weight:900; text-transform:uppercase; }
+.notam-french-text strong { color:#e6fff3; font-size:9px; line-height:1.5; }
+.notam-reading details { font-size:8px; }
+.notam-reading summary { color:#8ec9e8; cursor:pointer; }
+.notam-reading pre { max-height:180px; overflow:auto; padding:9px; border-radius:8px; color:#cbdbe5; background:#04111c; white-space:pre-wrap; }
+.notam-reading>small { color:#ffd18b; font-size:7px; line-height:1.4; }
+.notam-empty { margin-top:10px; padding:10px; border-radius:8px; color:#b4c6d2; background:rgba(255,255,255,.025); font-size:8px; }
+.notam-auto-status { display:grid; grid-template-columns:auto 1fr auto; gap:9px; align-items:center; margin-top:10px; padding:10px; border:1px solid rgba(101,160,200,.22); border-radius:9px; background:rgba(255,255,255,.025); }
+.notam-auto-status>span { display:grid; place-items:center; width:25px; height:25px; border-radius:50%; color:#8faabe; background:rgba(143,170,190,.13); font-size:13px; font-weight:950; }
+.notam-auto-status strong,.notam-auto-status small { display:block; }
+.notam-auto-status strong { color:#e9f4fa; font-size:9px; }
+.notam-auto-status small { margin-top:3px; color:#89a4b6; font-size:7px; }
+.notam-auto-status.success { border-color:rgba(85,229,161,.3); background:rgba(48,146,100,.08); }
+.notam-auto-status.success>span { color:#55e5a1; background:rgba(85,229,161,.13); }
+.notam-auto-status.loading>span { color:#58d4ff; animation:notam-pulse 1s linear infinite; }
+.notam-auto-status.error { border-color:rgba(255,97,121,.38); background:rgba(151,39,58,.09); }
+.notam-auto-status.error>span { color:#ff7589; }
+.notam-auto-status button { padding:7px 9px; border:1px solid rgba(88,212,255,.3); border-radius:7px; color:#dff6ff; background:#0b537d; font-size:8px; cursor:pointer; }
+.notam-auto-status button:disabled { cursor:not-allowed; opacity:.45; }
+@keyframes notam-pulse { 50% { opacity:.35; transform:scale(.82); } }
+.official-notam-list { display:grid; gap:7px; margin-top:10px; }
+.official-notam-list>article { padding:10px; border:1px solid rgba(93,151,199,.2); border-radius:9px; background:rgba(1,15,26,.5); }
+.official-notam-list>article.active-now { border-color:rgba(255,189,89,.35); }
+.official-notam-list>article>header { display:flex; justify-content:space-between; gap:10px; align-items:flex-start; }
+.official-notam-list header span,.official-notam-list header strong { display:block; }
+.official-notam-list header span { color:#77b6d8; font-size:7px; text-transform:uppercase; }
+.official-notam-list header strong { margin-top:3px; color:#fff; font-size:10px; }
+.official-notam-list header b { flex:0 0 auto; padding:4px 6px; border-radius:5px; color:#ffcf7d; background:rgba(255,189,89,.1); font-size:7px; }
+.official-notam-list>article.upcoming header b { color:#9fcde4; background:rgba(88,170,210,.1); }
+.official-notam-meta { display:flex; gap:5px; flex-wrap:wrap; margin:8px 0; }
+.official-notam-meta span { padding:4px 6px; border-radius:5px; color:#b9ccd8; background:rgba(255,255,255,.04); font-size:7px; }
+.official-notam-list p { max-height:100px; margin:7px 0; overflow:auto; color:#ecf5fa; font-size:8px; line-height:1.5; white-space:pre-line; }
+.official-notam-list>article>small { display:block; color:#8ca7b8; font-size:7px; line-height:1.4; }
+.official-notam-list details,.notam-manual-tool { margin-top:8px; font-size:8px; }
+.official-notam-list summary,.notam-manual-tool>summary { color:#8bc9e8; cursor:pointer; }
+.official-notam-list pre { max-height:150px; overflow:auto; padding:8px; border-radius:7px; color:#cbdbe5; background:#04111c; font-size:7px; white-space:pre-wrap; }
+.official-notam-more { color:#8bb3ca; font-size:8px; }
+.notam-source-error { margin-top:9px; padding:9px; border-left:3px solid #ff6179; border-radius:7px; color:#ffc1ca; background:rgba(151,39,58,.1); font-size:8px; line-height:1.45; }
+.notam-manual-tool { padding-top:9px; border-top:1px solid var(--line); }
+.notam-fr-card>footer { margin-top:10px; padding-top:8px; border-top:1px solid var(--line); color:#849eaf; font-size:7px; line-height:1.45; }
+@media(max-width:980px){.drone-airspace-brief{grid-template-columns:1fr}.rtba-match-list>div{grid-template-columns:1fr 1fr}.rtba-match-list strong{grid-column:1/-1}}
+@media(max-width:620px){.rtba-answer-card>header,.notam-fr-card>header{flex-direction:column}.notam-facts{grid-template-columns:1fr 1fr}.rtba-match-list>div{grid-template-columns:1fr}.rtba-match-list strong,.rtba-match-list small{grid-column:auto}.notam-fr-card>header a{width:100%;box-sizing:border-box;text-align:center}.notam-auto-status{grid-template-columns:auto 1fr}.notam-auto-status button{grid-column:1/-1}.official-notam-list>article>header{flex-direction:column}}
 .drone-ops-overview{display:grid;grid-template-columns:1.6fr .8fr;gap:12px;margin-bottom:12px}.drone-synthesis header h3,.drone-checklist header h3{margin:4px 0 10px}.drone-synthesis>div{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}.drone-synthesis p{margin:0;padding:8px;border-radius:8px;background:rgba(255,255,255,.025)}.drone-synthesis span,.drone-synthesis strong{display:block}.drone-synthesis span{color:var(--muted);font-size:7px}.drone-synthesis strong{margin-top:4px;font-size:9px}.drone-checklist p{display:flex;justify-content:space-between;gap:8px;margin:0;padding:7px 0;border-bottom:1px solid var(--line);font-size:9px}.check-state{padding:3px 6px;border-radius:5px;background:#566b7e;font-size:7px}.check-state.conforme{background:#247c57}.check-state.a-verifier{background:#9a681b}.check-state.bloquant{background:#a82f42}.drone-checklist footer{margin-top:10px;color:var(--muted);font-size:8px;line-height:1.45}.drone-map-actions{display:flex;gap:5px;flex-wrap:wrap}.drone-map-actions button{padding:6px 8px;border:1px solid var(--line);border-radius:7px;color:#fff;background:rgba(8,35,57,.92);font-size:8px;cursor:pointer}.drone-map-actions button:disabled{opacity:.4}.rtba-panel-title-v51{flex-wrap:wrap}
 .drone-traffic-alert{margin-bottom:12px;padding:13px 16px;border-color:#e49a31;background:rgba(120,66,7,.18)}.drone-traffic-alert>strong{color:#ffbd59;font-size:11px}.drone-traffic-alert p{margin:6px 0 0;font-size:10px}.drone-traffic-alert>small{display:block;margin-top:9px;color:#ffdca4;font-size:8px}
 .drone-passage-panel{margin-bottom:12px;padding:14px 16px}.drone-passage-panel>header{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.drone-passage-panel h3{margin:4px 0 0}.drone-passage-panel>header>small{color:var(--muted);font-size:8px}.drone-passage-list{display:grid;gap:6px;margin-top:12px}.drone-passage-list article{display:grid;grid-template-columns:minmax(150px,1.35fr) repeat(6,minmax(75px,1fr));gap:7px;align-items:center;padding:9px;border:1px solid rgba(93,151,199,.18);border-radius:9px;background:rgba(255,255,255,.022)}.drone-passage-list article.status-approaching{border-color:rgba(53,221,137,.42);background:rgba(53,221,137,.045)}.drone-passage-list article.status-closest{border-color:rgba(255,193,57,.58);background:rgba(255,193,57,.05)}.drone-passage-list article.status-stale{opacity:.66}.drone-passage-list article>div{min-width:0}.drone-passage-list article span,.drone-passage-list article strong,.drone-passage-list article small{display:block}.drone-passage-list article span{color:#76bfe8;font-size:7px;text-transform:uppercase}.drone-passage-list article strong{margin-top:3px;overflow:hidden;text-overflow:ellipsis;font-size:9px;white-space:nowrap}.drone-passage-identity{display:flex;align-items:center;gap:8px}.drone-passage-identity>b{font-size:18px}.drone-passage-identity strong{font-size:11px!important}.drone-passage-identity small{margin-top:3px;color:var(--muted);font-size:7px;font-weight:500}.drone-passage-empty{margin:0;color:var(--muted);font-size:9px}.drone-passage-gps-warning{margin:9px 0 0;padding:7px 9px;border-radius:7px;color:#ffd27d;background:rgba(255,189,89,.09);font-size:8px}.drone-passage-panel>footer{margin-top:10px;padding-top:9px;border-top:1px solid var(--line);color:#ffcf82;font-size:8px;line-height:1.45}

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 const STORAGE_KEY = "xavpac-local-view-count-v1";
+const SESSION_KEY = "xavpac-view-counted-this-session";
 
 export default function ViewCounter() {
   const [views, setViews] = useState<number | null>(null);
@@ -10,8 +11,13 @@ export default function ViewCounter() {
   useEffect(() => {
     try {
       const previous = Number.parseInt(window.localStorage.getItem(STORAGE_KEY) ?? "0", 10);
+      if (window.sessionStorage.getItem(SESSION_KEY) === "1") {
+        setViews(Number.isFinite(previous) ? previous : 0);
+        return;
+      }
       const next = Number.isFinite(previous) ? previous + 1 : 1;
       window.localStorage.setItem(STORAGE_KEY, String(next));
+      window.sessionStorage.setItem(SESSION_KEY, "1");
       setViews(next);
     } catch {
       setViews(1);

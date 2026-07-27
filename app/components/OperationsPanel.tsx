@@ -4,6 +4,8 @@ import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState } from "react";
 import { useLiveGeolocation } from "../hooks/useLiveGeolocation";
 import { reportDataUpdate } from "../lib/buildInfo";
+import { distanceKm } from "../lib/aviation/geometry";
+import type { MapStyle } from "../lib/map/types";
 
 const StableMap = dynamic(() => import("./StableMap"), { ssr: false });
 
@@ -32,7 +34,6 @@ type NationalAsset = {
   };
 };
 
-type MapStyle = "street" | "satellite" | "dark";
 type ExactPhoto = { image: string; link: string | null; photographer: string | null };
 type NationalVisualKind = "water-bomber" | "turboprop" | "helicopter" | "medical" | "military" | "surveillance" | "drone" | "civil-security" | "specialized";
 
@@ -78,14 +79,6 @@ function NationalAssetPictogram({ asset, compact = false }: { asset: NationalAss
     </svg>
     {!compact && <small>{visual.label}<b>Illustration générique</b></small>}
   </div>;
-}
-
-function distanceKm(origin: [number, number], destination: [number, number]) {
-  const [lat1, lon1] = origin.map((value) => value * Math.PI / 180);
-  const [lat2, lon2] = destination.map((value) => value * Math.PI / 180);
-  const dLat = lat2 - lat1, dLon = lon2 - lon1;
-  const value = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
-  return 6371 * 2 * Math.atan2(Math.sqrt(value), Math.sqrt(1 - value));
 }
 
 function isHelicopter(asset: NationalAsset) {

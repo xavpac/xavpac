@@ -12,7 +12,7 @@ export function evaluateDroneFlight(input: DroneDecisionInput): DroneDecision {
   const unknownZones = input.zones.filter((zone) => zone.containsPoint && zone.status === "unknown");
   if (activeZones.length) blocking.push(`Zone RTBA active : ${activeZones.map((zone) => zone.name).join(", ")}`);
   else if (unknownZones.length) checks.push(`Statut RTBA inconnu : ${unknownZones.map((zone) => zone.name).join(", ")}`);
-  else if (input.hasPosition) positive.push("Hors zone RTBA active connue");
+  else if (input.hasPosition && input.restrictionsChecked) positive.push("Hors zone RTBA active connue");
   if (input.aerodromeDistanceKm !== null && input.aerodromeDistanceKm <= 5) checks.push("Proximité d’un aérodrome");
   if (!input.restrictionsChecked) checks.push("Restrictions aéronautiques non vérifiées automatiquement");
   if ((input.nearbyAircraftCount ?? 0) > 0) checks.push(`${input.nearbyAircraftCount} aéronef${input.nearbyAircraftCount === 1 ? "" : "s"} à proximité`);
