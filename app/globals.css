@@ -183,6 +183,14 @@ a { color: inherit; }
 /* Drone */
 .drone-hero-v4 { background: linear-gradient(135deg, rgba(13,43,70,.98), rgba(24,48,78,.96)); }
 .drone-console-v4 { display: grid; grid-template-columns: minmax(0,1fr) 420px; gap: 12px; }
+.drone-panel-flow { display:flex; flex-direction:column; }
+.drone-panel-flow > .gps-banner-v5 { order:1; }
+.drone-panel-flow > .drone-console-v4 { order:2; margin-bottom:12px; }
+.drone-panel-flow > .drone-decision-panel { order:3; }
+.drone-panel-flow > .drone-airspace-brief { order:4; }
+.drone-panel-flow > .drone-traffic-alert { order:5; }
+.drone-panel-flow > .drone-passage-panel { order:6; }
+.drone-panel-flow > .drone-ops-overview { order:7; }
 .drone-map-v4 { height: 620px; overflow: hidden; border-radius: 16px; border: 1px solid var(--line); }
 .official-button { padding: 9px 11px; border-radius: 11px; background: rgba(88,212,255,.09); border: 1px solid rgba(88,212,255,.24); color: #dff7ff; text-decoration: none; font-size: 10px; font-weight: 850; }
 .rtba-legend-v4 { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding-top: 10px; color: var(--muted); font-size: 10px; }
@@ -1972,6 +1980,7 @@ a { color: inherit; }
 .official-notam-list>article.upcoming header b { color:#9fcde4; background:rgba(88,170,210,.1); }
 .official-notam-meta { display:flex; gap:5px; flex-wrap:wrap; margin:8px 0; }
 .official-notam-meta span { padding:4px 6px; border-radius:5px; color:#b9ccd8; background:rgba(255,255,255,.04); font-size:7px; }
+.notam-translation-label { display:inline-block; padding:3px 6px; border-radius:5px; color:#071c28; background:#72d9ff; font-size:7px; font-weight:900; letter-spacing:.05em; text-transform:uppercase; }
 .official-notam-list p { max-height:100px; margin:7px 0; overflow:auto; color:#ecf5fa; font-size:8px; line-height:1.5; white-space:pre-line; }
 .official-notam-list>article>small { display:block; color:#8ca7b8; font-size:7px; line-height:1.4; }
 .official-notam-list details,.notam-manual-tool { margin-top:8px; font-size:8px; }

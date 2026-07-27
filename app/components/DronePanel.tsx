@@ -62,6 +62,7 @@ type OfficialNotam = {
 };
 
 const FRANCE_OVERVIEW_CENTER: [number, number] = [46.603354, 1.888334];
+const OFFICIAL_NOTAM_LIMIT = 3;
 
 function directionText(value?: number | string) {
   if (value === undefined || value === null) return "inconnue";
@@ -412,7 +413,7 @@ export default function DronePanel() {
   }
 
   return (
-    <>
+    <div className="drone-panel-flow">
       <section className="hero drone-hero-v4">
         <div>
           <span className="eyebrow">ASSISTANT TÉLÉPILOTE — FRANCE</span>
@@ -472,14 +473,15 @@ export default function DronePanel() {
             <button type="button" disabled={!selectedPosition || officialNotamStatus === "loading"} onClick={() => setNotamRefreshVersion((value) => value + 1)}>Actualiser</button>
           </div>
           {officialNotams.length > 0 && <div className="official-notam-list">
-            {officialNotams.slice(0, 6).map((notam) => <article key={notam.id} className={notam.activeNow ? "active-now" : "upcoming"}>
+            {officialNotams.slice(0, OFFICIAL_NOTAM_LIMIT).map((notam) => <article key={notam.id} className={notam.activeNow ? "active-now" : "upcoming"}>
               <header><div><span>{notam.category} • {notam.qCode}</span><strong>{notam.reference}</strong></div><b>{notam.activeNow ? "VALIDE MAINTENANT" : "À VENIR"}</b></header>
               <div className="official-notam-meta"><span>Zone : {notam.itemA}</span><span>{notam.impactsPoint ? "Le périmètre déclaré couvre le point" : notam.distanceToAreaKm === null ? "Distance non déterminée" : `Périmètre à ≈ ${notam.distanceToAreaKm.toFixed(1)} km`}</span><span>FL {String(notam.lowerFl ?? 0).padStart(3, "0")} → FL {String(notam.upperFl ?? 999).padStart(3, "0")}</span></div>
+              <span className="notam-translation-label">Traduction française</span>
               <p>{notam.frenchText}</p>
               <small>{notam.startsAt} → {notam.endsAt} • {notam.translationSource === "sofia" ? "Texte français fourni par SOFIA" : "Lecture assistée XavPac"}</small>
               <details><summary>Voir le texte original</summary><pre>{notam.originalText}</pre></details>
             </article>)}
-            {officialNotams.length > 6 && <small className="official-notam-more">+ {officialNotams.length - 6} autre{officialNotams.length - 6 === 1 ? "" : "s"} NOTAM dans le briefing officiel.</small>}
+            {officialNotams.length > OFFICIAL_NOTAM_LIMIT && <small className="official-notam-more">Trois NOTAM prioritaires affichés • {officialNotams.length - OFFICIAL_NOTAM_LIMIT} autre{officialNotams.length - OFFICIAL_NOTAM_LIMIT === 1 ? "" : "s"} disponible{officialNotams.length - OFFICIAL_NOTAM_LIMIT === 1 ? "" : "s"} dans le briefing officiel.</small>}
           </div>}
           {officialNotamStatus === "success" && officialNotams.length === 0 && <div className="notam-empty">Aucun NOTAM retourné par cette recherche officielle. Vérifiez néanmoins les SUP AIP, l’AZBA et les autres restrictions applicables.</div>}
           {officialNotamStatus === "error" && <div className="notam-source-error">SOFIA est indisponible depuis XavPac. Utilisez le lien officiel ci-dessus avant toute décision de vol.</div>}
@@ -558,12 +560,12 @@ export default function DronePanel() {
           <div className="panel-title rtba-panel-title-v51">
             <div>
               <span className="eyebrow">ESPACE AÉRIEN FRANCE</span>
-              <h3>Carte du point analysé</h3>
-              <p className="muted">Trafic et aérodromes OpenStreetMap autour du point. L’AZBA officiel reste disponible séparément.</p>
+              <h3>Ma position et zones RTBA</h3>
+              <p className="muted">Ouverture directe sur votre position avec les contours RTBA publiés, le trafic et les aérodromes proches.</p>
             </div>
             <div className="rtba-mode-switch">
               <button type="button" className={mapMode === "official" ? "active" : ""} onClick={() => setMapMode("official")}>AZBA officiel live</button>
-              <button type="button" className={mapMode === "map" ? "active" : ""} onClick={() => setMapMode("map")}>Carte France</button>
+              <button type="button" className={mapMode === "map" ? "active" : ""} onClick={() => setMapMode("map")}>Carte locale</button>
             </div>
             <div className="drone-map-actions">
               <button type="button" disabled={!position} onClick={() => { setManualPoint(null); setMapMode("map"); }}>Recentrer</button>
@@ -656,6 +658,6 @@ export default function DronePanel() {
           </article>
         </aside>
       </section>
-    </>
+    </div>
   );
 }
