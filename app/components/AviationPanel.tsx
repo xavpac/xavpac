@@ -2,12 +2,20 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
+import AircraftPhoto from "./aviation/AircraftPhoto";
+import AircraftView from "./aviation/AircraftView";
+import FlightMetrics from "./aviation/FlightMetrics";
+import OperatorBrand from "./aviation/OperatorBrand";
+import { useAviationAudio } from "../hooks/useAviationAudio";
 import { useLiveGeolocation } from "../hooks/useLiveGeolocation";
 import { reportDataUpdate } from "../lib/buildInfo";
-import type { EnrichedAircraft, RouteConfidence } from "../lib/aviation/types";
+import type { AirportIdentity, AirportWeather, EnrichedAircraft, RouteConfidence } from "../lib/aviation/types";
 import { deducedRoute, recordObservations } from "../lib/aviation/observations";
 import { detectRemarkable } from "../lib/aviation/remarkable";
+import { nationalAssetsInsideRadius, type NationalAssetSignal, type NearbyNationalAsset } from "../lib/aviation/nationalAlerts";
 import { distanceKm } from "../lib/aviation/geometry";
+import { routeCanUseAirportWeather, routeWeatherKey, weatherCondition, weatherVisibility } from "../lib/aviation/routeWeather";
 import type { AircraftWithDistance, LiveAircraft } from "../lib/aviation/liveAircraft";
 import type { MapStyle } from "../lib/map/types";
 import {
@@ -23,9 +31,7 @@ const MANUAL_OBSERVER_KEY = "xavpac:manual-observer";
 
 type Radius = 20 | 50 | 100;
 
-type RouteAirport = { name?: string; municipality?: string; iata_code?: string; icao_code?: string };
-type RouteWeather = { time?: string; temperature_2m?: number; weather_code?: number; wind_speed_10m?: number; wind_gusts_10m?: number; visibility?: number; surface_pressure?: number; cloud_cover?: number };
-type FlightRoute = { origin: RouteAirport; destination: RouteAirport; originWeather: RouteWeather | null; destinationWeather: RouteWeather | null };
+type FlightRoute = { origin: AirportIdentity; destination: AirportIdentity; originWeather: AirportWeather | null; destinationWeather: AirportWeather | null };
 type AviationNews = { date: string; title: string; summary: string; location: string; source: string; link: string };
 
 const routeQualifiers: Record<RouteConfidence, string> = {
@@ -34,19 +40,6 @@ const routeQualifiers: Record<RouteConfidence, string> = {
   inferred: "Route déduite",
   unavailable: "Route non déterminée"
 };
-
-function weatherCondition(code?: number) {
-  if (code === undefined) return "Conditions non déterminées";
-  if (code === 0) return "Ciel dégagé";
-  if ([1, 2].includes(code)) return "Éclaircies";
-  if (code === 3) return "Couvert";
-  if ([45, 48].includes(code)) return "Brouillard";
-  if ([51, 53, 55, 56, 57].includes(code)) return "Bruine";
-  if ([61, 63, 65, 66, 67, 80, 81, 82].includes(code)) return "Pluie ou averses";
-  if ([71, 73, 75, 77, 85, 86].includes(code)) return "Neige";
-  if ([95, 96, 99].includes(code)) return "Orage";
-  return "Conditions variables";
-}
 
 function formatAltitude(value: number | null) {
   return value === null ? "—" : `${Math.round(value).toLocaleString("fr-FR")} m`;
@@ -171,13 +164,9 @@ function altitudeBand(value: number | null) {
   return 0;
 }
 
-function weatherVisibility(value: number | null) {
-  if (value === null) return "—";
-  return value >= 10000 ? "> 10 km" : `${(value / 1000).toFixed(1)} km`;
-}
-
 export default function AviationPanel() {
   const { position, status: positionStatus, accuracy, timestamp: gpsTimestamp, isLive, retryGeolocation, error: gpsError } = useLiveGeolocation();
+  const { enabled: soundsEnabled, setSoundEnabled, unlock: unlockAudio, quietAircraftChange, nationalAssetAlert } = useAviationAudio();
   const [radius, setRadius] = useState<Radius>(50);
   const [manualObserver, setManualObserver] = useState<[number, number] | null>(null);
   const [observerCommune, setObserverCommune] = useState("");
@@ -190,6 +179,7 @@ export default function AviationPanel() {
   const [error, setError] = useState("");
   const [enrichedByModeS, setEnrichedByModeS] = useState<Record<string, EnrichedAircraft>>({});
   const [enrichmentStatus, setEnrichmentStatus] = useState("Enrichissement en attente");
+  const [routeWeather, setRouteWeather] = useState<{ key: string | null; status: "idle" | "loading" | "ready" | "unavailable"; origin: AirportWeather | null; destination: AirportWeather | null }>({ key: null, status: "idle", origin: null, destination: null });
   const [mapStyle, setMapStyle] = useState<MapStyle>("street");
   const [showTrails, setShowTrails] = useState(true);
   const [showCircle, setShowCircle] = useState(true);
@@ -198,6 +188,11 @@ export default function AviationPanel() {
   const [showFilters, setShowFilters] = useState(false);
   const [flightOnly, setFlightOnly] = useState(true);
   const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
+  const [showAircraftView, setShowAircraftView] = useState(false);
+  const [nearbyNationalAlert, setNearbyNationalAlert] = useState<NearbyNationalAsset | null>(null);
+  const aircraftViewRef = useRef<HTMLDivElement>(null);
+  const previousViewAircraftRef = useRef<string | null>(null);
+  const alertedNationalAssetsRef = useRef(new Set<string>());
   const trailsRef = useRef<Record<string, [number, number][]>>({});
   const [trailsVersion, setTrailsVersion] = useState(0);
   const passageHistoryRef = useRef(new PassageHistoryStore());
@@ -228,6 +223,25 @@ export default function AviationPanel() {
       setFavoriteIds([]);
     }
   }, []);
+
+  useEffect(() => {
+    if (!showAircraftView) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setShowAircraftView(false);
+    };
+    const closeAfterFullscreen = () => {
+      if (!document.fullscreenElement) setShowAircraftView(false);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    document.addEventListener("fullscreenchange", closeAfterFullscreen);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", closeOnEscape);
+      document.removeEventListener("fullscreenchange", closeAfterFullscreen);
+    };
+  }, [showAircraftView]);
 
   useEffect(() => {
     let cancelled = false;
@@ -318,6 +332,59 @@ export default function AviationPanel() {
   const enrichmentSignature = useMemo(() => aircraft.slice(0, 25).map((item) => `${item.id}:${item.callsign}:${item.registration ?? ""}`).join("|"), [aircraft]);
 
   useEffect(() => {
+    if (!showAircraftView || !aircraft[0] || aircraft[0].id === selectedId) return;
+    setSelectedId(aircraft[0].id);
+    setManualSelection(false);
+  }, [aircraft, selectedId, showAircraftView]);
+
+  useEffect(() => {
+    if (!showAircraftView || !selected) {
+      previousViewAircraftRef.current = null;
+      return;
+    }
+    const previous = previousViewAircraftRef.current;
+    if (previous && previous !== selected.id) quietAircraftChange();
+    previousViewAircraftRef.current = selected.id;
+  }, [quietAircraftChange, selected, showAircraftView]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const alertObserver = observerPosition;
+    if (!showAircraftView || !alertObserver) {
+      setNearbyNationalAlert(null);
+      return;
+    }
+    const alertCenter: [number, number] = alertObserver;
+
+    async function refreshNationalAlert() {
+      try {
+        const response = await fetch("/api/national-assets", { cache: "no-store" });
+        const payload = await response.json();
+        if (cancelled) return;
+        const inside = nationalAssetsInsideRadius(Array.isArray(payload.assets) ? payload.assets as NationalAssetSignal[] : [], alertCenter, 100);
+        const currentIds = new Set(inside.map((asset) => asset.id));
+        for (const id of alertedNationalAssetsRef.current) {
+          if (!currentIds.has(id)) alertedNationalAssetsRef.current.delete(id);
+        }
+        setNearbyNationalAlert(inside[0] ?? null);
+        const newAsset = inside.find((asset) => !alertedNationalAssetsRef.current.has(asset.id));
+        if (newAsset && nationalAssetAlert()) {
+          for (const asset of inside) alertedNationalAssetsRef.current.add(asset.id);
+        }
+      } catch {
+        if (!cancelled) setNearbyNationalAlert(null);
+      }
+    }
+
+    void refreshNationalAlert();
+    const timer = window.setInterval(refreshNationalAlert, 60000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [nationalAssetAlert, observerPosition, showAircraftView]);
+
+  useEffect(() => {
     let cancelled = false;
     if (!aircraft.length) return;
     setEnrichmentStatus("Identification des vols…");
@@ -359,11 +426,45 @@ export default function AviationPanel() {
 
   const selectedEnriched = selected ? enrichedByModeS[selected.id.replace(/^~/, "").toUpperCase()] ?? null : null;
   const identifiedOperator = selectedEnriched?.operator ?? selected?.operator ?? null;
+  const weatherEligible = Boolean(selectedEnriched && routeCanUseAirportWeather(selectedEnriched.routeConfidence, selectedEnriched.departureAirport, selectedEnriched.arrivalAirport));
+  const weatherRequestKey = weatherEligible && selectedEnriched?.departureAirport && selectedEnriched.arrivalAirport
+    ? routeWeatherKey(selectedEnriched.departureAirport, selectedEnriched.arrivalAirport)
+    : null;
+  const weatherQuery = weatherEligible && selectedEnriched?.departureAirport && selectedEnriched.arrivalAirport
+    ? new URLSearchParams({
+        originLat: String(selectedEnriched.departureAirport.latitude),
+        originLon: String(selectedEnriched.departureAirport.longitude),
+        destinationLat: String(selectedEnriched.arrivalAirport.latitude),
+        destinationLon: String(selectedEnriched.arrivalAirport.longitude)
+      }).toString()
+    : null;
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!weatherRequestKey || !weatherQuery) {
+      setRouteWeather({ key: null, status: "idle", origin: null, destination: null });
+      return;
+    }
+    setRouteWeather({ key: weatherRequestKey, status: "loading", origin: null, destination: null });
+    fetch(`/api/route-weather?${weatherQuery}`, { cache: "no-store" })
+      .then(async (response) => ({ ok: response.ok, payload: await response.json() }))
+      .then(({ ok, payload }) => {
+        if (cancelled) return;
+        if (!ok || !payload.originWeather || !payload.destinationWeather) {
+          setRouteWeather({ key: weatherRequestKey, status: "unavailable", origin: null, destination: null });
+          return;
+        }
+        setRouteWeather({ key: weatherRequestKey, status: "ready", origin: payload.originWeather as AirportWeather, destination: payload.destinationWeather as AirportWeather });
+      })
+      .catch(() => { if (!cancelled) setRouteWeather({ key: weatherRequestKey, status: "unavailable", origin: null, destination: null }); });
+    return () => { cancelled = true; };
+  }, [weatherQuery, weatherRequestKey]);
+
   const route: FlightRoute | null = selectedEnriched?.departureAirport && selectedEnriched.arrivalAirport ? {
-    origin: { name: selectedEnriched.departureAirport.name ?? undefined, municipality: selectedEnriched.departureAirport.municipality ?? undefined, iata_code: selectedEnriched.departureAirport.iata ?? undefined, icao_code: selectedEnriched.departureAirport.icao ?? undefined },
-    destination: { name: selectedEnriched.arrivalAirport.name ?? undefined, municipality: selectedEnriched.arrivalAirport.municipality ?? undefined, iata_code: selectedEnriched.arrivalAirport.iata ?? undefined, icao_code: selectedEnriched.arrivalAirport.icao ?? undefined },
-    originWeather: null,
-    destinationWeather: null
+    origin: selectedEnriched.departureAirport,
+    destination: selectedEnriched.arrivalAirport,
+    originWeather: routeWeather.key === weatherRequestKey && routeWeather.status === "ready" ? routeWeather.origin : null,
+    destinationWeather: routeWeather.key === weatherRequestKey && routeWeather.status === "ready" ? routeWeather.destination : null
   } : null;
 
   const visibleAircraft = useMemo(() => {
@@ -475,12 +576,22 @@ export default function AviationPanel() {
     });
   }
 
-  function toggleFullscreen() {
-    if (document.fullscreenElement) {
-      void document.exitFullscreen();
-    } else {
-      void document.documentElement.requestFullscreen?.();
+  function openAircraftView() {
+    if (!selected) return;
+    void unlockAudio();
+    flushSync(() => setShowAircraftView(true));
+    if (!document.fullscreenElement) {
+      void aircraftViewRef.current?.requestFullscreen?.().catch(() => undefined);
     }
+  }
+
+  function closeAircraftView() {
+    setShowAircraftView(false);
+    if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
+  }
+
+  function toggleAircraftViewSounds() {
+    void setSoundEnabled(!soundsEnabled);
   }
 
   function enrichmentFor(item: LiveAircraft) {
@@ -535,13 +646,30 @@ export default function AviationPanel() {
 
   return (
     <section className="flightwall-v61">
+      {selected && <AircraftView
+        open={showAircraftView}
+        rootRef={aircraftViewRef}
+        aircraft={selected}
+        enriched={selectedEnriched}
+        operator={identifiedOperator}
+        route={route}
+        routeConfidence={selectedEnriched?.routeConfidence ?? "unavailable"}
+        observerPosition={observerPosition}
+        nationalAlert={nearbyNationalAlert}
+        soundsEnabled={soundsEnabled}
+        favorite={favoriteIds.includes(selected.id)}
+        onClose={closeAircraftView}
+        onShowMap={closeAircraftView}
+        onToggleSounds={toggleAircraftViewSounds}
+        onToggleFavorite={() => toggleFavorite(selected.id)}
+      />}
       <div className="flightwall-commandbar panel">
         <div className="flightwall-actions">
           <button type="button" className={showTrails ? "fw-action active" : "fw-action"} onClick={() => setShowTrails((value) => !value)}>🛩️ Traces</button>
           <button type="button" className={showCircle ? "fw-action active" : "fw-action"} onClick={() => setShowCircle((value) => !value)}>🎯 Cercles</button>
           <button type="button" className={showFilters ? "fw-action active" : "fw-action"} onClick={() => setShowFilters((value) => !value)}>🔽 Filtres</button>
           <button type="button" className="fw-action">🔔 Remarquables <b>{Object.values(remarkableById).filter((items) => items.length).length}</b></button>
-          <button type="button" className="fw-action" onClick={toggleFullscreen}>⛶ Plein écran</button>
+          <button type="button" className="fw-action" disabled={!selected} onClick={openAircraftView}>▣ Vue avion</button>
         </div>
         <div className="fw-live-summary"><span className={isLive || manualObserver ? "live-dot" : "live-dot off"} /> {sourceStatus} • {enrichmentStatus}</div>
       </div>
@@ -658,15 +786,8 @@ export default function AviationPanel() {
           {selected ? (
             <>
               <div className="fw-focus-header">
-                <div><span className="fw-kicker">AVION SÉLECTIONNÉ</span><div className="fw-title-line"><h2>{selectedEnriched?.flightNumberIata ?? selectedEnriched?.callsignIcao ?? selected.callsign}</h2><button type="button" className={favoriteIds.includes(selected.id) ? "fw-favorite active" : "fw-favorite"} onClick={() => toggleFavorite(selected.id)} aria-label="Ajouter aux favoris">☆</button></div><div className="fw-airline-brand">{selectedEnriched ? <>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={selectedEnriched.logo} alt={`Logo ${selectedEnriched.operator ?? "compagnie"}`} onError={(event) => { event.currentTarget.src = "/airlines/generic-airline.svg"; }} />
-                  <strong>{selectedEnriched.operator ?? "Opérateur non identifié"}</strong></> : <strong>{identifiedOperator ?? "Opérateur non identifié"}</strong>}</div><p>{selectedEnriched?.aircraftType ?? selected.aircraftType ?? selected.description ?? "Type non disponible"}</p></div>
-                <div className="fw-aircraft-photo">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={selectedEnriched?.photo.url ?? "/aircraft/generic-aircraft.jpg"} alt={`Appareil ${selected.callsign}`} onError={(event) => { event.currentTarget.src = "/aircraft/generic-aircraft.jpg"; }} />
-                  <small>{selectedEnriched ? `${selectedEnriched.photo.label} • ${selectedEnriched.photo.source}${selectedEnriched.photo.photographer ? ` • ${selectedEnriched.photo.photographer}` : ""}` : "Illustration générique"}</small>
-                </div>
+                <div><span className="fw-kicker">AVION SÉLECTIONNÉ</span><div className="fw-title-line"><h2>{selectedEnriched?.flightNumberIata ?? selectedEnriched?.callsignIcao ?? selected.callsign}</h2><button type="button" className={favoriteIds.includes(selected.id) ? "fw-favorite active" : "fw-favorite"} onClick={() => toggleFavorite(selected.id)} aria-label="Ajouter aux favoris">☆</button></div><OperatorBrand className="fw-airline-brand" name={identifiedOperator} logoUrl={selectedEnriched?.logo} /><p>{selectedEnriched?.aircraftType ?? selected.aircraftType ?? selected.description ?? "Type non disponible"}</p><button type="button" className="fw-aircraft-view-launch" onClick={openAircraftView}>▣ Ouvrir la Vue avion</button></div>
+                <AircraftPhoto className="fw-aircraft-photo" identityKey={selected.id} photoUrl={selectedEnriched?.photo.url} isExact={selectedEnriched?.photo.kind === "exact"} label={selectedEnriched?.photo.label} source={selectedEnriched?.photo.source} photographer={selectedEnriched?.photo.photographer} aircraftType={selectedEnriched?.aircraftType ?? selected.aircraftType} description={selected.description} operator={identifiedOperator} category={selected.category} loading={!selectedEnriched} />
               </div>
 
               <div className="fw-identity-grid">
@@ -711,20 +832,20 @@ export default function AviationPanel() {
               </div>
 
               <div className={route ? "fw-route-card" : "fw-route-card unavailable"}>
-                <div><span>Départ</span><strong>{route?.origin.iata_code ?? route?.origin.icao_code ?? "?"}</strong><small>{route ? `${route.origin.municipality ?? "Non déterminé"} • ${route.origin.name ?? "Non déterminé"}` : "Non déterminé"}</small></div>
+                <div><span>Départ</span><strong>{route?.origin.iata ?? route?.origin.icao ?? "?"}</strong><small>{route ? `${route.origin.municipality ?? "Non déterminé"} • ${route.origin.name ?? "Non déterminé"}` : "Non déterminé"}</small></div>
                 <div className="fw-route-line">✈︎ <i /> ✈︎</div>
-                <div><span>Arrivée</span><strong>{route?.destination.iata_code ?? route?.destination.icao_code ?? "?"}</strong><small>{route ? `${route.destination.municipality ?? "Non déterminé"} • ${route.destination.name ?? "Non déterminé"}` : "Non déterminé"}</small></div>
+                <div><span>Arrivée</span><strong>{route?.destination.iata ?? route?.destination.icao ?? "?"}</strong><small>{route ? `${route.destination.municipality ?? "Non déterminé"} • ${route.destination.name ?? "Non déterminé"}` : "Non déterminé"}</small></div>
               </div>
               <div className={`fw-route-provenance ${selectedEnriched?.routeConfidence ?? "unavailable"}`}>{routeQualifiers[selectedEnriched?.routeConfidence ?? "unavailable"]} • {selectedEnriched?.routeSource ?? "aucune source"}</div>
 
               {remarkableById[selected.id]?.length > 0 && <div className="remarkable-card"><span>APPAREIL REMARQUABLE</span>{remarkableById[selected.id].map((item) => <div key={item.key}><strong>{item.icon} {item.label}</strong><small>{item.confidence === "confirmed" ? "Identification confirmée" : "Identification probable"} • {item.evidence}</small></div>)}</div>}
 
-              <div className="fw-telemetry-grid">
-                <div><span>Altitude</span><strong>{formatFlightLevel(selected.barometricAltitude)}</strong><small>{formatAltitude(selected.barometricAltitude)}</small></div>
-                <div><span>Vitesse</span><strong>{formatSpeedKnots(selected.velocity)}</strong><small>{formatSpeedKmh(selected.velocity)}</small></div>
-                <div><span>Cap</span><strong>{selected.trueTrack === null ? "—" : `${Math.round(selected.trueTrack)}°`}</strong><small>{directionName(selected.trueTrack).split(" • ")[0]}</small></div>
-                <div><span>Vertical</span><strong>{formatVertical(selected.verticalRate)}</strong><small>{selected.onGround ? "Au sol" : (selected.verticalRate ?? 0) > 0.5 ? "Montée" : (selected.verticalRate ?? 0) < -0.5 ? "Descente" : "Palier"}</small></div>
-              </div>
+              <FlightMetrics metrics={[
+                { label: "Altitude", value: formatFlightLevel(selected.barometricAltitude), detail: formatAltitude(selected.barometricAltitude) },
+                { label: "Vitesse", value: formatSpeedKnots(selected.velocity), detail: formatSpeedKmh(selected.velocity) },
+                { label: "Cap", value: selected.trueTrack === null ? "—" : `${Math.round(selected.trueTrack)}°`, detail: directionName(selected.trueTrack).split(" • ")[0] },
+                { label: "Vertical", value: formatVertical(selected.verticalRate), detail: selected.onGround ? "Au sol" : (selected.verticalRate ?? 0) > 0.5 ? "Montée" : (selected.verticalRate ?? 0) < -0.5 ? "Descente" : "Palier" }
+              ]} />
 
               <div className="fw-source-grid">
                 <div><span>Source</span><strong>Airplanes.live</strong></div>
@@ -734,13 +855,13 @@ export default function AviationPanel() {
               </div>
               <div className="fw-provenance-card"><strong>Traçabilité du trajet</strong><span>Source : {selectedEnriched?.routeProvenance.source ?? "Aucune"}</span><span>Récupération : {selectedEnriched ? new Date(selectedEnriched.routeProvenance.retrievedAt).toLocaleString("fr-FR") : "—"}</span><span>Méthode : {selectedEnriched?.routeProvenance.method ?? "—"}</span><span>Fraîcheur : {selectedEnriched ? `${selectedEnriched.routeProvenance.freshnessSeconds} s` : "—"}</span></div>
 
-              {route && <div className="fw-weather-strip route-only-weather">
+              {route && weatherEligible && <div className={`fw-weather-strip route-only-weather ${routeWeather.status}`}>
                 <header><div><span>MÉTÉO DU VOL</span><strong>Départ et arrivée uniquement</strong></div><small>Open-Meteo</small></header>
-                <div>
-                  {route && ([{ airport: route.origin, weather: route.originWeather }, { airport: route.destination, weather: route.destinationWeather }]).map(({ airport, weather }) => (
-                    <article key={airport.icao_code ?? airport.name}><span>{airport.municipality ?? airport.name ?? "Aéroport"}</span><strong>{typeof weather?.temperature_2m === "number" ? `${Math.round(weather.temperature_2m)}°C` : "—"}</strong><small>{weatherCondition(weather?.weather_code)}</small><small>Vent {typeof weather?.wind_speed_10m === "number" ? `${Math.round(weather.wind_speed_10m)} kt` : "—"} • Rafales {typeof weather?.wind_gusts_10m === "number" ? `${Math.round(weather.wind_gusts_10m)} kt` : "—"}</small><small>Visibilité {weatherVisibility(weather?.visibility ?? null)} • Pression {typeof weather?.surface_pressure === "number" ? `${Math.round(weather.surface_pressure)} hPa` : "—"}</small><small>Plafond : non fourni par cette source • MAJ {weather?.time ? new Date(weather.time).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "—"}</small></article>
+                {routeWeather.status === "ready" ? <div>
+                  {([{ airport: route.origin, weather: route.originWeather }, { airport: route.destination, weather: route.destinationWeather }]).map(({ airport, weather }) => (
+                    <article key={airport.icao ?? airport.name ?? airport.iata}><span>{airport.municipality ?? airport.name ?? "Aéroport"}</span><strong>{typeof weather?.temperature_2m === "number" ? `${Math.round(weather.temperature_2m)}°C` : "—"}</strong><small>{weatherCondition(weather?.weather_code)}</small><small>Vent {typeof weather?.wind_speed_10m === "number" ? `${Math.round(weather.wind_speed_10m)} kt` : "—"} • Rafales {typeof weather?.wind_gusts_10m === "number" ? `${Math.round(weather.wind_gusts_10m)} kt` : "—"}</small><small>Visibilité {weatherVisibility(weather?.visibility ?? null)} • Pression {typeof weather?.surface_pressure === "number" ? `${Math.round(weather.surface_pressure)} hPa` : "—"}</small><small>Nuages {typeof weather?.cloud_cover === "number" ? `${Math.round(weather.cloud_cover)} %` : "—"} • MAJ {weather?.time ? new Date(weather.time).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "—"}</small></article>
                   ))}
-                </div>
+                </div> : <p className="fw-weather-status">{routeWeather.status === "loading" ? "Chargement de la météo réelle des deux aéroports…" : "Météo des aéroports momentanément indisponible."}</p>}
               </div>}
             </>
           ) : (

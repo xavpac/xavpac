@@ -59,4 +59,6 @@ test("détecte un appareil remarquable sans surévaluer un callsign", () => {
 test("la décision drone emploie les trois libellés opérationnels prévus", () => {
   const decision = evaluateDroneFlight({ hasPosition: true, requestedHeightM: 60, zones: [], aerodromeDistanceKm: null, restrictionsChecked: true, weatherAvailable: true, gustKnots: 8, visibilityKm: 10 });
   assert.equal(decision.label, "VOL POSSIBLE");
+  assert.equal(decision.checkReasons.length, 0);
+  assert.ok(decision.positiveReasons.length > 0);
 });

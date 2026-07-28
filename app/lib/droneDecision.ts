@@ -1,6 +1,13 @@
 export type DroneZoneAssessment = { name: string; containsPoint: boolean; status: "active" | "inactive" | "unknown" };
 export type DroneDecisionInput = { hasPosition: boolean; zones: DroneZoneAssessment[]; aerodromeDistanceKm: number | null; requestedHeightM: number; weatherAvailable: boolean; flightCategory?: string | null; gustKnots?: number | null; visibilityKm?: number | null; restrictionsChecked: boolean; nearbyAircraftCount?: number };
-export type DroneDecision = { level: "possible" | "check" | "forbidden"; label: "VOL POSSIBLE" | "VOL À VÉRIFIER" | "VOL NON AUTORISÉ"; reasons: string[] };
+export type DroneDecision = {
+  level: "possible" | "check" | "forbidden";
+  label: "VOL POSSIBLE" | "VOL À VÉRIFIER" | "VOL NON AUTORISÉ";
+  reasons: string[];
+  blockingReasons: string[];
+  checkReasons: string[];
+  positiveReasons: string[];
+};
 
 export function evaluateDroneFlight(input: DroneDecisionInput): DroneDecision {
   const blocking: string[] = [];
@@ -14,7 +21,7 @@ export function evaluateDroneFlight(input: DroneDecisionInput): DroneDecision {
   else if (unknownZones.length) checks.push(`Statut RTBA inconnu : ${unknownZones.map((zone) => zone.name).join(", ")}`);
   else if (input.hasPosition && input.restrictionsChecked) positive.push("Hors zone RTBA active connue");
   if (input.aerodromeDistanceKm !== null && input.aerodromeDistanceKm <= 5) checks.push("Proximité d’un aérodrome");
-  if (!input.restrictionsChecked) checks.push("Restrictions aéronautiques non vérifiées automatiquement");
+  if (!input.restrictionsChecked) checks.push("Autorisation, zones UAS, SUP AIP et restrictions locales à confirmer par le télépilote");
   if ((input.nearbyAircraftCount ?? 0) > 0) checks.push(`${input.nearbyAircraftCount} aéronef${input.nearbyAircraftCount === 1 ? "" : "s"} à proximité`);
   else if (input.hasPosition) positive.push("Aucun aéronef dangereux détecté à proximité");
   if (!input.weatherAvailable) checks.push("Météo opérationnelle indisponible");
@@ -24,7 +31,28 @@ export function evaluateDroneFlight(input: DroneDecisionInput): DroneDecision {
     else if (category === "MVFR" || (input.gustKnots ?? 0) >= 25 || (input.visibilityKm ?? Infinity) < 5) checks.push("Météo opérationnelle marginale");
     else positive.push("Météo minimale disponible sans alerte détectée");
   }
-  if (blocking.length) return { level: "forbidden", label: "VOL NON AUTORISÉ", reasons: [...blocking, ...checks] };
-  if (checks.length) return { level: "check", label: "VOL À VÉRIFIER", reasons: [...checks, ...positive, "Données insuffisantes : vérification manuelle nécessaire"] };
-  return { level: "possible", label: "VOL POSSIBLE", reasons: positive };
+  if (blocking.length) return {
+    level: "forbidden",
+    label: "VOL NON AUTORISÉ",
+    reasons: [...blocking, ...checks],
+    blockingReasons: blocking,
+    checkReasons: checks,
+    positiveReasons: positive
+  };
+  if (checks.length) return {
+    level: "check",
+    label: "VOL À VÉRIFIER",
+    reasons: [...checks, ...positive],
+    blockingReasons: [],
+    checkReasons: checks,
+    positiveReasons: positive
+  };
+  return {
+    level: "possible",
+    label: "VOL POSSIBLE",
+    reasons: positive,
+    blockingReasons: [],
+    checkReasons: [],
+    positiveReasons: positive
+  };
 }

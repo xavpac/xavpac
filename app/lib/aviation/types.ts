@@ -19,6 +19,17 @@ export type AirportIdentity = {
   longitude: number | null;
 };
 
+export type AirportWeather = {
+  time: string | null;
+  temperature_2m: number | null;
+  weather_code: number | null;
+  wind_speed_10m: number | null;
+  wind_gusts_10m: number | null;
+  visibility: number | null;
+  surface_pressure: number | null;
+  cloud_cover: number | null;
+};
+
 export type EnrichedPhoto = {
   url: string;
   kind: "exact" | "same-model-operator" | "same-model" | "generic";

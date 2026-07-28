@@ -18,19 +18,29 @@ async function request(path: string) {
 
 type Input = { modeS?: string | null; registration?: string | null };
 type Output = { url: string; photographer: string | null; link: string | null } | null;
+
+export function photoLookupPaths(input: Input) {
+  const modeS = normalizeModeS(input.modeS)?.toLowerCase();
+  const registration = normalizeRegistration(input.registration);
+  return [
+    ...(modeS ? [`hex/${encodeURIComponent(modeS)}`] : []),
+    ...(registration ? [`reg/${encodeURIComponent(registration)}`] : [])
+  ];
+}
+
 const adapter: SourceAdapter<Input, Output> = {
   id: "planespotters", name: "PlaneSpotters", enabled: process.env.PLANESPOTTERS_ENABLED !== "false",
   quota: "API publique, usage raisonnable et cache long",
   async fetch(input) {
   const registration = normalizeRegistration(input.registration);
   const modeS = normalizeModeS(input.modeS)?.toLowerCase();
-  const key = `photo:${registration ?? "none"}:${modeS ?? "none"}`;
+  const key = `photo:${modeS ?? "none"}:${registration ?? "none"}`;
   return cached(key, 7 * 86_400_000, async () => {
-    if (registration) {
-      const byRegistration = await request(`reg/${encodeURIComponent(registration)}`);
-      if (byRegistration) return byRegistration;
+    for (const path of photoLookupPaths(input)) {
+      const photo = await request(path);
+      if (photo) return photo;
     }
-    return modeS ? request(`hex/${encodeURIComponent(modeS)}`) : null;
+    return null;
   });
   }
 };

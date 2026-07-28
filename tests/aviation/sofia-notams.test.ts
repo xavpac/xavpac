@@ -26,3 +26,15 @@ test("déduplique, traduit et classe les NOTAM officiels autour du point", () =>
   assert.equal(result[0].impactsPoint, true);
   assert.equal(result[0].activeNow, true);
 });
+
+test("classe les NOTAM par proximité avant leur statut temporel", () => {
+  const common = {
+    nof: "LFFA", series: "A", year: 26, itemA: "LFMM", itemE: "RWY CLSD",
+    radius: 0, qLine: { code23: "FA", code45: "LC", lower: 0, upper: 10 }
+  };
+  const result = extractSofiaNotams({ values: [
+    { ...common, id: "far-active", number: 1, coordinates: "4700N00506E", startValidity: "2026-07-27T10:00:00Z", endValidity: "2026-07-27T18:00:00Z" },
+    { ...common, id: "near-upcoming", number: 2, coordinates: "4630N00506E", startValidity: "2026-07-28T10:00:00Z", endValidity: "2026-07-28T18:00:00Z" }
+  ] }, [46.48, 5.1], new Date("2026-07-27T14:00:00Z"));
+  assert.deepEqual(result.map((item) => item.id), ["near-upcoming", "far-active"]);
+});

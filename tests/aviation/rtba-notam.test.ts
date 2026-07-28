@@ -45,3 +45,17 @@ G) 1500FT AMSL`);
   assert.equal(reading.lowerLimit, "surface");
   assert.match(reading.upperLimit ?? "", /niveau moyen de la mer/i);
 });
+
+test("traduit les abréviations opérationnelles courantes d’un NOTAM", () => {
+  const reading = readNotamInFrench(`B2345/26 NOTAMN
+A) LFXX
+B) 2607270800
+C) 2607271800
+E) RWY 18/36 CLSD DUE TO WIP. CRANE PSN 1NM FM THR.
+F) SFC
+G) 500FT AGL`);
+  assert.ok(reading);
+  assert.match(reading.frenchText ?? "", /piste 18\/36 fermé en raison de travaux en cours/i);
+  assert.match(reading.frenchText ?? "", /grue position/i);
+  assert.match(reading.upperLimit ?? "", /500 pieds au-dessus du sol/i);
+});

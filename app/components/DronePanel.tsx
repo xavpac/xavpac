@@ -62,7 +62,7 @@ type OfficialNotam = {
 };
 
 const FRANCE_OVERVIEW_CENTER: [number, number] = [46.603354, 1.888334];
-const OFFICIAL_NOTAM_LIMIT = 3;
+const OFFICIAL_NOTAM_LIMIT = 2;
 
 function directionText(value?: number | string) {
   if (value === undefined || value === null) return "inconnue";
@@ -230,7 +230,7 @@ export default function DronePanel() {
         setOfficialNotams(nextNotams);
         setOfficialNotamStatus("success");
         setOfficialNotamMessage(nextNotams.length
-          ? `${nextNotams.length} NOTAM officiel${nextNotams.length === 1 ? "" : "s"} retourné${nextNotams.length === 1 ? "" : "s"} dans le briefing.`
+          ? `${nextNotams.length} NOTAM officiel${nextNotams.length === 1 ? "" : "s"} reçu${nextNotams.length === 1 ? "" : "s"} — les ${Math.min(OFFICIAL_NOTAM_LIMIT, nextNotams.length)} plus proche${Math.min(OFFICIAL_NOTAM_LIMIT, nextNotams.length) === 1 ? "" : "s"} sont affiché${Math.min(OFFICIAL_NOTAM_LIMIT, nextNotams.length) === 1 ? "" : "s"}.`
           : "Aucun NOTAM retourné par SOFIA pour cette recherche.");
         setOfficialNotamUpdatedAt(typeof payload.queriedAt === "string" ? payload.queriedAt : new Date().toISOString());
       } catch (error) {
@@ -428,9 +428,16 @@ export default function DronePanel() {
 
       <section className={`panel drone-decision-panel ${decision.level}`}>
         <div><span className="eyebrow">AIDE À LA DÉCISION</span><h2>{decision.label}</h2><p>{message}</p></div>
-        <ul>{decision.reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul>
-        <label>Hauteur demandée <input type="number" min="0" max="500" value={requestedHeight} onChange={(event) => setRequestedHeight(Math.max(0, Number(event.target.value) || 0))} /> m</label>
-        <div className="drone-point-actions"><button type="button" disabled={!position} onClick={() => setManualPoint(null)}>📍 Utiliser HOME</button><small>{manualPoint ? `${manualPoint[0].toFixed(5)} / ${manualPoint[1].toFixed(5)}` : position ? "Position GPS réelle" : "Position GPS indisponible"}</small></div>
+        <div className="drone-decision-why">
+          <header><strong>{decision.level === "check" ? "Pourquoi le vol est à vérifier ?" : decision.level === "forbidden" ? "Pourquoi le vol est refusé ?" : "Pourquoi le vol paraît possible ?"}</strong><span>{decision.checkReasons.length + decision.blockingReasons.length} point{decision.checkReasons.length + decision.blockingReasons.length === 1 ? "" : "s"} à traiter</span></header>
+          {decision.blockingReasons.map((reason) => <p className="blocking" key={reason}><b>×</b><span>{reason}</span></p>)}
+          {decision.checkReasons.map((reason) => <p className="checking" key={reason}><b>!</b><span>{reason}</span></p>)}
+          {decision.positiveReasons.map((reason) => <p className="positive" key={reason}><b>✓</b><span>{reason}</span></p>)}
+        </div>
+        <div className="drone-decision-actions">
+          <label>Hauteur demandée <input type="number" min="0" max="500" value={requestedHeight} onChange={(event) => setRequestedHeight(Math.max(0, Number(event.target.value) || 0))} /> m</label>
+          <div className="drone-point-actions"><button type="button" disabled={!position} onClick={() => setManualPoint(null)}>📍 Utiliser HOME</button><small>{manualPoint ? `${manualPoint[0].toFixed(5)} / ${manualPoint[1].toFixed(5)}` : position ? "Position GPS réelle" : "Position GPS indisponible"}</small></div>
+        </div>
         <footer>Cette synthèse est une aide opérationnelle. Elle ne remplace pas la vérification réglementaire du télépilote (AZBA, NOTAM, SUP AIP, AIP et restrictions locales).</footer>
       </section>
 
@@ -473,15 +480,16 @@ export default function DronePanel() {
             <button type="button" disabled={!selectedPosition || officialNotamStatus === "loading"} onClick={() => setNotamRefreshVersion((value) => value + 1)}>Actualiser</button>
           </div>
           {officialNotams.length > 0 && <div className="official-notam-list">
-            {officialNotams.slice(0, OFFICIAL_NOTAM_LIMIT).map((notam) => <article key={notam.id} className={notam.activeNow ? "active-now" : "upcoming"}>
+            {officialNotams.slice(0, OFFICIAL_NOTAM_LIMIT).map((notam, index) => <article key={notam.id} className={notam.activeNow ? "active-now" : "upcoming"}>
               <header><div><span>{notam.category} • {notam.qCode}</span><strong>{notam.reference}</strong></div><b>{notam.activeNow ? "VALIDE MAINTENANT" : "À VENIR"}</b></header>
-              <div className="official-notam-meta"><span>Zone : {notam.itemA}</span><span>{notam.impactsPoint ? "Le périmètre déclaré couvre le point" : notam.distanceToAreaKm === null ? "Distance non déterminée" : `Périmètre à ≈ ${notam.distanceToAreaKm.toFixed(1)} km`}</span><span>FL {String(notam.lowerFl ?? 0).padStart(3, "0")} → FL {String(notam.upperFl ?? 999).padStart(3, "0")}</span></div>
-              <span className="notam-translation-label">Traduction française</span>
+              <div className="official-notam-rank">N° {index + 1} LE PLUS PROCHE</div>
+              <div className="official-notam-meta"><span>Zone : {notam.itemA}</span><span>{notam.impactsPoint ? "Le périmètre couvre votre position — 0 km" : notam.distanceToAreaKm === null ? "Distance non déterminée" : `Bord du périmètre à ≈ ${notam.distanceToAreaKm.toFixed(1)} km`}</span><span>FL {String(notam.lowerFl ?? 0).padStart(3, "0")} → FL {String(notam.upperFl ?? 999).padStart(3, "0")}</span></div>
+              <span className="notam-translation-label">Traduction en français</span>
               <p>{notam.frenchText}</p>
               <small>{notam.startsAt} → {notam.endsAt} • {notam.translationSource === "sofia" ? "Texte français fourni par SOFIA" : "Lecture assistée XavPac"}</small>
               <details><summary>Voir le texte original</summary><pre>{notam.originalText}</pre></details>
             </article>)}
-            {officialNotams.length > OFFICIAL_NOTAM_LIMIT && <small className="official-notam-more">Trois NOTAM prioritaires affichés • {officialNotams.length - OFFICIAL_NOTAM_LIMIT} autre{officialNotams.length - OFFICIAL_NOTAM_LIMIT === 1 ? "" : "s"} disponible{officialNotams.length - OFFICIAL_NOTAM_LIMIT === 1 ? "" : "s"} dans le briefing officiel.</small>}
+            {officialNotams.length > OFFICIAL_NOTAM_LIMIT && <small className="official-notam-more">Les deux NOTAM les plus proches sont affichés • {officialNotams.length - OFFICIAL_NOTAM_LIMIT} autre{officialNotams.length - OFFICIAL_NOTAM_LIMIT === 1 ? "" : "s"} disponible{officialNotams.length - OFFICIAL_NOTAM_LIMIT === 1 ? "" : "s"} dans le briefing officiel.</small>}
           </div>}
           {officialNotamStatus === "success" && officialNotams.length === 0 && <div className="notam-empty">Aucun NOTAM retourné par cette recherche officielle. Vérifiez néanmoins les SUP AIP, l’AZBA et les autres restrictions applicables.</div>}
           {officialNotamStatus === "error" && <div className="notam-source-error">SOFIA est indisponible depuis XavPac. Utilisez le lien officiel ci-dessus avant toute décision de vol.</div>}

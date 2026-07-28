@@ -1,18 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { enforceRateLimit } from "../../lib/api/guard";
-import { planespottersUserAgent } from "../../lib/aviation/providers/planespottersUserAgent";
+import { lookupExactPhoto } from "../../lib/aviation/providers/planespotters";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
-
-type PlaneSpottersPhoto = {
-  thumbnail?: { src?: string };
-  thumbnail_large?: { src?: string };
-  link?: string;
-  photographer?: string;
-};
-
-type PlaneSpottersPayload = { photos?: PlaneSpottersPhoto[] };
 
 export async function GET(request: NextRequest) {
   const limited = enforceRateLimit(request, "aircraft-photo", 30, 60_000);
@@ -20,36 +11,17 @@ export async function GET(request: NextRequest) {
   const hex = (request.nextUrl.searchParams.get("hex") ?? "").replace(/[^a-fA-F0-9]/g, "").toLowerCase();
   const registration = (request.nextUrl.searchParams.get("registration") ?? "").trim();
 
-  const lookup = hex.length === 6
-    ? `https://api.planespotters.net/pub/photos/hex/${encodeURIComponent(hex)}`
-    : registration
-      ? `https://api.planespotters.net/pub/photos/reg/${encodeURIComponent(registration)}`
-      : null;
-
-  if (!lookup) {
+  if (hex.length !== 6 && !registration) {
     return NextResponse.json({ photo: null, source: "PlaneSpotters" });
   }
 
   try {
-    const response = await fetch(lookup, {
-      cache: "no-store",
-      signal: AbortSignal.timeout(6500),
-      headers: { Accept: "application/json", "User-Agent": planespottersUserAgent() }
-    });
-
-    if (!response.ok) {
-      throw new Error(`PlaneSpotters ${response.status}`);
-    }
-
-    const payload = (await response.json()) as PlaneSpottersPayload;
-    const first = Array.isArray(payload.photos) ? payload.photos[0] : undefined;
-    const rawImage = first?.thumbnail_large?.src ?? first?.thumbnail?.src ?? null;
-    const image = rawImage?.startsWith("//") ? `https:${rawImage}` : rawImage;
+    const photo = await lookupExactPhoto({ modeS: hex.length === 6 ? hex : null, registration });
 
     return NextResponse.json(
       {
-        photo: image
-          ? { image, link: first?.link ?? null, photographer: first?.photographer ?? null }
+        photo: photo?.url
+          ? { image: photo.url, link: photo.link, photographer: photo.photographer }
           : null,
         source: "PlaneSpotters"
       },

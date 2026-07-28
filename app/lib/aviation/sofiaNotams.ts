@@ -157,8 +157,10 @@ export function extractSofiaNotams(payload: unknown, point: [number, number], no
       translationSource: hasOfficialFrench ? "sofia" as const : "assisted" as const
     };
   }).sort((a, b) => {
+    const areaDistance = (a.distanceToAreaKm ?? a.distanceToCenterKm ?? Infinity) - (b.distanceToAreaKm ?? b.distanceToCenterKm ?? Infinity);
+    if (areaDistance) return areaDistance;
     const activeOrder = Number(b.activeNow) - Number(a.activeNow);
     if (activeOrder) return activeOrder;
-    return (a.distanceToAreaKm ?? Infinity) - (b.distanceToAreaKm ?? Infinity);
+    return (a.distanceToCenterKm ?? Infinity) - (b.distanceToCenterKm ?? Infinity);
   });
 }

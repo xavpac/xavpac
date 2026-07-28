@@ -137,7 +137,8 @@ function weatherIcon(point: MapPoint) {
 
 function operationalIcon(point: MapPoint, selected: boolean, faded: boolean) {
   const category = String(point.category).replace("national-", "");
-  const colors: Record<string, string> = { canadair: "#ef4d5f", dash: "#ff9f43", dragon: "#3aa7ff", gendarmerie: "#244d9b", samu: "#36c98f", beechcraft: "#c6a35b", military: "#8993a1", customs: "#39b3a3", drone: "#8b6cff", unknown: "#7b93aa" };
+  const colors: Record<string, string> = { canadair: "#ff4d61", dash: "#ff9d36", dragon: "#28a9ff", gendarmerie: "#4c7dff", samu: "#29d596", beechcraft: "#e1b94d", military: "#a5b1bd", customs: "#28c7b6", drone: "#9b78ff", unknown: "#7fb6d5" };
+  const labels: Record<string, string> = { canadair: "CANADAIR", dash: "DASH", dragon: "DRAGON", gendarmerie: "GEND.", samu: "SAMU", beechcraft: "BEECH", military: "ARMÉE", customs: "DOUANE", drone: "DRONE", unknown: "OPS" };
   const color = colors[category] ?? colors.unknown;
   const shapes: Record<string, string> = {
     canadair: '<path d="M8 34h18l7-19 6 1-2 18h18l5 6-23 2-2 13h-5l-3-13-24-2z"/>',
@@ -151,7 +152,13 @@ function operationalIcon(point: MapPoint, selected: boolean, faded: boolean) {
     drone: '<path d="M19 19h26v26H19zM8 11h14v5H8zm34 0h14v5H42zM8 48h14v5H8zm34 0h14v5H42z"/>',
     unknown: '<path d="M32 7l7 22 20 10-3 6-19-5-2 17h-6l-2-17-20 5-3-6 21-10z"/>'
   };
-  return L.divIcon({ className: "xavpac-map-icon-root", html: `<div class="national-map-marker ${selected ? "selected" : ""} ${faded ? "faded" : ""}"><svg viewBox="0 0 64 64" fill="${color}">${shapes[category] ?? shapes.unknown}</svg><strong>${escapeHtml(point.name)}</strong></div>`, iconSize: [72, 58], iconAnchor: [36, 29], popupAnchor: [0, -28] });
+  return L.divIcon({
+    className: "xavpac-map-icon-root",
+    html: `<div class="national-map-marker ${selected ? "selected" : ""} ${faded ? "faded" : ""}" style="--national-color:${color}"><div class="national-marker-beacon"><svg viewBox="0 0 64 64" aria-hidden="true">${shapes[category] ?? shapes.unknown}</svg><span>${escapeHtml(labels[category] ?? labels.unknown)}</span></div><strong>${escapeHtml(point.name)}</strong></div>`,
+    iconSize: [94, 78],
+    iconAnchor: [47, 39],
+    popupAnchor: [0, -38]
+  });
 }
 
 function pointIcon(point: MapPoint, selected: boolean, faded: boolean) {
@@ -220,6 +227,7 @@ export default function StableMap({
   showZoneLabels = false,
   mapVariant = "street",
   focusSignal = 0,
+  controls = true,
   onMapClick
 }: {
   points: MapPoint[];
@@ -237,6 +245,7 @@ export default function StableMap({
   showZoneLabels?: boolean;
   mapVariant?: MapVariant;
   focusSignal?: number;
+  controls?: boolean;
   onMapClick?: (position: [number, number]) => void;
 }) {
   return (
@@ -244,8 +253,8 @@ export default function StableMap({
       center={center}
       zoom={zoom}
       scrollWheelZoom
-      zoomControl
-      attributionControl
+      zoomControl={controls}
+      attributionControl={controls}
       maxBounds={maxBounds}
       maxBoundsViscosity={lockBounds ? 1 : 0}
       minZoom={lockBounds ? 7 : 3}

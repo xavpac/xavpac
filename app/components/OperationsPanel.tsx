@@ -2,6 +2,10 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState } from "react";
+import AircraftPhoto from "./aviation/AircraftPhoto";
+import AircraftTypeIllustration from "./aviation/AircraftTypeIllustration";
+import FlightMetrics from "./aviation/FlightMetrics";
+import OperatorBrand from "./aviation/OperatorBrand";
 import { useLiveGeolocation } from "../hooks/useLiveGeolocation";
 import { reportDataUpdate } from "../lib/buildInfo";
 import { distanceKm } from "../lib/aviation/geometry";
@@ -35,7 +39,6 @@ type NationalAsset = {
 };
 
 type ExactPhoto = { image: string; link: string | null; photographer: string | null };
-type NationalVisualKind = "water-bomber" | "turboprop" | "helicopter" | "medical" | "military" | "surveillance" | "drone" | "civil-security" | "specialized";
 
 function markerCategory(asset: NationalAsset) {
   const badge = asset.identification.badge;
@@ -49,36 +52,6 @@ function markerCategory(asset: NationalAsset) {
   if (badge.includes("DOUANE")) return "national-customs";
   if (badge.includes("DRONE")) return "national-drone";
   return "national-unknown";
-}
-
-function nationalVisual(asset: NationalAsset): { kind: NationalVisualKind; label: string } {
-  const badge = asset.identification.badge;
-  if (badge.includes("CANADAIR")) return { kind: "water-bomber", label: "Avion bombardier d’eau" };
-  if (badge.includes("DASH")) return { kind: "turboprop", label: "Avion de sécurité civile turbopropulsé" };
-  if (badge.includes("SAMU")) return { kind: "medical", label: "Hélicoptère médical" };
-  if (badge.includes("DRAGON") || badge.includes("GENDARMERIE") || isHelicopter(asset)) return { kind: "helicopter", label: "Hélicoptère de service public" };
-  if (badge.includes("MILITAIRE")) return { kind: "military", label: "Aéronef militaire" };
-  if (badge.includes("DOUANE") || badge.includes("BEECHCRAFT")) return { kind: "surveillance", label: "Aéronef spécialisé de surveillance" };
-  if (badge.includes("DRONE")) return { kind: "drone", label: "Drone opérationnel" };
-  if (badge.includes("SÉCURITÉ CIVILE")) return { kind: "civil-security", label: "Moyen de la Sécurité civile" };
-  return { kind: "specialized", label: "Aéronef spécialisé" };
-}
-
-function NationalAssetPictogram({ asset, compact = false }: { asset: NationalAsset; compact?: boolean }) {
-  const visual = nationalVisual(asset);
-  return <div className={`national-generic-visual ${visual.kind}${compact ? " compact" : ""}`} role="img" aria-label={`${visual.label} — illustration générique`}>
-    <svg viewBox="0 0 160 100" aria-hidden="true">
-      {visual.kind === "water-bomber" && <><path d="M16 52 64 44 75 15h10l10 29 49 8-4 13-45-3-8 25H73l-8-25-45 3Z" /><path className="accent" d="M61 72c0 7-5 11-10 11s-10-4-10-11c0-5 10-17 10-17s10 12 10 17Zm58 0c0 7-5 11-10 11s-10-4-10-11c0-5 10-17 10-17s10 12 10 17Z" /></>}
-      {visual.kind === "turboprop" && <><path d="M18 53 67 45 76 19h8l9 26 49 8-4 11-44-2-8 24H74l-8-24-44 2Z" /><circle className="accent-outline" cx="48" cy="53" r="13" /><circle className="accent-outline" cx="112" cy="53" r="13" /></>}
-      {(visual.kind === "helicopter" || visual.kind === "medical") && <><path d="M38 54c0-17 12-28 32-28h24c18 0 29 12 29 27v9H56c-10 0-18-2-18-8Zm84-2 28-12v8l-27 17ZM65 66h45l-8 10H73Z" /><path className="outline" d="M30 20h104M81 20V9M46 79h72" />{visual.kind === "medical" && <path className="accent" d="M75 34h12v8h8v12h-8v8H75v-8h-8V42h8Z" />}</>}
-      {visual.kind === "military" && <path d="M80 10 96 43l48 18-5 13-45-8-8 23H74l-8-23-45 8-5-13 48-18Z" />}
-      {visual.kind === "surveillance" && <><path d="M18 55 68 45 76 19h8l9 26 49 10-5 11-43-3-8 23H74l-8-23-43 3Z" /><path className="accent-outline" d="M104 28c12 3 21 11 25 22M110 16c17 5 31 17 36 33" /></>}
-      {visual.kind === "drone" && <><path d="M64 43h32l9 20H55Z" /><path className="outline" d="m64 48-29-18m61 18 29-18M64 55 35 74m61-19 29 19" /><circle className="accent-outline" cx="30" cy="27" r="15" /><circle className="accent-outline" cx="130" cy="27" r="15" /><circle className="accent-outline" cx="30" cy="77" r="15" /><circle className="accent-outline" cx="130" cy="77" r="15" /></>}
-      {visual.kind === "civil-security" && <><path d="M80 9 126 25v29c0 22-17 34-46 40-29-6-46-18-46-40V25Z" /><path className="accent" d="M75 27h10v18h18v10H85v18H75V55H57V45h18Z" /></>}
-      {visual.kind === "specialized" && <><path d="M16 54 66 45 76 15h8l10 30 50 9-5 12-45-3-8 24H74l-8-24-45 3Z" /><circle className="accent" cx="80" cy="52" r="6" /></>}
-    </svg>
-    {!compact && <small>{visual.label}<b>Illustration générique</b></small>}
-  </div>;
 }
 
 function isHelicopter(asset: NationalAsset) {
@@ -115,8 +88,8 @@ export default function OperationsPanel() {
   const [query, setQuery] = useState("");
   const [mapStyle, setMapStyle] = useState<MapStyle>("street");
   const [reloadSignal, setReloadSignal] = useState(0);
-  const [photo, setPhoto] = useState<ExactPhoto | null>(null);
-  const [route, setRoute] = useState<{ origin?: { municipality?: string }; destination?: { municipality?: string } } | null>(null);
+  const [photoState, setPhotoState] = useState<{ key: string | null; status: "idle" | "loading" | "ready" | "unavailable"; photo: ExactPhoto | null }>({ key: null, status: "idle", photo: null });
+  const [routeState, setRouteState] = useState<{ key: string | null; route: { origin?: { municipality?: string }; destination?: { municipality?: string } } | null }>({ key: null, route: null });
 
   useEffect(() => {
     let cancelled = false;
@@ -180,16 +153,34 @@ export default function OperationsPanel() {
 
   useEffect(() => {
     let cancelled = false;
-    if (!selected) { setPhoto(null); setRoute(null); return; }
-    setPhoto(null);
-    setRoute(null);
+    if (!selected) {
+      setPhotoState({ key: null, status: "idle", photo: null });
+      setRouteState({ key: null, route: null });
+      return;
+    }
+    const selectionKey = selected.id;
+    setPhotoState({ key: selectionKey, status: "loading", photo: null });
+    setRouteState({ key: selectionKey, route: null });
     const photoParams = new URLSearchParams({ hex: selected.id, registration: selected.registration ?? "" });
     void Promise.all([
       fetch(`/api/aircraft-photo?${photoParams}`).then((response) => response.json()),
       fetch(`/api/flight-details?callsign=${encodeURIComponent(selected.callsign)}&aircraft=${encodeURIComponent(selected.registration || selected.id)}&weather=0`).then((response) => response.json())
-    ]).then(([photoPayload, routePayload]) => { if (!cancelled) { setPhoto(photoPayload.photo?.image ? photoPayload.photo as ExactPhoto : null); setRoute(routePayload.route ?? null); } }).catch(() => { if (!cancelled) { setPhoto(null); setRoute(null); } });
+    ]).then(([photoPayload, routePayload]) => {
+      if (cancelled) return;
+      const exactPhoto = photoPayload.photo?.image ? photoPayload.photo as ExactPhoto : null;
+      setPhotoState({ key: selectionKey, status: exactPhoto ? "ready" : "unavailable", photo: exactPhoto });
+      setRouteState({ key: selectionKey, route: routePayload.route ?? null });
+    }).catch(() => {
+      if (!cancelled) {
+        setPhotoState({ key: selectionKey, status: "unavailable", photo: null });
+        setRouteState({ key: selectionKey, route: null });
+      }
+    });
     return () => { cancelled = true; };
   }, [selected]);
+
+  const selectedPhoto = selected && photoState.key === selected.id ? photoState.photo : null;
+  const route = selected && routeState.key === selected.id ? routeState.route : null;
 
   const points = useMemo(
     () => visibleAssets.map((asset) => ({
@@ -300,19 +291,13 @@ export default function OperationsPanel() {
                   <span className="fw-kicker">MOYEN SÉLECTIONNÉ</span>
                   <div className="fw-title-line"><h2>{selected.callsign}</h2></div>
                   <span className={`national-identity-badge ${selected.identification.confidence}`}>{selected.identification.badge}</span>
-                  <strong>{selected.identification.operator ?? selected.operator ?? "Opérateur non identifié"}</strong>
+                  <OperatorBrand name={selected.identification.operator ?? selected.operator} />
                   <p>{selected.identification.model ?? selected.description ?? selected.aircraftType ?? "Modèle à confirmer"}</p>
                 </div>
-                <NationalAssetPictogram asset={selected} compact />
+                <AircraftTypeIllustration aircraftType={selected.identification.model ?? selected.aircraftType} description={selected.description} operator={selected.operator} category={`${selected.identification.category} ${selected.identification.badge}`} compact />
               </div>
 
-              <div className="national-detail-photo">
-                {photo ? <>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={photo.image} alt={`Photo de l’appareil ${selected.callsign}`} onError={() => setPhoto(null)} />
-                  <small>Photo de cet appareil • PlaneSpotters{photo.photographer ? ` • ${photo.photographer}` : ""}</small>
-                </> : <NationalAssetPictogram asset={selected} />}
-              </div>
+              <AircraftPhoto className="national-detail-photo" identityKey={selected.id} photoUrl={selectedPhoto?.image} isExact={photoState.key === selected.id && photoState.status === "ready"} label="Photo exacte" source="PlaneSpotters" photographer={selectedPhoto?.photographer} aircraftType={selected.identification.model ?? selected.aircraftType} description={selected.description} operator={selected.operator} category={`${selected.identification.category} ${selected.identification.badge}`} loading={photoState.key === selected.id && photoState.status === "loading"} />
 
               <div className="fw-identity-grid">
                 <div><span>Immatriculation</span><strong>{selected.registration ?? "—"}</strong></div>
@@ -338,12 +323,12 @@ export default function OperationsPanel() {
                 <div><span>Indicatif</span><strong>{selected.callsign}</strong><small>{selected.id.toUpperCase()}</small></div>
               </div>
 
-              <div className="fw-telemetry-grid">
-                <div><span>Altitude</span><strong>{formatAltitude(selected.altitude)}</strong><small>{selected.onGround ? "Au sol" : "Altitude barométrique"}</small></div>
-                <div><span>Vitesse</span><strong>{formatSpeed(selected.speed)}</strong><small>Vitesse sol</small></div>
-                <div><span>Cap</span><strong>{selected.track === null ? "—" : `${Math.round(selected.track)}°`}</strong><small>Route suivie</small></div>
-                <div><span>Position</span><strong>{selected.latitude.toFixed(3)}</strong><small>{selected.longitude.toFixed(3)}</small></div>
-              </div>
+              <FlightMetrics metrics={[
+                { label: "Altitude", value: formatAltitude(selected.altitude), detail: selected.onGround ? "Au sol" : "Altitude barométrique" },
+                { label: "Vitesse", value: formatSpeed(selected.speed), detail: "Vitesse sol" },
+                { label: "Cap", value: selected.track === null ? "—" : `${Math.round(selected.track)}°`, detail: "Route suivie" },
+                { label: "Position", value: selected.latitude.toFixed(3), detail: selected.longitude.toFixed(3) }
+              ]} />
 
               <div className="fw-source-grid">
                 <div><span>Source</span><strong>Airplanes.live</strong></div>
