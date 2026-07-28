@@ -39,7 +39,7 @@ export type MapTrail = {
 export type MapZone = {
   id: string;
   name: string;
-  status: "active" | "inactive" | "unknown" | "boundary";
+  status: "active" | "inactive" | "unknown" | "boundary" | "intersects-height" | "below-floor" | "nearby";
   floor: string;
   ceiling: string;
   positions: [number, number][];
@@ -164,6 +164,7 @@ function operationalIcon(point: MapPoint, selected: boolean, faded: boolean) {
 function pointIcon(point: MapPoint, selected: boolean, faded: boolean) {
   if (point.category === "home") return homeIcon();
   if (point.category === "location") return L.divIcon({ className: "xavpac-map-icon-root", html: `<div class="xavpac-selected-location">📍<strong>POINT</strong></div>`, iconSize: [72, 44], iconAnchor: [36, 40] });
+  if (point.category === "route-airport") return L.divIcon({ className: "xavpac-map-icon-root", html: `<div class="xavpac-route-airport-marker"><span>●</span><strong>${escapeHtml(point.name)}</strong></div>`, iconSize: [126, 48], iconAnchor: [63, 24], popupAnchor: [0, -25] });
   if (point.category === "aerodrome") return L.divIcon({ className: "xavpac-map-icon-root", html: `<div class="xavpac-aerodrome-marker"><span>+</span><strong>${escapeHtml(point.name)}</strong></div>`, iconSize: [74, 42], iconAnchor: [37, 21] });
   if (point.category === "weather") return weatherIcon(point);
   if (String(point.category).startsWith("national-")) return operationalIcon(point, selected, faded);
@@ -198,7 +199,35 @@ function zoneStyle(status: MapZone["status"]) {
   if (status === "inactive") {
     return { color: "#1769d2", fillColor: "#2f80ed", fillOpacity: 0.17, opacity: 0.96, weight: 2.8 };
   }
+  if (status === "intersects-height") {
+    return { color: "#f2364f", fillColor: "#ef334f", fillOpacity: 0.3, opacity: 1, weight: 3.8 };
+  }
+  if (status === "below-floor") {
+    return { color: "#2588ff", fillColor: "#2f80ed", fillOpacity: 0.2, opacity: 1, weight: 3.2 };
+  }
+  if (status === "nearby") {
+    return { color: "#f4b83e", fillColor: "#f4b83e", fillOpacity: 0.16, opacity: 1, weight: 3, dashArray: "11 6" };
+  }
   return { color: "#536f8a", fillColor: "#7b93aa", fillOpacity: 0.1, opacity: 0.95, weight: 2.5, dashArray: "8 7" };
+}
+
+function zoneStatusLabel(status: MapZone["status"]) {
+  if (status === "active") return "ACTIVE — information AZBA officielle";
+  if (status === "inactive") return "INACTIVE — information AZBA officielle";
+  if (status === "intersects-height") return "VOLUME CONCERNÉ À CETTE HAUTEUR — activation AZBA à vérifier";
+  if (status === "below-floor") return "POINT SOUS LE PLANCHER PUBLIÉ — activation AZBA à vérifier";
+  if (status === "nearby") return "ZONE PARMI LES PLUS PROCHES — activation AZBA à vérifier";
+  return "ACTIVATION NON DÉTERMINÉE — vérifier l’AZBA officiel";
+}
+
+function zoneDisplayPriority(status: MapZone["status"]) {
+  if (status === "active") return 7;
+  if (status === "intersects-height") return 6;
+  if (status === "below-floor") return 5;
+  if (status === "inactive") return 4;
+  if (status === "nearby") return 3;
+  if (status === "unknown") return 2;
+  return 1;
 }
 
 function BaseLayer({ variant }: { variant: MapVariant }) {
@@ -275,13 +304,13 @@ export default function StableMap({
         </Circle>
       )}
 
-      {zones.map((zone) => (
+      {[...zones].sort((first, second) => zoneDisplayPriority(first.status) - zoneDisplayPriority(second.status)).map((zone) => (
         <Polygon key={zone.id} positions={zone.positions} pathOptions={zoneStyle(zone.status)} eventHandlers={{ click: (event) => onMapClick?.([event.latlng.lat, event.latlng.lng]) }}>
           {showZoneLabels && <Tooltip permanent direction="center" className={`zone-label-v5 ${zone.status}`}>{zone.name}</Tooltip>}
           <Popup>
             <div className="xavpac-popup">
               <strong>{zone.name}</strong>
-              {zone.status !== "boundary" && <span>Statut : {zone.status === "active" ? "ACTIVE" : zone.status === "inactive" ? "INACTIVE" : "NON DISPONIBLE — vérifier AZBA"}</span>}
+              {zone.status !== "boundary" && <span>Lecture locale : {zoneStatusLabel(zone.status)}</span>}
               <span>Plancher : {zone.floor}</span>
               <span>Plafond : {zone.ceiling}</span>
             </div>

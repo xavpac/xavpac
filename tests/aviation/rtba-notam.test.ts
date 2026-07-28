@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { assessRtba, pointInPolygon, RTBA_ZONES } from "../../app/lib/aviation/rtba.ts";
+import { assessRtba, pointInPolygon, rtbaMapDisplayStatus, RTBA_ZONES } from "../../app/lib/aviation/rtba.ts";
 import { readNotamInFrench } from "../../app/lib/aviation/notam.ts";
 
 test("détecte un point dans l’emprise et le volume basse altitude de LF R 45 B", () => {
@@ -23,6 +23,16 @@ test("considère un sommet publié comme appartenant au polygone", () => {
   const zone = RTBA_ZONES.find((item) => item.id === "LF R 45 S5");
   assert.ok(zone);
   assert.equal(pointInPolygon(zone.positions[0], zone.positions), true);
+});
+
+test("colore la carte RTBA selon la relation au point sans inventer l’activation AZBA", () => {
+  const inside = assessRtba([47.0, 4.3], 60);
+  assert.equal(rtbaMapDisplayStatus("LF R 45 B", inside), "intersects-height");
+  const below = assessRtba([46.48, 5.1], 120);
+  assert.equal(rtbaMapDisplayStatus("LF R 45 S5", below), "below-floor");
+  const outside = assessRtba([46.3069, 4.8287], 60);
+  assert.equal(rtbaMapDisplayStatus(outside.nearest[0].zone.id, outside), "nearby");
+  assert.equal(rtbaMapDisplayStatus("zone inexistante", outside), "unknown");
 });
 
 test("présente en français les champs opérationnels d’un NOTAM ICAO", () => {

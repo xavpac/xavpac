@@ -11,6 +11,7 @@ import type { LiveAircraft } from "../lib/aviation/liveAircraft";
 import { readNotamInFrench } from "../lib/aviation/notam";
 import {
   assessRtba,
+  rtbaMapDisplayStatus,
   RTBA_ACTIVATION_URL,
   RTBA_SOURCE_LABEL,
   RTBA_SOURCE_URL,
@@ -333,6 +334,10 @@ export default function DronePanel() {
     [requestedHeight, selectedPosition]
   );
   const containingZones = useMemo(() => rtbaAssessment?.matches ?? [], [rtbaAssessment]);
+  const rtbaMapZones = useMemo(
+    () => RTBA_ZONES.map((zone) => ({ ...zone, status: rtbaMapDisplayStatus(zone.id, rtbaAssessment) })),
+    [rtbaAssessment]
+  );
   const notamReading = useMemo(() => readNotamInFrench(notamText), [notamText]);
 
   const decision = useMemo(() => evaluateDroneFlight({
@@ -607,7 +612,7 @@ export default function DronePanel() {
               <div className="drone-map-v4 drone-map-locked-v5">
                 <StableMap
                   points={mapPoints}
-                  zones={RTBA_ZONES.map((zone) => ({ ...zone, status: "unknown" as const }))}
+                  zones={rtbaMapZones}
                   center={mapCenter}
                   zoom={selectedPosition ? 10 : 6}
                   mapVariant="layers"
@@ -616,8 +621,11 @@ export default function DronePanel() {
                 />
               </div>
               <div className="rtba-legend-v4">
-                <span className="unknown">Contours gris : géométrie LF-R45 issue de l’AIP • statut d’activation inconnu</span>
-                <span>Rouge/bleu et horaires : mode AZBA officiel live.</span>
+                <span className="intersects-height">Rouge : votre point intersecte le volume à la hauteur demandée</span>
+                <span className="below-floor">Bleu : votre point est sous le plancher publié</span>
+                <span className="nearby">Jaune : zones les plus proches</span>
+                <span className="unknown">Gris : autres contours publiés</span>
+                <span className="official">Activation réelle et horaires : AZBA officiel live</span>
               </div>
             </>
           )}

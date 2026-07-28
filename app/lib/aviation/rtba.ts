@@ -18,6 +18,8 @@ export type RtbaAssessment = {
   nearest: Array<{ zone: RtbaZone; distanceKm: number }>;
 };
 
+export type RtbaMapDisplayStatus = "intersects-height" | "below-floor" | "nearby" | "unknown";
+
 export const RTBA_SOURCE_URL = "https://www.sia.aviation-civile.gouv.fr/media/dvd/eAIP_09_JUL_2026/FRANCE/AIRAC-2026-07-09/html/eAIP/FR-ENR-5.1-fr-FR.html";
 export const RTBA_ACTIVATION_URL = "https://www.sia.aviation-civile.gouv.fr/schedules?m=39";
 export const RTBA_SOURCE_LABEL = "AIP France ENR 5.1 — AIRAC du 9 juillet 2026";
@@ -205,4 +207,13 @@ export function assessRtba(point: [number, number], requestedHeightMeters: numbe
   if (matches.length) return { level: "below-floor", matches, nearest };
   if ((nearest[0]?.distanceKm ?? Infinity) <= 120) return { level: "outside-local", matches, nearest };
   return { level: "coverage-unavailable", matches, nearest };
+}
+
+export function rtbaMapDisplayStatus(zoneId: string, assessment: RtbaAssessment | null): RtbaMapDisplayStatus {
+  if (!assessment) return "unknown";
+  const match = assessment.matches.find((zone) => zone.id === zoneId);
+  if (match?.affectsRequestedHeight) return "intersects-height";
+  if (match) return "below-floor";
+  if (assessment.nearest.some(({ zone }) => zone.id === zoneId)) return "nearby";
+  return "unknown";
 }

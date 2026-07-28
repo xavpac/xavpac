@@ -103,38 +103,47 @@ export default function AircraftView({ open, rootRef, aircraft, enriched, operat
     ? routeCalculation.eta.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })
     : "—";
 
-  const mapCenter: [number, number] = observerPosition
-    ? [(observerPosition[0] + aircraft.latitude) / 2, (observerPosition[1] + aircraft.longitude) / 2]
-    : [aircraft.latitude, aircraft.longitude];
-  const mapBounds: [[number, number], [number, number]] | undefined = observerPosition
-    ? [
-      [Math.min(observerPosition[0], aircraft.latitude) - .012, Math.min(observerPosition[1], aircraft.longitude) - .012],
-      [Math.max(observerPosition[0], aircraft.latitude) + .012, Math.max(observerPosition[1], aircraft.longitude) + .012]
-    ]
+  const routeHasCoordinates = Boolean(route && validAirportPosition(route.origin) && validAirportPosition(route.destination));
+  const originPosition: [number, number] | null = routeHasCoordinates && route
+    ? [route.origin.latitude as number, route.origin.longitude as number]
+    : null;
+  const destinationPosition: [number, number] | null = routeHasCoordinates && route
+    ? [route.destination.latitude as number, route.destination.longitude as number]
+    : null;
+  const aircraftPosition: [number, number] = [aircraft.latitude, aircraft.longitude];
+  const mapPositions = routeHasCoordinates && originPosition && destinationPosition
+    ? [originPosition, aircraftPosition, destinationPosition]
+    : observerPosition ? [observerPosition, aircraftPosition] : [aircraftPosition];
+  const latitudes = mapPositions.map(([latitude]) => latitude);
+  const longitudes = mapPositions.map(([, longitude]) => longitude);
+  const minimumLatitude = Math.min(...latitudes);
+  const maximumLatitude = Math.max(...latitudes);
+  const minimumLongitude = Math.min(...longitudes);
+  const maximumLongitude = Math.max(...longitudes);
+  const latitudePadding = Math.max(.04, (maximumLatitude - minimumLatitude) * .18);
+  const longitudePadding = Math.max(.06, (maximumLongitude - minimumLongitude) * .18);
+  const mapCenter: [number, number] = [(minimumLatitude + maximumLatitude) / 2, (minimumLongitude + maximumLongitude) / 2];
+  const mapBounds: [[number, number], [number, number]] | undefined = mapPositions.length > 1
+    ? [[minimumLatitude - latitudePadding, minimumLongitude - longitudePadding], [maximumLatitude + latitudePadding, maximumLongitude + longitudePadding]]
     : undefined;
   const direction = observerPosition ? bearingDegrees(observerPosition, [aircraft.latitude, aircraft.longitude]) : null;
   const directionLabels = ["Nord", "Nord-Est", "Est", "Sud-Est", "Sud", "Sud-Ouest", "Ouest", "Nord-Ouest"];
   const directionLabel = direction === null ? "Direction non déterminée" : directionLabels[Math.round(direction / 45) % 8];
   const mapPoints = [
-    ...(observerPosition ? [{ id: "aircraft-view-home", lat: observerPosition[0], lon: observerPosition[1], name: "Chez moi", detail: "Position d’observation", category: "home" }] : []),
+    ...(originPosition ? [{ id: "aircraft-view-origin", lat: originPosition[0], lon: originPosition[1], name: `${airportPlace(route?.origin, "Départ")} ${airportCode(route?.origin)}`, detail: "Aéroport de départ", category: "route-airport" }] : []),
+    ...(destinationPosition ? [{ id: "aircraft-view-destination", lat: destinationPosition[0], lon: destinationPosition[1], name: `${airportPlace(route?.destination, "Arrivée")} ${airportCode(route?.destination)}`, detail: "Aéroport d’arrivée", category: "route-airport" }] : []),
+    ...(!routeHasCoordinates && observerPosition ? [{ id: "aircraft-view-home", lat: observerPosition[0], lon: observerPosition[1], name: "Chez moi", detail: "Position d’observation", category: "home" }] : []),
     { id: aircraft.id, lat: aircraft.latitude, lon: aircraft.longitude, name: flightLabel, detail: `${aircraft.distance.toFixed(1)} km • ${directionLabel}`, category: "commercial", heading: aircraft.trueTrack }
   ];
+  const mapTrails = originPosition && destinationPosition
+    ? [{ id: "aircraft-view-route", positions: [originPosition, aircraftPosition, destinationPosition], color: "#21a8ff", selected: true }]
+    : [];
 
   return <div ref={rootRef} className={`aircraft-view${open ? " open" : ""}`} aria-hidden={!open} aria-label="Vue plein écran de l’avion sélectionné">
     <div className="aircraft-view-hero">
-      <AircraftPhoto
-        className="aircraft-view-hero-media"
-        identityKey={aircraft.id}
-        photoUrl={enriched?.photo.url}
-        isExact={enriched?.photo.kind === "exact"}
-        label={enriched?.photo.label}
-        source={enriched?.photo.source}
-        photographer={enriched?.photo.photographer}
-        aircraftType={enriched?.aircraftType ?? aircraft.aircraftType}
-        description={aircraft.description}
-        operator={operator}
-        category={aircraft.category}
-      />
+      <div className="aircraft-view-panorama-map">
+        <MiniMap points={mapPoints} trails={mapTrails} center={mapCenter} fixedBounds={mapBounds} selectedId={aircraft.id} mapVariant="satellite" controls={false} />
+      </div>
       <div className="aircraft-view-shade" />
 
       <header className="aircraft-view-header">
@@ -143,7 +152,6 @@ export default function AircraftView({ open, rootRef, aircraft, enriched, operat
           <div><div><h2>{flightLabel}</h2><span className="aircraft-view-live-dot" /><b>{status}</b><em>Le plus proche</em></div><p>{aircraftType}</p></div>
         </div>
         <div className="aircraft-view-company">
-          <OperatorBrand name={operator} logoUrl={enriched?.logo} />
           <button type="button" className={`aircraft-view-sound-button${soundsEnabled ? " active" : ""}`} onClick={onToggleSounds} aria-label={soundsEnabled ? "Couper les sons" : "Activer les sons"}>{soundsEnabled ? "🔊" : "🔇"}</button>
           <button type="button" className={favorite ? "active" : ""} onClick={onToggleFavorite} aria-label={favorite ? "Retirer des favoris" : "Ajouter aux favoris"}>☆</button>
         </div>
@@ -151,11 +159,22 @@ export default function AircraftView({ open, rootRef, aircraft, enriched, operat
 
       {nationalAlert && <div className="aircraft-view-national-alert"><span>ALERTE MOYEN NATIONAL</span><strong>{nationalAlert.badge} • {nationalAlert.callsign}</strong><b>{Math.round(nationalAlert.distanceKm)} km de votre position</b></div>}
 
-      <aside className="aircraft-view-mini-map">
-        <header><div><span>OÙ EST L’AVION ?</span><strong>{aircraft.distance.toFixed(1)} km • {directionLabel}</strong></div><button type="button" onClick={onShowMap}>Carte ›</button></header>
-        <div className="aircraft-view-mini-map-canvas">
-          <MiniMap points={mapPoints} center={mapCenter} fixedBounds={mapBounds} selectedId={aircraft.id} mapVariant="dark" controls={false} />
-        </div>
+      <aside className="aircraft-view-photo-card">
+        <header><OperatorBrand name={operator} logoUrl={enriched?.logo} /><button type="button" onClick={onShowMap}>Carte détaillée ›</button></header>
+        <AircraftPhoto
+          className="aircraft-view-photo-media"
+          identityKey={aircraft.id}
+          photoUrl={enriched?.photo.url}
+          isExact={enriched?.photo.kind === "exact"}
+          label={enriched?.photo.label}
+          source={enriched?.photo.source}
+          photographer={enriched?.photo.photographer}
+          aircraftType={enriched?.aircraftType ?? aircraft.aircraftType}
+          description={aircraft.description}
+          operator={operator}
+          category={aircraft.category}
+        />
+        <footer><strong>{aircraftType}</strong><span>{aircraft.distance.toFixed(1)} km • {directionLabel}</span></footer>
       </aside>
 
       <div className={`aircraft-view-route${routeAvailable ? "" : " unavailable"}`}>
