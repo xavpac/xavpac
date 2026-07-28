@@ -57,6 +57,12 @@ function formatSpeed(value: number | null) {
   return value === null ? "—" : `${Math.round(value * 3.6)} km/h`;
 }
 
+function formatHeading(value: number | null) {
+  if (value === null) return "—";
+  const labels = ["N", "NE", "E", "SE", "S", "SO", "O", "NO"];
+  return `${Math.round(value)}° · ${labels[Math.round(value / 45) % 8]}`;
+}
+
 function calculateRoute(aircraft: AircraftWithDistance, route: AircraftViewRoute | null) {
   if (!route || !validAirportPosition(route.origin) || !validAirportPosition(route.destination)) {
     return { progress: null, remainingKm: null, eta: null };
@@ -83,11 +89,11 @@ function weatherSymbol(code: number | null | undefined) {
   return "☁";
 }
 
-function MetricIcon({ kind }: { kind: "altitude" | "speed" | "eta" }) {
+function MetricIcon({ kind }: { kind: "altitude" | "speed" | "heading" }) {
   const paths = {
     altitude: "M4 18h16M7 15l5-10 5 10M9 11h6",
     speed: "M4 17a8 8 0 1 1 16 0M12 17l5-6",
-    eta: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm0 4v5l4 2"
+    heading: "M12 3l5 14-5-3-5 3 5-14Z"
   } as const;
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d={paths[kind]} /></svg>;
 }
@@ -99,29 +105,16 @@ export default function AircraftView({ open, rootRef, aircraft, enriched, operat
   const status = aircraft.onGround ? "Au sol" : "En vol";
   const routeAvailable = Boolean(route);
   const routeStatus = routeConfidence === "confirmed" ? "Itinéraire confirmé" : routeConfidence === "probable" ? "Vol sur l’itinéraire probable" : routeConfidence === "inferred" ? "Itinéraire déduit" : "Itinéraire indisponible";
-  const etaLabel = routeCalculation.eta
-    ? routeCalculation.eta.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })
-    : "—";
-
-  const routeHasCoordinates = Boolean(route && validAirportPosition(route.origin) && validAirportPosition(route.destination));
-  const originPosition: [number, number] | null = routeHasCoordinates && route
-    ? [route.origin.latitude as number, route.origin.longitude as number]
-    : null;
-  const destinationPosition: [number, number] | null = routeHasCoordinates && route
-    ? [route.destination.latitude as number, route.destination.longitude as number]
-    : null;
   const aircraftPosition: [number, number] = [aircraft.latitude, aircraft.longitude];
-  const mapPositions = routeHasCoordinates && originPosition && destinationPosition
-    ? [originPosition, aircraftPosition, destinationPosition]
-    : observerPosition ? [observerPosition, aircraftPosition] : [aircraftPosition];
+  const mapPositions = observerPosition ? [observerPosition, aircraftPosition] : [aircraftPosition];
   const latitudes = mapPositions.map(([latitude]) => latitude);
   const longitudes = mapPositions.map(([, longitude]) => longitude);
   const minimumLatitude = Math.min(...latitudes);
   const maximumLatitude = Math.max(...latitudes);
   const minimumLongitude = Math.min(...longitudes);
   const maximumLongitude = Math.max(...longitudes);
-  const latitudePadding = Math.max(.04, (maximumLatitude - minimumLatitude) * .18);
-  const longitudePadding = Math.max(.06, (maximumLongitude - minimumLongitude) * .18);
+  const latitudePadding = Math.max(.025, (maximumLatitude - minimumLatitude) * .3);
+  const longitudePadding = Math.max(.035, (maximumLongitude - minimumLongitude) * .3);
   const mapCenter: [number, number] = [(minimumLatitude + maximumLatitude) / 2, (minimumLongitude + maximumLongitude) / 2];
   const mapBounds: [[number, number], [number, number]] | undefined = mapPositions.length > 1
     ? [[minimumLatitude - latitudePadding, minimumLongitude - longitudePadding], [maximumLatitude + latitudePadding, maximumLongitude + longitudePadding]]
@@ -130,20 +123,16 @@ export default function AircraftView({ open, rootRef, aircraft, enriched, operat
   const directionLabels = ["Nord", "Nord-Est", "Est", "Sud-Est", "Sud", "Sud-Ouest", "Ouest", "Nord-Ouest"];
   const directionLabel = direction === null ? "Direction non déterminée" : directionLabels[Math.round(direction / 45) % 8];
   const mapPoints = [
-    ...(originPosition ? [{ id: "aircraft-view-origin", lat: originPosition[0], lon: originPosition[1], name: `${airportPlace(route?.origin, "Départ")} ${airportCode(route?.origin)}`, detail: "Aéroport de départ", category: "route-airport" }] : []),
-    ...(destinationPosition ? [{ id: "aircraft-view-destination", lat: destinationPosition[0], lon: destinationPosition[1], name: `${airportPlace(route?.destination, "Arrivée")} ${airportCode(route?.destination)}`, detail: "Aéroport d’arrivée", category: "route-airport" }] : []),
-    ...(!routeHasCoordinates && observerPosition ? [{ id: "aircraft-view-home", lat: observerPosition[0], lon: observerPosition[1], name: "Chez moi", detail: "Position d’observation", category: "home" }] : []),
+    ...(observerPosition ? [{ id: "aircraft-view-home", lat: observerPosition[0], lon: observerPosition[1], name: "Chez moi", detail: "Position d’observation", category: "home" }] : []),
     { id: aircraft.id, lat: aircraft.latitude, lon: aircraft.longitude, name: flightLabel, detail: `${aircraft.distance.toFixed(1)} km • ${directionLabel}`, category: "commercial", heading: aircraft.trueTrack }
   ];
-  const mapTrails = originPosition && destinationPosition
-    ? [{ id: "aircraft-view-route", positions: [originPosition, aircraftPosition, destinationPosition], color: "#21a8ff", selected: true }]
+  const mapTrails = observerPosition
+    ? [{ id: "aircraft-view-relative-track", positions: [observerPosition, aircraftPosition], color: "#45c8ff", selected: true }]
     : [];
 
   return <div ref={rootRef} className={`aircraft-view${open ? " open" : ""}`} aria-hidden={!open} aria-label="Vue plein écran de l’avion sélectionné">
     <div className="aircraft-view-hero">
-      <div className="aircraft-view-panorama-map">
-        <MiniMap points={mapPoints} trails={mapTrails} center={mapCenter} fixedBounds={mapBounds} selectedId={aircraft.id} mapVariant="satellite" controls={false} />
-      </div>
+      <div className="aircraft-view-terrain" />
       <div className="aircraft-view-shade" />
 
       <header className="aircraft-view-header">
@@ -152,6 +141,7 @@ export default function AircraftView({ open, rootRef, aircraft, enriched, operat
           <div><div><h2>{flightLabel}</h2><span className="aircraft-view-live-dot" /><b>{status}</b><em>Le plus proche</em></div><p>{aircraftType}</p></div>
         </div>
         <div className="aircraft-view-company">
+          <OperatorBrand name={operator} logoUrl={enriched?.logo} />
           <button type="button" className={`aircraft-view-sound-button${soundsEnabled ? " active" : ""}`} onClick={onToggleSounds} aria-label={soundsEnabled ? "Couper les sons" : "Activer les sons"}>{soundsEnabled ? "🔊" : "🔇"}</button>
           <button type="button" className={favorite ? "active" : ""} onClick={onToggleFavorite} aria-label={favorite ? "Retirer des favoris" : "Ajouter aux favoris"}>☆</button>
         </div>
@@ -159,10 +149,9 @@ export default function AircraftView({ open, rootRef, aircraft, enriched, operat
 
       {nationalAlert && <div className="aircraft-view-national-alert"><span>ALERTE MOYEN NATIONAL</span><strong>{nationalAlert.badge} • {nationalAlert.callsign}</strong><b>{Math.round(nationalAlert.distanceKm)} km de votre position</b></div>}
 
-      <aside className="aircraft-view-photo-card">
-        <header><OperatorBrand name={operator} logoUrl={enriched?.logo} /><button type="button" onClick={onShowMap}>Carte détaillée ›</button></header>
+      <div className="aircraft-view-photo-stage">
         <AircraftPhoto
-          className="aircraft-view-photo-media"
+          className="aircraft-view-focus-media"
           identityKey={aircraft.id}
           photoUrl={enriched?.photo.url}
           isExact={enriched?.photo.kind === "exact"}
@@ -174,13 +163,25 @@ export default function AircraftView({ open, rootRef, aircraft, enriched, operat
           operator={operator}
           category={aircraft.category}
         />
-        <footer><strong>{aircraftType}</strong><span>{aircraft.distance.toFixed(1)} km • {directionLabel}</span></footer>
+      </div>
+
+      <aside className="aircraft-view-geo-panel">
+        <header><div><span>CARTE DE PROXIMITÉ</span><strong>Votre position et l’avion</strong></div><button type="button" onClick={onShowMap}>Carte détaillée ›</button></header>
+        <div className="aircraft-view-geo-canvas">
+          <MiniMap points={mapPoints} trails={mapTrails} center={mapCenter} fixedBounds={mapBounds} selectedId={aircraft.id} mapVariant="dark" controls={false} />
+        </div>
       </aside>
+
+      <div className="aircraft-view-distance-callout">
+        <strong>{aircraft.distance.toFixed(1).replace(".", ",")}</strong>
+        <span>km de vous</span>
+        <small>{directionLabel}</small>
+      </div>
 
       <div className={`aircraft-view-route${routeAvailable ? "" : " unavailable"}`}>
         <div className="aircraft-view-airport origin">
           <span className="aircraft-view-airport-icon" aria-hidden="true">↗</span>
-          <div><strong>{airportPlace(route?.origin, "Départ")}</strong><b>{airportCode(route?.origin)}</b><small>{route?.originWeather && typeof route.originWeather.temperature_2m === "number" ? `${weatherSymbol(route.originWeather.weather_code)} ${Math.round(route.originWeather.temperature_2m)}°C` : "Météo —"}</small></div>
+          <div><strong>{airportPlace(route?.origin, "Départ")}</strong><b>{airportCode(route?.origin)}</b><small className="aircraft-view-city-weather"><span>{weatherSymbol(route?.originWeather?.weather_code)}</span><em>{route?.originWeather && typeof route.originWeather.temperature_2m === "number" ? `${Math.round(route.originWeather.temperature_2m)}°C` : "Météo —"}</em>{route?.originWeather && typeof route.originWeather.wind_speed_10m === "number" && <i>Vent {Math.round(route.originWeather.wind_speed_10m)} km/h</i>}</small></div>
         </div>
         <div className="aircraft-view-track">
           <div className="aircraft-view-track-line"><i style={{ width: `${routeCalculation.progress ?? 0}%` }} /><span style={{ left: `${routeCalculation.progress ?? 50}%` }}>✈</span></div>
@@ -188,7 +189,7 @@ export default function AircraftView({ open, rootRef, aircraft, enriched, operat
           <small>{routeCalculation.progress === null ? "Position sur le trajet non calculable" : `${Math.round(routeCalculation.progress)} % du trajet estimé`}</small>
         </div>
         <div className="aircraft-view-airport destination">
-          <div><strong>{airportPlace(route?.destination, "Arrivée")}</strong><b>{airportCode(route?.destination)}</b><small>{route?.destinationWeather && typeof route.destinationWeather.temperature_2m === "number" ? `${weatherSymbol(route.destinationWeather.weather_code)} ${Math.round(route.destinationWeather.temperature_2m)}°C` : "Météo —"}</small></div>
+          <div><strong>{airportPlace(route?.destination, "Arrivée")}</strong><b>{airportCode(route?.destination)}</b><small className="aircraft-view-city-weather"><span>{weatherSymbol(route?.destinationWeather?.weather_code)}</span><em>{route?.destinationWeather && typeof route.destinationWeather.temperature_2m === "number" ? `${Math.round(route.destinationWeather.temperature_2m)}°C` : "Météo —"}</em>{route?.destinationWeather && typeof route.destinationWeather.wind_speed_10m === "number" && <i>Vent {Math.round(route.destinationWeather.wind_speed_10m)} km/h</i>}</small></div>
           <span className="aircraft-view-airport-icon" aria-hidden="true">↘</span>
         </div>
       </div>
@@ -198,9 +199,9 @@ export default function AircraftView({ open, rootRef, aircraft, enriched, operat
       <div className="aircraft-view-metrics">
         <div><MetricIcon kind="altitude" /><span>Altitude<strong>{formatAltitude(aircraft.barometricAltitude)}</strong></span></div>
         <div><MetricIcon kind="speed" /><span>Vitesse<strong>{formatSpeed(aircraft.velocity)}</strong></span></div>
-        <div><MetricIcon kind="eta" /><span>ETA estimée<strong>{etaLabel}</strong></span></div>
+        <div><MetricIcon kind="heading" /><span>Cap<strong>{formatHeading(aircraft.trueTrack)}</strong></span></div>
       </div>
-      <small className="aircraft-view-data-note">Données ADS-B en direct • les distances et l’ETA sont calculées à partir de la position et de la vitesse sol actuelles.</small>
+      <small className="aircraft-view-data-note">Données ADS-B en direct • la distance est calculée depuis votre position d’observation.</small>
     </footer>
   </div>;
 }
