@@ -124,7 +124,7 @@ export default function AircraftView({ open, rootRef, aircraft, enriched, operat
   const directionLabel = direction === null ? "Direction non déterminée" : directionLabels[Math.round(direction / 45) % 8];
   const mapPoints = [
     ...(observerPosition ? [{ id: "aircraft-view-home", lat: observerPosition[0], lon: observerPosition[1], name: "Chez moi", detail: "Position d’observation", category: "home" }] : []),
-    { id: aircraft.id, lat: aircraft.latitude, lon: aircraft.longitude, name: flightLabel, detail: `${aircraft.distance.toFixed(1)} km • ${directionLabel}`, category: "commercial", heading: aircraft.trueTrack }
+    { id: aircraft.id, lat: aircraft.latitude, lon: aircraft.longitude, name: flightLabel, detail: `${aircraft.distance.toFixed(1)} km • ${directionLabel}`, category: enriched?.aircraftCategory === "helicopter" ? "helicopter" : "commercial", heading: aircraft.trueTrack }
   ];
   const mapTrails = observerPosition
     ? [{ id: "aircraft-view-relative-track", positions: [observerPosition, aircraftPosition], color: "#45c8ff", selected: true }]
@@ -165,6 +165,30 @@ export default function AircraftView({ open, rootRef, aircraft, enriched, operat
         />
       </div>
 
+      <aside className={`aircraft-view-tower-panel${routeAvailable ? "" : " unavailable"}`} aria-label="Trajet et météo du vol">
+        <header>
+          <div><span>TRAJET DU VOL</span><strong>{routeStatus}</strong></div>
+          {routeCalculation.progress !== null && <b>{Math.round(routeCalculation.progress)} %</b>}
+        </header>
+
+        <div className="aircraft-view-tower-airport origin">
+          <span>DÉPART</span>
+          <div className="aircraft-view-tower-city"><h3>{airportPlace(route?.origin, "Départ")}</h3><b>{airportCode(route?.origin)}</b></div>
+          <div className="aircraft-view-tower-weather"><span>{weatherSymbol(route?.originWeather?.weather_code)}</span><strong>{route?.originWeather && typeof route.originWeather.temperature_2m === "number" ? `${Math.round(route.originWeather.temperature_2m)}°C` : "Météo —"}</strong>{route?.originWeather && typeof route.originWeather.wind_speed_10m === "number" && <small>Vent {Math.round(route.originWeather.wind_speed_10m)} km/h</small>}</div>
+        </div>
+
+        <div className="aircraft-view-tower-journey">
+          <div className="aircraft-view-tower-line"><i style={{ height: `${routeCalculation.progress ?? 0}%` }} /><span style={{ top: `${routeCalculation.progress ?? 50}%` }}>✈</span></div>
+          <div><strong>{routeAvailable ? "Vol en cours" : "Trajet non disponible"}</strong><small>{routeCalculation.remainingKm === null ? "Distance restante non calculable" : `${Math.round(routeCalculation.remainingKm)} km avant l’arrivée`}</small></div>
+        </div>
+
+        <div className="aircraft-view-tower-airport destination">
+          <span>ARRIVÉE</span>
+          <div className="aircraft-view-tower-city"><h3>{airportPlace(route?.destination, "Arrivée")}</h3><b>{airportCode(route?.destination)}</b></div>
+          <div className="aircraft-view-tower-weather"><span>{weatherSymbol(route?.destinationWeather?.weather_code)}</span><strong>{route?.destinationWeather && typeof route.destinationWeather.temperature_2m === "number" ? `${Math.round(route.destinationWeather.temperature_2m)}°C` : "Météo —"}</strong>{route?.destinationWeather && typeof route.destinationWeather.wind_speed_10m === "number" && <small>Vent {Math.round(route.destinationWeather.wind_speed_10m)} km/h</small>}</div>
+        </div>
+      </aside>
+
       <aside className="aircraft-view-geo-panel">
         <header><div><span>CARTE DE PROXIMITÉ</span><strong>Votre position et l’avion</strong></div><button type="button" onClick={onShowMap}>Carte détaillée ›</button></header>
         <div className="aircraft-view-geo-canvas">
@@ -173,25 +197,9 @@ export default function AircraftView({ open, rootRef, aircraft, enriched, operat
       </aside>
 
       <div className="aircraft-view-distance-callout">
-        <strong>{aircraft.distance.toFixed(1).replace(".", ",")}</strong>
-        <span>km de vous</span>
-        <small>{directionLabel}</small>
-      </div>
-
-      <div className={`aircraft-view-route${routeAvailable ? "" : " unavailable"}`}>
-        <div className="aircraft-view-airport origin">
-          <span className="aircraft-view-airport-icon" aria-hidden="true">↗</span>
-          <div><strong>{airportPlace(route?.origin, "Départ")}</strong><b>{airportCode(route?.origin)}</b><small className="aircraft-view-city-weather"><span>{weatherSymbol(route?.originWeather?.weather_code)}</span><em>{route?.originWeather && typeof route.originWeather.temperature_2m === "number" ? `${Math.round(route.originWeather.temperature_2m)}°C` : "Météo —"}</em>{route?.originWeather && typeof route.originWeather.wind_speed_10m === "number" && <i>Vent {Math.round(route.originWeather.wind_speed_10m)} km/h</i>}</small></div>
-        </div>
-        <div className="aircraft-view-track">
-          <div className="aircraft-view-track-line"><i style={{ width: `${routeCalculation.progress ?? 0}%` }} /><span style={{ left: `${routeCalculation.progress ?? 50}%` }}>✈</span></div>
-          <strong>{routeStatus}</strong>
-          <small>{routeCalculation.progress === null ? "Position sur le trajet non calculable" : `${Math.round(routeCalculation.progress)} % du trajet estimé`}</small>
-        </div>
-        <div className="aircraft-view-airport destination">
-          <div><strong>{airportPlace(route?.destination, "Arrivée")}</strong><b>{airportCode(route?.destination)}</b><small className="aircraft-view-city-weather"><span>{weatherSymbol(route?.destinationWeather?.weather_code)}</span><em>{route?.destinationWeather && typeof route.destinationWeather.temperature_2m === "number" ? `${Math.round(route.destinationWeather.temperature_2m)}°C` : "Météo —"}</em>{route?.destinationWeather && typeof route.destinationWeather.wind_speed_10m === "number" && <i>Vent {Math.round(route.destinationWeather.wind_speed_10m)} km/h</i>}</small></div>
-          <span className="aircraft-view-airport-icon" aria-hidden="true">↘</span>
-        </div>
+        <span>OÙ REGARDER</span>
+        <strong>{directionLabel}</strong>
+        <small>{aircraft.distance.toFixed(1).replace(".", ",")} km de vous</small>
       </div>
     </div>
 

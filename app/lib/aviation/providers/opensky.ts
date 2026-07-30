@@ -33,7 +33,8 @@ const adapter: SourceAdapter<Input, OpenSkyFlight | null> = {
     const end = Math.floor(Date.now() / 1000);
     const begin = end - 24 * 60 * 60;
     const response = await fetch(`https://opensky-network.org/api/flights/aircraft?icao24=${modeS}&begin=${begin}&end=${end}`, { cache: "no-store", signal: AbortSignal.timeout(8000), headers: { Authorization: `Bearer ${bearer}`, Accept: "application/json" } });
-    if (!response.ok) return null;
+    if (response.status === 404) return null;
+    if (!response.ok) throw new Error(`OpenSky ${response.status}`);
     const flights = await response.json() as OpenSkyFlight[];
     if (!Array.isArray(flights)) return null;
     const matching = flights.filter((flight) => !callsign || normalizeRawCallsign(flight.callsign) === callsign).sort((a, b) => (b.lastSeen ?? 0) - (a.lastSeen ?? 0));

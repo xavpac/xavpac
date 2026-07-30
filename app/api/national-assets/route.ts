@@ -28,7 +28,7 @@ const searchPoints = [
 
 // Un modèle seul (Q400, Beechcraft, etc.) ne prouve jamais qu'il s'agit d'un moyen national.
 // Le filtre exige un indicatif opérationnel ou un organisme public français identifiable.
-const operationalPattern = /(DRAGON|PELICAN|PÉLICAN|MILAN|BENGALE|SECURITE\s*CIVILE|SÉCURITÉ\s*CIVILE|SAMU|SMUR|GENDARMERIE|DOUANES|POLICE\s*NATIONALE|ARM[ÉE]E\s+DE\s+L['’ ]AIR|FRENCH\s+AIR\s+FORCE|MARINE\s+NATIONALE)/i;
+const operationalPattern = /(DRAGON|CONDOR[A-Z]?|PELICAN|PÉLICAN|MILAN|BENGALE|SECURITE\s*CIVILE|SÉCURITÉ\s*CIVILE|SAMU|SMUR|GENDARMERIE|DOUANES|POLICE\s*NATIONALE|ARM[ÉE]E\s+DE\s+L['’ ]AIR|FRENCH\s+AIR\s+FORCE|MARINE\s+NATIONALE)/i;
 
 function isOperational(item: RawAircraft) {
   return operationalPattern.test(

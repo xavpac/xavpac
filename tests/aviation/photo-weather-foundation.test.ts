@@ -40,6 +40,7 @@ test("n’active la météo que pour une route probable avec deux coordonnées f
 
 test("fournit une illustration cohérente avec la famille de l’aéronef", () => {
   assert.equal(classifyAircraftVisual("H145", "helicopter").kind, "helicopter");
+  assert.equal(classifyAircraftVisual("AS50", "H125 / AS350 B3 Écureuil").kind, "helicopter");
   assert.equal(classifyAircraftVisual("CL415", "Canadair").kind, "water-bomber");
   assert.equal(classifyAircraftVisual("A320").kind, "airliner");
 });

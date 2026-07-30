@@ -17,7 +17,16 @@ export type NationalIdentity = {
 };
 
 // Table volontairement explicite : compléter uniquement avec des données publiquement vérifiées.
-export const KNOWN_NATIONAL_REGISTRATIONS: Readonly<Record<string, Omit<NationalIdentity, "evidence">>> = {};
+export const KNOWN_NATIONAL_REGISTRATIONS: Readonly<Record<string, Omit<NationalIdentity, "evidence">>> = {
+  "F-HJTB": {
+    category: "Hélicoptère SAF",
+    badge: "HÉLICOPTÈRE SAF",
+    model: "Airbus Helicopters H125 / AS350 B3",
+    operator: "SAF Hélicoptères",
+    probableMission: null,
+    confidence: "confirmed"
+  }
+};
 
 function normalized(input: NationalIdentityInput) {
   return {
@@ -69,6 +78,9 @@ export function identifyNationalAsset(input: NationalIdentityInput): NationalIde
   if (/^DRAGON/.test(value.callsign)) {
     return { category: "Hélicoptère Dragon", badge: "HÉLICOPTÈRE DRAGON", model: input.aircraftType || input.description || null, operator: value.operator || "Sécurité civile", probableMission: "Secours et sécurité civile", confidence: "confirmed", evidence: ["indicatif opérationnel DRAGON"] };
   }
+  if (/^CONDOR[A-Z]?/.test(value.callsign) && /SAF/.test(value.operatorUpper)) {
+    return { category: "Hélicoptère SAF", badge: "HÉLICOPTÈRE SAF", model: input.aircraftType || input.description || null, operator: value.operator, probableMission: null, confidence: "probable", evidence: ["indicatif CONDOR", "opérateur SAF"] };
+  }
   if (/GENDARMERIE/.test(value.operatorUpper) || /^F-MJ/.test(value.registration)) {
     return { category: "Hélicoptère de la Gendarmerie", badge: "HÉLICOPTÈRE GENDARMERIE", model: input.aircraftType || input.description || null, operator: value.operator || "Gendarmerie nationale", probableMission: null, confidence: "confirmed", evidence: ["opérateur ou immatriculation Gendarmerie"] };
   }
@@ -82,7 +94,7 @@ export function identifyNationalAsset(input: NationalIdentityInput): NationalIde
     return { category: "Drone opérationnel", badge: "DRONE OPÉRATIONNEL", model: input.aircraftType || input.description || null, operator: value.operator, probableMission: null, confidence: "confirmed", evidence: ["type ADS-B drone/UAV"] };
   }
   if (/ARM[ÉE]E|AIR FORCE|MILITARY/.test(value.operatorUpper)) {
-    const helicopter = /HELI|ROTOR|H145|EC145|H135|EC135/.test(value.type);
+    const helicopter = /HELI|ROTOR|H125|H145|EC145|H135|EC135|AS50|AS350/.test(value.type);
     return { category: helicopter ? "Hélicoptère militaire" : "Autre appareil militaire", badge: helicopter ? "HÉLICOPTÈRE MILITAIRE" : "APPAREIL MILITAIRE", model: input.aircraftType || input.description || null, operator: value.operator, probableMission: null, confidence: "confirmed", evidence: ["opérateur militaire", ...(helicopter ? ["type hélicoptère"] : [])] };
   }
   if (civilSecurity) {

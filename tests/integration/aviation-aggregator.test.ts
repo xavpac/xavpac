@@ -29,11 +29,11 @@ test("enrichit par Mode-S sans callsign et conserve une immatriculation avec tir
 test("retourne une route ADSBDB probable et distingue ICAO de IATA", async () => {
   globalThis.fetch = (async (input) => {
     const url = String(input);
-    if (url.includes("api.adsbdb.com/v0/aircraft/ABC123?callsign=AFR456")) {
-      return new Response(JSON.stringify({ response: {
-        aircraft: { registration: "F-HXYZ", icao_type: "A20N", manufacturer: "Airbus", registered_owner: "Air France" },
-        flightroute: { callsign_icao: "AFR456", callsign_iata: "AF456", airline: { name: "Air France", icao: "AFR", iata: "AF" }, origin: { iata_code: "CDG", icao_code: "LFPG", name: "Paris Charles de Gaulle" }, destination: { iata_code: "NCE", icao_code: "LFMN", name: "Nice Côte d’Azur" } }
-      } }), { status: 200 });
+    if (url.includes("api.adsbdb.com/v0/aircraft/ABC123")) {
+      return new Response(JSON.stringify({ response: { aircraft: { registration: "F-HXYZ", icao_type: "A20N", manufacturer: "Airbus", registered_owner: "Air France" } } }), { status: 200 });
+    }
+    if (url.includes("api.adsbdb.com/v0/callsign/AFR456")) {
+      return new Response(JSON.stringify({ response: { flightroute: { callsign_icao: "AFR456", callsign_iata: "AF456", airline: { name: "Air France", icao: "AFR", iata: "AF" }, origin: { iata_code: "CDG", icao_code: "LFPG", name: "Paris Charles de Gaulle" }, destination: { iata_code: "NCE", icao_code: "LFMN", name: "Nice Côte d’Azur" } } } }), { status: 200 });
     }
     if (url.includes("api.planespotters.net")) return new Response(JSON.stringify({ photos: [] }), { status: 200 });
     throw new Error(`Appel inattendu: ${url}`);
@@ -48,4 +48,36 @@ test("retourne une route ADSBDB probable et distingue ICAO de IATA", async () =>
   assert.equal(result.logo, "/airlines/air-france.svg");
   assert.equal(result.routeProvenance.method, "community");
   assert.equal(result.routeProvenance.confidence, "probable");
+});
+
+test("identifie F-HJTB comme hélicoptère SAF même sans route commerciale", async () => {
+  globalThis.fetch = (async (input) => {
+    const url = String(input);
+    if (url.includes("api.adsbdb.com/v0/aircraft/39A661")) {
+      return new Response(JSON.stringify({ response: { aircraft: {
+        type: "Squirrel AS.350 B3",
+        icao_type: "AS50",
+        manufacturer: "Eurocopter",
+        mode_s: "39A661",
+        registration: "F-HJTB",
+        registered_owner: "SAF Helicopteres"
+      } } }), { status: 200 });
+    }
+    if (url.includes("api.adsbdb.com/v0/callsign/CONDORA")) return new Response("", { status: 404 });
+    if (url.includes("api.planespotters.net")) return new Response(JSON.stringify({ photos: [] }), { status: 200 });
+    throw new Error(`Appel inattendu: ${url}`);
+  }) as typeof fetch;
+
+  const result = await enrichAircraft({ modeS: "39a661", callsign: "CONDORA", positionSource: "adsb_icao" });
+  assert.equal(result.modeS, "39A661");
+  assert.equal(result.rawCallsign, "CONDORA");
+  assert.equal(result.registration, "F-HJTB");
+  assert.equal(result.manufacturer, "Airbus Helicopters");
+  assert.equal(result.aircraftModel, "H125 / AS350 B3 Écureuil");
+  assert.equal(result.icaoTypeCode, "AS50");
+  assert.equal(result.aircraftOperator, "SAF Hélicoptères");
+  assert.equal(result.aircraftCategory, "helicopter");
+  assert.equal(result.identityStatus, "complete");
+  assert.equal(result.routeConfidence, "unavailable");
+  assert.ok(result.identitySources.some((source) => source.includes("Référentiel XavPac vérifié")));
 });

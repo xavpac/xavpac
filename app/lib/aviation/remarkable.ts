@@ -12,6 +12,7 @@ const rules: Array<{ key: string; icon: string; label: string; pattern: RegExp }
   { key: "canadair", icon: "🚒", label: "Canadair", pattern: /\b(CL2[15]|CL-?415|CANADAIR|PELICAN)\b/i },
   { key: "dash", icon: "🚒", label: "Dash Sécurité Civile", pattern: /\b(DH8[ABD]|DASH\s?8|MILAN)\b/i },
   { key: "dragon", icon: "🚁", label: "Dragon Sécurité Civile", pattern: /\bDRAGON/i },
+  { key: "condor", icon: "🚁", label: "Hélicoptère CONDOR", pattern: /\bCONDOR[A-Z]?\b/i },
   { key: "samu", icon: "🚑", label: "SAMU", pattern: /\b(SAMU|SMUR)\b/i },
   { key: "gendarmerie", icon: "🚓", label: "Gendarmerie", pattern: /\b(GENDARMERIE|F-MJ|GEND)\b/i },
   { key: "air-force", icon: "✈️", label: "Armée de l’Air", pattern: /\b(ARME[EÉ]E DE L['’ ]AIR|FRENCH AIR FORCE|CTM\d|FAF)\b/i },

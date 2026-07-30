@@ -11,6 +11,7 @@ import { useAviationAudio } from "../hooks/useAviationAudio";
 import { useLiveGeolocation } from "../hooks/useLiveGeolocation";
 import { reportDataUpdate } from "../lib/buildInfo";
 import type { AirportIdentity, AirportWeather, EnrichedAircraft, RouteConfidence } from "../lib/aviation/types";
+import { readLearnedAircraftIdentity, rememberAircraftIdentities } from "../lib/aviation/identityMemory";
 import { deducedRoute, recordObservations } from "../lib/aviation/observations";
 import { detectRemarkable } from "../lib/aviation/remarkable";
 import { nationalAssetsInsideRadius, type NationalAssetSignal, type NearbyNationalAsset } from "../lib/aviation/nationalAlerts";
@@ -148,10 +149,16 @@ function radarCoordinates(home: [number, number], aircraft: AircraftWithDistance
 
 function aircraftVisual(item: LiveAircraft) {
   const text = `${item.aircraftType ?? ""} ${item.description ?? ""} ${item.category ?? ""} ${item.operator ?? ""}`.toLowerCase();
-  if (text.includes("heli") || text.includes("rotor")) return { category: "helicopter", color: "#4fa8ff" };
+  if (/(heli|hélic|rotor|h125|h135|h145|ec135|ec145|as[ .-]?350|as50|écureuil|squirrel|condor[a-z]?)/i.test(text)) return { category: "helicopter", color: "#4fa8ff" };
   if (/(military|armée|air force|fighter|rafale|mirage|trainer)/i.test(text)) return { category: "military", color: "#ff5e78" };
   if (/(cessna|piper|robin|cirrus|ultralight|ulm|glider|bristell)/i.test(text)) return { category: "light", color: "#bc83ff" };
   return { category: "commercial", color: "#ffb000" };
+}
+
+function enrichmentInputKey(item: LiveAircraft) {
+  return [item.id, item.callsign, item.registration, item.operator, item.aircraftType, item.description, item.category]
+    .map((value) => value?.trim() ?? "")
+    .join(":");
 }
 
 function altitudeBand(value: number | null) {
@@ -196,6 +203,8 @@ export default function AviationPanel() {
   const trailsRef = useRef<Record<string, [number, number][]>>({});
   const [trailsVersion, setTrailsVersion] = useState(0);
   const passageHistoryRef = useRef(new PassageHistoryStore());
+  const enrichedInputSignaturesRef = useRef(new Map<string, string>());
+  const identityStatusByModeSRef = useRef(new Map<string, EnrichedAircraft["identityStatus"]>());
   const [passageHistoryVersion, setPassageHistoryVersion] = useState(0);
   const observerPosition = manualObserver ?? position;
   const observerStatus = manualObserver
@@ -260,6 +269,13 @@ export default function AviationPanel() {
         const payload = await response.json();
         if (cancelled) return;
 
+        if (!response.ok) {
+          const source = typeof payload.source === "string" ? payload.source : "Airplanes.live";
+          setSourceStatus(`${source} indisponible • dernière situation conservée`);
+          setError(payload.error ?? "Source aérienne momentanément indisponible.");
+          return;
+        }
+
         const sorted: AircraftWithDistance[] = (Array.isArray(payload.aircraft) ? payload.aircraft : [])
           .map((item: LiveAircraft) => ({ ...item, distance: distanceKm(center, [item.latitude, item.longitude]) }))
           .filter((item: AircraftWithDistance) => item.distance <= radius + 1)
@@ -304,14 +320,12 @@ export default function AviationPanel() {
         }
 
         const source = typeof payload.source === "string" ? payload.source : "Airplanes.live";
-        setSourceStatus(response.ok ? `${source} • ${sorted.length} appareil${sorted.length > 1 ? "s" : ""}` : `${source} indisponible`);
-        if (!response.ok) setError(payload.error ?? "Source aérienne indisponible.");
+        const withoutPosition = Number(payload.detection?.withoutPosition) || 0;
+        setSourceStatus(`${source} • ${sorted.length} appareil${sorted.length > 1 ? "s" : ""}${withoutPosition ? ` • ${withoutPosition} signal${withoutPosition > 1 ? "s" : ""} sans position` : ""}`);
       } catch {
         if (!cancelled) {
-          setAircraft([]);
-          setSelectedId(null);
-          setSourceStatus("Airplanes.live indisponible");
-          setError("Impossible de récupérer le trafic aérien en direct.");
+          setSourceStatus("Airplanes.live indisponible • dernière situation conservée");
+          setError("Impossible d’actualiser le trafic aérien en direct.");
         }
       }
     }
@@ -329,7 +343,7 @@ export default function AviationPanel() {
   }, []);
 
   const selected = useMemo(() => aircraft.find((item) => item.id === selectedId) ?? aircraft[0] ?? null, [aircraft, selectedId]);
-  const enrichmentSignature = useMemo(() => aircraft.slice(0, 25).map((item) => `${item.id}:${item.callsign}:${item.registration ?? ""}`).join("|"), [aircraft]);
+  const enrichmentSignature = useMemo(() => aircraft.map(enrichmentInputKey).join("|"), [aircraft]);
 
   useEffect(() => {
     if (!showAircraftView || !aircraft[0] || aircraft[0].id === selectedId) return;
@@ -387,12 +401,52 @@ export default function AviationPanel() {
   useEffect(() => {
     let cancelled = false;
     if (!aircraft.length) return;
-    setEnrichmentStatus("Identification des vols…");
-    const payload = aircraft.slice(0, 25).map((item) => ({ modeS: item.id, registration: item.registration, callsign: item.callsign, operator: item.operator, aircraftType: item.aircraftType, description: item.description, positionSource: item.positionSource, distanceKm: item.distance }));
-    fetch("/api/aviation/enriched-aircraft", { method: "POST", cache: "no-store", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ aircraft: payload, selectedModeS: selected?.id ?? null }) })
-      .then((response) => response.json())
-      .then((result) => {
-        if (cancelled || !Array.isArray(result.enriched)) return;
+    const prioritized = [...aircraft].sort((a, b) => {
+      const aSelected = a.id === selected?.id ? 0 : 1;
+      const bSelected = b.id === selected?.id ? 0 : 1;
+      return aSelected - bSelected || a.distance - b.distance;
+    });
+    const pending = prioritized.filter((item) => enrichedInputSignaturesRef.current.get(item.id) !== enrichmentInputKey(item));
+
+    function updateStatus() {
+      const statuses = aircraft.map((item) => identityStatusByModeSRef.current.get(item.id.replace(/^~/, "").toUpperCase()) ?? "unknown");
+      const complete = statuses.filter((status) => status === "complete").length;
+      const partial = statuses.filter((status) => status === "partial").length;
+      const unknown = statuses.length - complete - partial;
+      setEnrichmentStatus(`${complete} identités complètes • ${partial} partielles • ${unknown} inconnues`);
+    }
+
+    if (!pending.length) {
+      updateStatus();
+      return;
+    }
+
+    async function refreshEnrichment() {
+      setEnrichmentStatus(`Identification de ${pending.length} appareil${pending.length > 1 ? "s" : ""}…`);
+      const aircraftById = new Map(aircraft.map((item) => [item.id.replace(/^~/, "").toUpperCase(), item]));
+      for (let offset = 0; offset < pending.length; offset += 25) {
+        const batch = pending.slice(offset, offset + 25);
+        const payload = batch.map((item) => ({
+          modeS: item.id,
+          registration: item.registration,
+          callsign: item.callsign,
+          operator: item.operator,
+          aircraftType: item.aircraftType,
+          description: item.description,
+          category: item.category,
+          positionSource: item.positionSource,
+          distanceKm: item.distance,
+          learnedIdentity: readLearnedAircraftIdentity(item.id)
+        }));
+        const response = await fetch("/api/aviation/enriched-aircraft", {
+          method: "POST",
+          cache: "no-store",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ aircraft: payload, selectedModeS: selected?.id ?? null })
+        });
+        const result = await response.json();
+        if (!response.ok || !Array.isArray(result.enriched)) throw new Error(result.error ?? "Enrichissement indisponible");
+        if (cancelled) return;
         const enrichedItems = (result.enriched as EnrichedAircraft[]).map((item) => {
           if (item.routeLabel) return item;
           const learned = deducedRoute(item.callsignIcao ?? item.rawCallsign);
@@ -405,20 +459,24 @@ export default function AviationPanel() {
           };
         });
         setEnrichedByModeS((current) => ({ ...current, ...Object.fromEntries(enrichedItems.map((item) => [item.modeS, item])) }));
-        const aircraftById = new Map(aircraft.map((item) => [item.id.replace(/^~/, "").toUpperCase(), item]));
+        rememberAircraftIdentities(enrichedItems);
+        for (const item of enrichedItems) identityStatusByModeSRef.current.set(item.modeS, item.identityStatus);
+        for (const item of batch) enrichedInputSignaturesRef.current.set(item.id, enrichmentInputKey(item));
         const now = new Date();
         const passageBucket = now.toISOString().slice(0, 13);
         recordObservations(enrichedItems.map((item) => {
           const live = aircraftById.get(item.modeS);
           return { id: `${item.modeS}:${passageBucket}`, modeS: item.modeS, callsign: item.callsignIcao ?? item.rawCallsign,
             registration: item.registration, observedAt: now.toISOString(), latitude: live?.latitude ?? 0, longitude: live?.longitude ?? 0,
-            distanceKm: live?.distance ?? null, altitudeMeters: live?.barometricAltitude ?? null, operator: item.operator,
+            distanceKm: live?.distance ?? null, altitudeMeters: live?.barometricAltitude ?? null, operator: item.aircraftOperator,
             aircraftType: item.aircraftType, photoUrl: item.photo.url, departureAirport: item.departureAirport,
             arrivalAirport: item.arrivalAirport, routeConfidence: item.routeConfidence };
         }));
-        setEnrichmentStatus(`${result.metrics?.routesIdentified ?? 0}/${result.metrics?.total ?? result.enriched.length} trajets identifiés`);
-      })
-      .catch(() => { if (!cancelled) setEnrichmentStatus("Enrichissement momentanément indisponible"); });
+      }
+      if (!cancelled) updateStatus();
+    }
+
+    void refreshEnrichment().catch(() => { if (!cancelled) setEnrichmentStatus("Identification momentanément indisponible • données directes conservées"); });
     return () => { cancelled = true; };
   // La signature évite de relancer l’enrichissement quand seules les positions changent.
   // eslint-disable-next-line react-hooks/exhaustive-deps

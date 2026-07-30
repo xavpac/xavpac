@@ -17,7 +17,7 @@ export function classifyAircraftVisual(...values: Array<string | null | undefine
   const text = values.filter(Boolean).join(" ").toLowerCase();
   if (/(canadair|cl-?215|cl-?415|bombardier d.eau|water bomber)/i.test(text)) return { kind: "water-bomber", label: "Avion bombardier d’eau" };
   if (/(samu|smur|medical|médical)/i.test(text)) return { kind: "medical", label: "Hélicoptère médical" };
-  if (/(dragon|gendarmerie|helic|hélic|rotor|h145|ec145|h135|ec135)/i.test(text)) return { kind: "helicopter", label: "Hélicoptère" };
+  if (/(dragon|condor[a-z]?|gendarmerie|helic|hélic|rotor|h125|h145|ec145|h135|ec135|as[ .-]?350|as50|écureuil|squirrel)/i.test(text)) return { kind: "helicopter", label: "Hélicoptère" };
   if (/(rafale|mirage|fighter|military|militaire|armée|air force|trainer)/i.test(text)) return { kind: "military", label: "Aéronef militaire" };
   if (/(douane|surveillance|beechcraft|king air|patmar)/i.test(text)) return { kind: "surveillance", label: "Aéronef de surveillance" };
   if (/(drone|uas|uav)/i.test(text)) return { kind: "drone", label: "Drone" };

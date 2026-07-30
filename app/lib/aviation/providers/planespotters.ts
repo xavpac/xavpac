@@ -7,7 +7,8 @@ type Photo = { thumbnail?: { src?: string }; thumbnail_large?: { src?: string };
 
 async function request(path: string) {
   const response = await fetch(`https://api.planespotters.net/pub/photos/${path}`, { next: { revalidate: 604800 }, signal: AbortSignal.timeout(6500), headers: { Accept: "application/json", "User-Agent": planespottersUserAgent() } });
-  if (!response.ok) return null;
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error(`PlaneSpotters ${response.status}`);
   const payload = await response.json();
   const photo = (Array.isArray(payload.photos) ? payload.photos[0] : null) as Photo | null;
   if (!photo) return null;

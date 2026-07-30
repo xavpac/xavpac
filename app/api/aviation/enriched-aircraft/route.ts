@@ -38,5 +38,29 @@ export async function POST(request: NextRequest) {
   const processed = await mapWithConcurrency(prioritized, 4, async ({ item, originalIndex }) => ({ originalIndex, value: await enrichAircraft(item) }));
   const enriched = processed.sort((a, b) => a.originalIndex - b.originalIndex).map((entry) => entry.value);
   const identified = enriched.filter((item) => item.departureAirport && item.arrivalAirport).length;
-  return NextResponse.json({ ok: true, source: "Airplanes.live + ADSBDB + OpenSky + données locales", enriched, metrics: { total: enriched.length, routesIdentified: identified, routesUnavailable: enriched.length - identified }, cache: cacheStats() }, { headers: { "Cache-Control": "private, max-age=8" } });
+  const sourceContributions: Record<string, number> = {};
+  const uniqueSourceContributions: Record<string, number> = {};
+  for (const item of enriched) {
+    for (const source of item.identitySources) sourceContributions[source] = (sourceContributions[source] ?? 0) + 1;
+    if (item.identitySources.length === 1) {
+      const source = item.identitySources[0];
+      uniqueSourceContributions[source] = (uniqueSourceContributions[source] ?? 0) + 1;
+    }
+  }
+  return NextResponse.json({
+    ok: true,
+    source: "Airplanes.live + mémoire XavPac + ADSBDB + OpenSky",
+    enriched,
+    metrics: {
+      total: enriched.length,
+      identitiesComplete: enriched.filter((item) => item.identityStatus === "complete").length,
+      identitiesPartial: enriched.filter((item) => item.identityStatus === "partial").length,
+      identitiesUnknown: enriched.filter((item) => item.identityStatus === "unknown").length,
+      routesIdentified: identified,
+      routesUnavailable: enriched.length - identified,
+      sourceContributions,
+      uniqueSourceContributions
+    },
+    cache: cacheStats()
+  }, { headers: { "Cache-Control": "private, max-age=8" } });
 }

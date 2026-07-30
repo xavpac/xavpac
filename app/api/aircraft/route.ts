@@ -143,6 +143,7 @@ export async function GET(request: NextRequest) {
     const aircraft = sourceAircraft
       .map((item: AirplanesLiveAircraft) => normalizeAircraft(item, sourceTimestampMs))
       .filter((item: ReturnType<typeof normalizeAircraft>) => item !== null);
+    const withoutPosition = sourceAircraft.length - aircraft.length;
 
     return NextResponse.json(
       {
@@ -150,6 +151,11 @@ export async function GET(request: NextRequest) {
         fetchedAt: new Date().toISOString(),
         center: { latitude, longitude, radiusKm, radiusNm },
         total: aircraft.length,
+        detection: {
+          receivedFromFeed: sourceAircraft.length,
+          positioned: aircraft.length,
+          withoutPosition
+        },
         aircraft
       },
       {
