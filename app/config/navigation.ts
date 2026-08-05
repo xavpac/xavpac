@@ -3,6 +3,7 @@ export type Universe = "spotter" | "drone";
 export type ModuleId =
   | "aviation"
   | "operations"
+  | "spotting"
   | "weather"
   | "astronomy"
   | "drone"
@@ -34,6 +35,7 @@ export const NAVIGATION: Record<Universe, UniverseNavigation> = {
     modules: [
       { id: "aviation", icon: "aircraft", title: "Trafic aérien", shortTitle: "Trafic", subtitle: "Carte et passages" },
       { id: "operations", icon: "rescue", title: "Moyens aériens", shortTitle: "Moyens", subtitle: "Sécurité et missions" },
+      { id: "spotting", icon: "operations", title: "Carnet de spotting", shortTitle: "Carnet", subtitle: "Souvenirs et statistiques" },
       { id: "weather", icon: "weather", title: "Météo", shortTitle: "Météo", subtitle: "Conditions locales" },
       { id: "astronomy", icon: "moon", title: "Ciel", shortTitle: "Ciel", subtitle: "ISS et astronomie" }
     ]

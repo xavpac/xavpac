@@ -29,6 +29,7 @@ import {
 const StableMap = dynamic(() => import("./StableMap"), { ssr: false });
 const FRANCE_OVERVIEW_CENTER: [number, number] = [46.603354, 1.888334];
 const MANUAL_OBSERVER_KEY = "xavpac:manual-observer";
+const SAVED_HOME_KEY = "xavpac:saved-observer-home-v1";
 
 type Radius = 20 | 50 | 100;
 
@@ -179,6 +180,7 @@ export default function AviationPanel() {
   const [observerCommune, setObserverCommune] = useState("");
   const [observerCoordinates, setObserverCoordinates] = useState("");
   const [observerMessage, setObserverMessage] = useState("");
+  const [savedHome, setSavedHome] = useState<[number, number] | null>(null);
   const [aircraft, setAircraft] = useState<AircraftWithDistance[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [manualSelection, setManualSelection] = useState(false);
@@ -217,6 +219,11 @@ export default function AviationPanel() {
     try {
       const stored = window.localStorage.getItem("xavpac-favorites");
       if (stored) setFavoriteIds(JSON.parse(stored));
+      const storedHome = window.localStorage.getItem(SAVED_HOME_KEY);
+      if (storedHome) {
+        const parsed = JSON.parse(storedHome);
+        if (Array.isArray(parsed) && parsed.length === 2 && parsed.every(Number.isFinite)) setSavedHome(parsed as [number, number]);
+      }
       // Une ancienne position manuelle ne doit jamais remplacer silencieusement le GPS réel.
       window.sessionStorage.removeItem(MANUAL_OBSERVER_KEY);
     } catch {
@@ -452,11 +459,15 @@ export default function AviationPanel() {
         const passageBucket = now.toISOString().slice(0, 13);
         recordObservations(enrichedItems.map((item) => {
           const live = aircraftById.get(item.modeS);
+          const remarkableLabels = live ? detectRemarkable(live, item).map((remarkable) => remarkable.label) : [];
           return { id: `${item.modeS}:${passageBucket}`, modeS: item.modeS, callsign: item.callsignIcao ?? item.rawCallsign,
             registration: item.registration, observedAt: now.toISOString(), latitude: live?.latitude ?? 0, longitude: live?.longitude ?? 0,
             distanceKm: live?.distance ?? null, altitudeMeters: live?.barometricAltitude ?? null, operator: item.aircraftOperator,
             aircraftType: item.aircraftType, photoUrl: item.photo.url, departureAirport: item.departureAirport,
-            arrivalAirport: item.arrivalAirport, routeConfidence: item.routeConfidence };
+            arrivalAirport: item.arrivalAirport, routeConfidence: item.routeConfidence, routeSource: item.routeSource,
+            remarkableLabels, positionSource: item.positionSource,
+            observerLatitude: observerPosition?.[0] ?? null, observerLongitude: observerPosition?.[1] ?? null,
+            observationSite: savedHome && observerPosition && distanceKm(savedHome, observerPosition) <= 0.5 ? "home" as const : "other" as const };
         }));
       }
       if (!cancelled) updateStatus();
@@ -697,6 +708,21 @@ export default function AviationPanel() {
     retryGeolocation();
   }
 
+  function saveCurrentHome() {
+    if (!observerPosition) return;
+    try {
+      window.localStorage.setItem(SAVED_HOME_KEY, JSON.stringify(observerPosition));
+      setSavedHome(observerPosition);
+      setObserverMessage("HOME enregistré sur ce Mac. XavPac ne l’utilisera que lorsque vous le demanderez.");
+    } catch {
+      setObserverMessage("Impossible d’enregistrer HOME dans ce navigateur.");
+    }
+  }
+
+  function useSavedHome() {
+    if (savedHome) setObserverPoint(savedHome, "Position HOME utilisée volontairement.");
+  }
+
   return (
     <section className="flightwall-v61">
       {selected && <AircraftView
@@ -744,6 +770,8 @@ export default function AviationPanel() {
           <label>Commune <span><input value={observerCommune} onChange={(event) => setObserverCommune(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void searchObserverCommune(); } }} placeholder="Ex. Mâcon" /><button type="button" onClick={() => void searchObserverCommune()}>Me placer</button></span></label>
           <label>Latitude, longitude <span><input value={observerCoordinates} onChange={(event) => setObserverCoordinates(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); applyObserverCoordinates(); } }} placeholder="46.306, 4.831" /><button type="button" onClick={applyObserverCoordinates}>Appliquer</button></span></label>
           <button type="button" className="aviation-gps-retry" onClick={useGpsObserver}>{manualObserver ? "Reprendre le GPS" : "Relancer le GPS"}</button>
+          <button type="button" className="aviation-home-save" disabled={!observerPosition} onClick={saveCurrentHome}>🏠 Enregistrer ce HOME</button>
+          {savedHome && <button type="button" className="aviation-home-use" onClick={useSavedHome}>📍 Utiliser mon HOME</button>}
         </div>
         {observerMessage && <p>{observerMessage}</p>}
       </div>

@@ -8,6 +8,7 @@ import AstronomyPanel from "../AstronomyPanel";
 import WeatherPanel from "../WeatherPanel";
 import CenterOperationsPanel from "../CenterOperationsPanel";
 import TechnicalInformationPanel from "../TechnicalInformationPanel";
+import SpottingLogPanel from "../SpottingLogPanel";
 import { NAVIGATION, moduleBelongsToUniverse, type ModuleId, type Universe } from "../../config/navigation";
 import AppHeader from "./AppHeader";
 import ModuleNavigation from "./ModuleNavigation";
@@ -16,6 +17,7 @@ import UniverseSwitcher from "./UniverseSwitcher";
 function ActivePanel({ module }: { module: ModuleId }) {
   if (module === "aviation") return <AviationPanel />;
   if (module === "operations") return <OperationsPanel />;
+  if (module === "spotting") return <SpottingLogPanel />;
   if (module === "drone") return <DronePanel />;
   if (module === "center") return <CenterOperationsPanel />;
   if (module === "astronomy") return <AstronomyPanel />;

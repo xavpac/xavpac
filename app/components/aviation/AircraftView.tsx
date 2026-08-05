@@ -161,25 +161,30 @@ export default function AircraftView({ open, rootRef, aircraft, enriched, operat
   const directionLabel = direction === null ? "Direction non déterminée" : directionLabels[Math.round(direction / 45) % 8];
   const remarkable = detectRemarkable(aircraft, enriched);
   const visual = classifyAircraftVisual(aircraft.aircraftType, aircraft.description, operator, enriched?.aircraftType, enriched?.aircraftCategory, remarkable.map((item) => item.label).join(" "));
-  const family = visual.kind === "medical"
-    ? { key: "medical", icon: "🚑", label: "HÉLICOPTÈRE MÉDICAL" }
-    : visual.kind === "water-bomber"
+  const remarkableKeys = new Set(remarkable.map((item) => item.key));
+  const commercialFlight = Boolean(enriched?.airlineIcao || enriched?.airlineIata);
+  const family = commercialFlight
+    ? { key: "commercial", icon: "✈️", label: "VOL COMMERCIAL" }
+    : remarkableKeys.has("fire-boss") || remarkableKeys.has("canadair") || remarkableKeys.has("dash") || visual.kind === "water-bomber"
       ? { key: "fire", icon: "🔥", label: "LUTTE CONTRE LES FEUX" }
-      : visual.kind === "civil-security"
-        ? { key: "civil-security", icon: "🚒", label: "SÉCURITÉ CIVILE" }
+      : remarkableKeys.has("dragon") || visual.kind === "civil-security"
+        ? { key: "civil-security", icon: "🚁", label: "SÉCURITÉ CIVILE" }
+        : remarkableKeys.has("samu") || visual.kind === "medical"
+    ? { key: "medical", icon: "🚑", label: "HÉLICOPTÈRE MÉDICAL" }
         : visual.kind === "military"
           ? { key: "military", icon: "🎖️", label: "FORCES ARMÉES" }
-          : visual.kind === "surveillance"
+          : remarkableKeys.has("gendarmerie") || remarkableKeys.has("customs") || visual.kind === "surveillance"
             ? { key: "public-service", icon: "🚓", label: "SERVICE PUBLIC" }
             : visual.kind === "helicopter"
               ? { key: "helicopter", icon: "🚁", label: "HÉLICOPTÈRE" }
               : remarkable.length
                 ? { key: "remarkable", icon: "⭐", label: "APPAREIL REMARQUABLE" }
-                : enriched?.airlineIcao || enriched?.airlineIata
-                  ? { key: "commercial", icon: "✈️", label: "VOL COMMERCIAL" }
-                  : visual.kind === "light"
+                : visual.kind === "light"
                     ? { key: "light", icon: "🎓", label: "AVIATION LÉGÈRE" }
                     : { key: "private", icon: "🛩️", label: "AVIATION PRIVÉE / SPÉCIALISÉE" };
+  const operationalLayout = family.key !== "commercial";
+  const identityQuality = enriched?.identityStatus === "complete" ? "Confirmée" : enriched?.identityStatus === "partial" ? "Probable" : "Inconnue";
+  const operationalEvidence = remarkable[0]?.evidence ?? "Type et service déterminés à partir des données disponibles";
   const mapPoints = [
     ...(observerPosition ? [{ id: "aircraft-view-home", lat: observerPosition[0], lon: observerPosition[1], name: "Chez moi", detail: "Position d’observation", category: "home" }] : []),
     { id: aircraft.id, lat: aircraft.latitude, lon: aircraft.longitude, name: flightLabel, detail: `${aircraft.distance.toFixed(1)} km • ${directionLabel}`, category: enriched?.aircraftCategory === "helicopter" ? "helicopter" : "commercial", heading: aircraft.trueTrack }
@@ -200,7 +205,7 @@ export default function AircraftView({ open, rootRef, aircraft, enriched, operat
         </div>
         <div className="aircraft-view-company">
           <OperatorBrand name={operator} logoUrl={enriched?.logo} />
-          <button type="button" className={`aircraft-view-sound-button${soundsEnabled ? " active" : ""}`} onClick={onToggleSounds} aria-label={soundsEnabled ? "Couper les sons" : "Activer les sons"}>{soundsEnabled ? "🔊" : "🔇"}</button>
+          <button type="button" className={`aircraft-view-sound-button${soundsEnabled ? " active" : ""}`} onClick={onToggleSounds} aria-label={soundsEnabled ? "Couper les sons" : "Activer les sons"}><span className="aircraft-view-sound-waves" aria-hidden="true">◖</span><strong>SON</strong><small>{soundsEnabled ? "ON" : "OFF"}</small></button>
           <button type="button" className={favorite ? "active" : ""} onClick={onToggleFavorite} aria-label={favorite ? "Retirer des favoris" : "Ajouter aux favoris"}>☆</button>
         </div>
       </header>
@@ -238,7 +243,7 @@ export default function AircraftView({ open, rootRef, aircraft, enriched, operat
         <small>{family.icon} {family.label}</small>
       </section>
 
-      <aside className={`aircraft-view-tower-panel${routeAvailable ? "" : " unavailable"}`} aria-label="Trajet et météo du vol">
+      {!operationalLayout && <aside className={`aircraft-view-tower-panel${routeAvailable ? "" : " unavailable"}`} aria-label="Trajet et météo du vol">
         <header>
           <div><span>TRAJET DU VOL</span><strong>{routeStatus}</strong></div>
           {routeCalculation.progress !== null && <b>{Math.round(routeCalculation.progress)} %</b>}
@@ -260,7 +265,20 @@ export default function AircraftView({ open, rootRef, aircraft, enriched, operat
           <div className="aircraft-view-tower-city"><h3>{airportPlace(route?.destination, "Arrivée")}</h3><b>{airportCode(route?.destination)}</b></div>
           <div className="aircraft-view-tower-weather"><span>{weatherSymbol(route?.destinationWeather?.weather_code)}</span><strong>{route?.destinationWeather && typeof route.destinationWeather.temperature_2m === "number" ? `${Math.round(route.destinationWeather.temperature_2m)}°C` : "Météo —"}</strong>{route?.destinationWeather && typeof route.destinationWeather.wind_speed_10m === "number" && <small>Vent {Math.round(route.destinationWeather.wind_speed_10m)} km/h</small>}</div>
         </div>
-      </aside>
+      </aside>}
+
+      {operationalLayout && <aside className="aircraft-view-mission-panel" aria-label="Profil opérationnel de l’appareil">
+        <header><span>{family.icon}</span><div><small>PROFIL OPÉRATIONNEL</small><h3>{family.label}</h3></div><b>{identityQuality}</b></header>
+        <div className="aircraft-view-mission-identity"><span>INDICATIF</span><strong>{flightLabel}</strong><small>{aircraftType}</small></div>
+        <div className="aircraft-view-mission-grid">
+          <div><span>Service identifié</span><strong>{operator ?? family.label}</strong></div>
+          <div><span>Mission du jour</span><strong>Non déterminée</strong></div>
+          <div><span>Identification</span><strong>{identityQuality}</strong><small>{operationalEvidence}</small></div>
+          <div><span>Source</span><strong>{enriched?.identityProvenance.source ?? aircraft.positionSource ?? "ADS-B public"}</strong><small>{enriched?.identityProvenance.method ?? "directe"}</small></div>
+        </div>
+        {routeAvailable && <div className="aircraft-view-mission-route"><span>Trajet disponible</span><strong>{airportPlace(route?.origin, "Départ")} → {airportPlace(route?.destination, "Arrivée")}</strong></div>}
+        <p>La catégorie décrit l’appareil ou le service identifié. Elle ne confirme jamais la mission réellement effectuée aujourd’hui.</p>
+      </aside>}
 
       <aside className="aircraft-view-geo-panel">
         <header><div><span>CARTE DE PROXIMITÉ</span><strong>Votre position et l’avion</strong></div><button type="button" onClick={onShowMap}>Carte détaillée ›</button></header>

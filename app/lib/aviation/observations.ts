@@ -16,6 +16,12 @@ export type SpottingObservation = {
   departureAirport: AirportIdentity | null;
   arrivalAirport: AirportIdentity | null;
   routeConfidence: EnrichedAircraft["routeConfidence"];
+  routeSource?: string | null;
+  remarkableLabels?: string[];
+  positionSource?: string | null;
+  observerLatitude?: number | null;
+  observerLongitude?: number | null;
+  observationSite?: "home" | "other";
 };
 
 const STORAGE_KEY = "xavpac-spotting-observations-v1";

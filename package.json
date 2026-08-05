@@ -1,6 +1,6 @@
 {
   "name": "xavpac",
-  "version": "6.4.2",
+  "version": "6.4.3",
   "private": true,
   "packageManager": "pnpm@10.13.1",
   "engines": {

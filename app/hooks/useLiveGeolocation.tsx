@@ -75,8 +75,11 @@ function useLiveGeolocationSource(): LiveGeolocation {
           setAltitude(null);
           setTimestamp(null);
         }
+        const isMac = /Macintosh|Mac OS X/i.test(navigator.userAgent);
         const message = geolocationError.code === geolocationError.PERMISSION_DENIED
-          ? "Localisation refusée. Autorisez la position dans les réglages du navigateur, puis relancez le GPS."
+          ? isMac
+            ? "Localisation refusée sur le Mac. Ouvrez Réglages Système › Confidentialité et sécurité › Service de localisation, autorisez votre navigateur (ou Codex), puis relancez la position."
+            : "Localisation refusée. Autorisez la position dans les réglages du navigateur, puis relancez le GPS."
           : geolocationError.code === geolocationError.TIMEOUT
             ? "Le GPS n’a pas répondu à temps. Relancez-le ou indiquez votre commune."
             : "Le navigateur ne parvient pas à déterminer votre position. Indiquez votre commune ou vos coordonnées.";
