@@ -3,7 +3,6 @@
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState } from "react";
 import AircraftPhoto from "./aviation/AircraftPhoto";
-import AircraftTypeIllustration from "./aviation/AircraftTypeIllustration";
 import FlightMetrics from "./aviation/FlightMetrics";
 import OperatorBrand from "./aviation/OperatorBrand";
 import { useLiveGeolocation } from "../hooks/useLiveGeolocation";
@@ -43,6 +42,7 @@ type ExactPhoto = { image: string; link: string | null; photographer: string | n
 function markerCategory(asset: NationalAsset) {
   const badge = asset.identification.badge;
   if (badge.includes("CANADAIR")) return "national-canadair";
+  if (badge.includes("FIRE BOSS")) return "national-fireboss";
   if (badge.includes("DASH")) return "national-dash";
   if (badge.includes("DRAGON")) return "national-dragon";
   if (badge.includes("GENDARMERIE")) return "national-gendarmerie";
@@ -191,9 +191,12 @@ export default function OperationsPanel() {
       detail: asset.identification.model ?? "Non déterminé",
       color: asset.id === selected?.id ? "#00b7ff" : isHelicopter(asset) ? "#4fa8ff" : "#ffb000",
       category: markerCategory(asset),
-      heading: asset.track
+      heading: asset.track,
+      thumbnailUrl: asset.id === selected?.id && photoState.key === asset.id && photoState.status === "ready"
+        ? photoState.photo?.image ?? null
+        : null
     })),
-    [selected?.id, visibleAssets]
+    [photoState, selected?.id, visibleAssets]
   );
 
   const helicopters = assets.filter(isHelicopter).length;
@@ -268,7 +271,7 @@ export default function OperationsPanel() {
               <div className="fw-nearest-list">
                 {visibleAssets.slice(0, 8).map((asset, index) => (
                   <button type="button" key={asset.id} onClick={() => setSelectedId(asset.id)} className={asset.id === selected?.id ? "selected" : ""}>
-                    <b>{index + 1}</b><strong>{asset.identification.badge}</strong><span>{`${asset.operator ?? "Opérateur non déterminé"} • ${asset.callsign} • ${asset.registration ?? "Immat. non déterminée"} • ${formatAltitude(asset.altitude)} • ${formatSpeed(asset.speed)} • ${asset.track === null ? "Cap —" : `Cap ${Math.round(asset.track)}°`} • ${asset.lastSeenSeconds === null ? "MAJ non déterminée" : `MAJ ${Math.round(asset.lastSeenSeconds)} s`} • ${confidenceLabel(asset.identification.confidence)}`}</span><em>{position ? `${distanceKm(position, [asset.latitude, asset.longitude]).toFixed(0)} km` : "Distance : Non déterminé"}</em>
+                    <b>{index + 1}</b><strong>{asset.identification.badge}</strong><span>{`${asset.operator ?? "Opérateur non déterminé"} • ${asset.callsign} • ${asset.registration ?? "Immat. non déterminée"} • ${formatAltitude(asset.altitude)} • ${formatSpeed(asset.speed)} • ${asset.lastSeenSeconds === null ? "MAJ non déterminée" : `MAJ ${Math.round(asset.lastSeenSeconds)} s`} • ${confidenceLabel(asset.identification.confidence)}`}</span><em>{position ? `${distanceKm(position, [asset.latitude, asset.longitude]).toFixed(0)} km` : "Distance : Non déterminé"}</em>
                   </button>
                 ))}
                 {!visibleAssets.length && <p className="fw-empty-text">Aucun résultat pour cette recherche.</p>}
@@ -294,7 +297,15 @@ export default function OperationsPanel() {
                   <OperatorBrand name={selected.identification.operator ?? selected.operator} />
                   <p>{selected.identification.model ?? selected.description ?? selected.aircraftType ?? "Modèle à confirmer"}</p>
                 </div>
-                <AircraftTypeIllustration aircraftType={selected.identification.model ?? selected.aircraftType} description={selected.description} operator={selected.operator} category={`${selected.identification.category} ${selected.identification.badge}`} compact />
+                {selectedPhoto?.image ? (
+                  <div className="national-header-real-photo">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={selectedPhoto.image} alt={`Photo réelle de ${selected.callsign}`} />
+                    <span>PHOTO RÉELLE</span>
+                  </div>
+                ) : (
+                  <div className="national-header-photo-missing"><span>PHOTO</span><strong>Non disponible</strong></div>
+                )}
               </div>
 
               <AircraftPhoto className="national-detail-photo" identityKey={selected.id} photoUrl={selectedPhoto?.image} isExact={photoState.key === selected.id && photoState.status === "ready"} label="Photo exacte" source="PlaneSpotters" photographer={selectedPhoto?.photographer} aircraftType={selected.identification.model ?? selected.aircraftType} description={selected.description} operator={selected.operator} category={`${selected.identification.category} ${selected.identification.badge}`} loading={photoState.key === selected.id && photoState.status === "loading"} />
@@ -326,12 +337,12 @@ export default function OperationsPanel() {
               <FlightMetrics metrics={[
                 { label: "Altitude", value: formatAltitude(selected.altitude), detail: selected.onGround ? "Au sol" : "Altitude barométrique" },
                 { label: "Vitesse", value: formatSpeed(selected.speed), detail: "Vitesse sol" },
-                { label: "Cap", value: selected.track === null ? "—" : `${Math.round(selected.track)}°`, detail: "Route suivie" },
+                { label: "Où regarder", value: position ? "Depuis la carte" : "—", detail: "Position relative" },
                 { label: "Position", value: selected.latitude.toFixed(3), detail: selected.longitude.toFixed(3) }
               ]} />
 
               <div className="fw-source-grid">
-                <div><span>Source</span><strong>Airplanes.live</strong></div>
+                <div><span>Source</span><strong>Airplanes.live + adsb.fi</strong></div>
                 <div><span>Suivi</span><strong>ADS-B public</strong></div>
                 <div><span>Dernière MAJ</span><strong>{updatedAt}</strong></div>
                 <div><span>Identification</span><strong>{confidenceLabel(selected.identification.confidence)}</strong></div>
@@ -343,7 +354,7 @@ export default function OperationsPanel() {
         </aside>
       </div>
 
-      <div className="flightwall-statusline"><span>Données publiques en direct</span><span>{assets.length} moyen{assets.length > 1 ? "s" : ""} détecté{assets.length > 1 ? "s" : ""}</span><span><i className="live-dot" /> Actualisation automatique : 2 min</span></div>
+      <div className="flightwall-statusline"><span>Données publiques • <a href="https://adsb.fi" target="_blank" rel="noreferrer">adsb.fi</a></span><span>{assets.length} moyen{assets.length > 1 ? "s" : ""} détecté{assets.length > 1 ? "s" : ""}</span><span><i className="live-dot" /> Cache national : 6 min</span></div>
     </section>
   );
 }

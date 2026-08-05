@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { Fragment, useEffect } from "react";
 import L from "leaflet";
 import { escapeHtml } from "../lib/security/escapeHtml";
 import {
@@ -27,6 +27,7 @@ export type MapPoint = {
   heading?: number | null;
   weatherIcon?: string;
   temperature?: number | null;
+  thumbnailUrl?: string | null;
 };
 
 export type MapTrail = {
@@ -137,27 +138,19 @@ function weatherIcon(point: MapPoint) {
 
 function operationalIcon(point: MapPoint, selected: boolean, faded: boolean) {
   const category = String(point.category).replace("national-", "");
-  const colors: Record<string, string> = { canadair: "#ff4d61", dash: "#ff9d36", dragon: "#28a9ff", gendarmerie: "#4c7dff", samu: "#29d596", beechcraft: "#e1b94d", military: "#a5b1bd", customs: "#28c7b6", drone: "#9b78ff", unknown: "#7fb6d5" };
-  const labels: Record<string, string> = { canadair: "CANADAIR", dash: "DASH", dragon: "DRAGON", gendarmerie: "GEND.", samu: "SAMU", beechcraft: "BEECH", military: "ARMÉE", customs: "DOUANE", drone: "DRONE", unknown: "OPS" };
+  const colors: Record<string, string> = { canadair: "#ff4d61", fireboss: "#ff6f32", dash: "#ff9d36", dragon: "#28a9ff", gendarmerie: "#4c7dff", samu: "#29d596", beechcraft: "#e1b94d", military: "#a5b1bd", customs: "#28c7b6", drone: "#9b78ff", unknown: "#7fb6d5" };
+  const labels: Record<string, string> = { canadair: "CANADAIR", fireboss: "FIRE BOSS", dash: "DASH", dragon: "DRAGON", gendarmerie: "GEND.", samu: "SAMU", beechcraft: "BEECH", military: "ARMÉE", customs: "DOUANE", drone: "DRONE", unknown: "OPS" };
   const color = colors[category] ?? colors.unknown;
-  const shapes: Record<string, string> = {
-    canadair: '<path d="M8 34h18l7-19 6 1-2 18h18l5 6-23 2-2 13h-5l-3-13-24-2z"/>',
-    dash: '<path d="M5 32h22l4-20h5l3 20h20l3 6-23 3-2 13h-7l-3-13-24-3z"/>',
-    dragon: '<path d="M8 33h31c8 0 14 5 17 13H28c-9 0-15-5-20-13zm28-16h4v18h-4zM15 21h42v4H15z"/>',
-    gendarmerie: '<path d="M9 35h29c8 0 13 4 16 11H28c-8 0-14-4-19-11zm26-17h4v18h-4zM13 22h43v3H13z"/>',
-    samu: '<path d="M9 35h29c8 0 13 4 16 11H28c-8 0-14-4-19-11zm26-17h4v18h-4zM13 22h43v3H13z"/><path d="M47 13h5v14h-5zM42 18h15v5H42z"/>',
-    beechcraft: '<path d="M7 34h21l3-19h5l3 19h18l4 5-22 3-2 13h-7l-3-13-23-3z"/>',
-    military: '<path d="M32 6l7 25 18 9-2 6-18-4-2 14h-6l-2-14-19 4-2-6 19-9z"/>',
-    customs: '<path d="M7 34h21l3-19h5l3 19h18l4 5-22 3-2 13h-7l-3-13-23-3z"/><circle cx="49" cy="18" r="7"/>',
-    drone: '<path d="M19 19h26v26H19zM8 11h14v5H8zm34 0h14v5H42zM8 48h14v5H8zm34 0h14v5H42z"/>',
-    unknown: '<path d="M32 7l7 22 20 10-3 6-19-5-2 17h-6l-2-17-20 5-3-6 21-10z"/>'
-  };
+  const fallbacks: Record<string, string> = { canadair: "🔥", fireboss: "🔥", dash: "🚒", dragon: "🚁", gendarmerie: "🚓", samu: "🚑", beechcraft: "✈️", military: "✈️", customs: "🛃", drone: "◆", unknown: "✈️" };
+  const media = point.thumbnailUrl
+    ? `<img src="${escapeHtml(point.thumbnailUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer" />`
+    : `<span class="national-marker-fallback" aria-hidden="true">${fallbacks[category] ?? fallbacks.unknown}</span>`;
   return L.divIcon({
     className: "xavpac-map-icon-root",
-    html: `<div class="national-map-marker ${selected ? "selected" : ""} ${faded ? "faded" : ""}" style="--national-color:${color}"><div class="national-marker-beacon"><svg viewBox="0 0 64 64" aria-hidden="true">${shapes[category] ?? shapes.unknown}</svg><span>${escapeHtml(labels[category] ?? labels.unknown)}</span></div><strong>${escapeHtml(point.name)}</strong></div>`,
-    iconSize: [94, 78],
-    iconAnchor: [47, 39],
-    popupAnchor: [0, -38]
+    html: `<div class="national-map-marker ${selected ? "selected" : ""} ${faded ? "faded" : ""}" style="--national-color:${color}"><div class="national-marker-pulse"></div><div class="national-marker-beacon">${media}<span class="national-marker-kind">${escapeHtml(labels[category] ?? labels.unknown)}</span></div><strong>${escapeHtml(point.name)}</strong><div class="national-position-pin" aria-hidden="true"></div></div>`,
+    iconSize: [110, 100],
+    iconAnchor: [55, 90],
+    popupAnchor: [0, -88]
   });
 }
 
@@ -319,18 +312,20 @@ export default function StableMap({
       ))}
 
       {trails.map((trail) => (
-        <Polyline
-          key={trail.id}
-          positions={trail.positions}
-          pathOptions={{
-            color: trail.color ?? "#008fd3",
-            weight: trail.selected ? 5 : 3,
-            opacity: trail.selected ? 0.96 : 0.5,
-            dashArray: trail.selected ? undefined : "7 8",
-            lineCap: "round",
-            lineJoin: "round"
-          }}
-        />
+        <Fragment key={trail.id}>
+          {trail.selected && <Polyline positions={trail.positions} pathOptions={{ color: "#ffffff", weight: 14, opacity: .9, lineCap: "round", lineJoin: "round" }} />}
+          <Polyline
+            positions={trail.positions}
+            pathOptions={{
+              color: trail.color ?? "#008fd3",
+              weight: trail.selected ? 7 : 3,
+              opacity: trail.selected ? 1 : 0.5,
+              dashArray: trail.selected ? undefined : "7 8",
+              lineCap: "round",
+              lineJoin: "round"
+            }}
+          />
+        </Fragment>
       ))}
 
       {points.map((point) => {

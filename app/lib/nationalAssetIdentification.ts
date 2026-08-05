@@ -28,6 +28,10 @@ export const KNOWN_NATIONAL_REGISTRATIONS: Readonly<Record<string, Omit<National
   }
 };
 
+// Registre officiel luxembourgeois du 10 mars 2026 : propriétaire Cargolux,
+// exploitant Aquarius Aerial Firefighting. La mission du jour reste inconnue.
+const VERIFIED_AQUARIUS_FIRE_BOSS = new Set(["LX-AFA", "LX-AFB", "LX-AFC", "LX-AFF", "LX-AFG", "LX-AFH", "LX-AFI", "LX-AFJ"]);
+
 function normalized(input: NationalIdentityInput) {
   return {
     registration: input.registration?.trim().toUpperCase() ?? "",
@@ -42,31 +46,57 @@ export function identifyNationalAsset(input: NationalIdentityInput): NationalIde
   const value = normalized(input);
   const known = KNOWN_NATIONAL_REGISTRATIONS[value.registration];
   if (known) return { ...known, evidence: ["immatriculation vérifiée"] };
-
-  const civilSecurity = /S[ÉE]CURIT[ÉE] CIVILE|CIVIL SECURITY/.test(value.operatorUpper);
-  if (/CL2T|CL-?415|CANADAIR/.test(value.type) || /^(PELICAN|P[ÉE]LICAN)/.test(value.callsign)) {
-    const model = /CL2T|CL-?415/.test(value.type) ? "Canadair CL-415" : null;
+  if (VERIFIED_AQUARIUS_FIRE_BOSS.has(value.registration)) {
     return {
-      category: model ? "Canadair CL-415" : "Avion bombardier d’eau",
-      badge: model ? "CANADAIR CL-415" : "CANADAIR À CONFIRMER",
-      model,
-      operator: value.operator || (civilSecurity ? "Sécurité civile" : null),
-      probableMission: /^(PELICAN|P[ÉE]LICAN)/.test(value.callsign) ? "Lutte contre les feux de forêt" : null,
-      confidence: model || civilSecurity ? "confirmed" : "probable",
-      evidence: [model ? "modèle ADS-B CL-415" : "indicatif PELICAN"]
+      category: "Renfort aérien de lutte contre les feux",
+      badge: "FIRE BOSS — RENFORT FEUX",
+      model: "Air Tractor AT-802 Fire Boss",
+      operator: "Aquarius Aerial Firefighting",
+      probableMission: null,
+      confidence: "confirmed",
+      evidence: ["immatriculation et exploitant vérifiés au registre luxembourgeois", "mission du jour non déterminée"]
     };
   }
 
-  if (/DH8D|Q400|DASH\s*8/.test(value.type) || /^MILAN/.test(value.callsign)) {
-    const model = /DH8D|Q400|DASH\s*8/.test(value.type) ? "Dash 8 Q400-MR" : null;
+  const civilSecurity = /S[ÉE]CURIT[ÉE] CIVILE|CIVIL SECURITY/.test(value.operatorUpper);
+  if (/AT8T|AT-?802|FIRE\s*BOSS/.test(value.type) || /AQUARIUS\s+AERIAL\s+FIREFIGHTING/.test(value.operatorUpper)) {
     return {
-      category: model ? "Dash 8 Q400-MR" : "Avion de sécurité civile",
-      badge: model ? "DASH 8 Q400-MR" : "DASH À CONFIRMER",
+      category: "Avion de lutte contre les feux",
+      badge: "FIRE BOSS — LUTTE FEUX",
+      model: /AT8T|AT-?802|FIRE\s*BOSS/.test(value.type) ? "Air Tractor AT-802 Fire Boss" : null,
+      operator: value.operator,
+      probableMission: null,
+      confidence: "probable",
+      evidence: ["type ou opérateur spécialisé reçu par ADS-B", "mission du jour non déterminée"]
+    };
+  }
+  const canadairCallsign = /^(PELICAN|P[ÉE]LICAN)/.test(value.callsign);
+  if (/CL2T|CL-?415|CANADAIR/.test(value.type) || canadairCallsign) {
+    const model = /CL2T|CL-?415/.test(value.type) ? "Canadair CL-415" : null;
+    const attributed = canadairCallsign || civilSecurity;
+    return {
+      category: attributed ? "Canadair de la Sécurité civile" : model ? "Canadair CL-415" : "Avion bombardier d’eau",
+      badge: attributed ? "CANADAIR SÉCURITÉ CIVILE" : model ? "CANADAIR CL-415" : "CANADAIR À CONFIRMER",
+      model,
+      operator: value.operator || (civilSecurity ? "Sécurité civile" : null),
+      probableMission: canadairCallsign ? "Lutte contre les feux de forêt" : null,
+      confidence: attributed ? "probable" : model ? "confirmed" : "to-confirm",
+      evidence: [model ? "type ADS-B CL-415" : "type non confirmé", ...(canadairCallsign ? ["indicatif PÉLICAN"] : []), ...(civilSecurity ? ["opérateur déclaré Sécurité civile"] : [])]
+    };
+  }
+
+  const dashCallsign = /^(MILAN|BENGALE)/.test(value.callsign);
+  if (/DH8D|Q400|DASH\s*8/.test(value.type) || dashCallsign) {
+    const model = /DH8D|Q400|DASH\s*8/.test(value.type) ? "Dash 8 Q400-MR" : null;
+    const attributed = dashCallsign || civilSecurity;
+    return {
+      category: attributed ? "Dash de la Sécurité civile" : model ? "Dash 8" : "Avion à confirmer",
+      badge: attributed ? "DASH SÉCURITÉ CIVILE" : model ? "DASH 8" : "DASH À CONFIRMER",
       model,
       operator: value.operator || (civilSecurity ? "Sécurité civile" : null),
       probableMission: null,
-      confidence: model || civilSecurity ? "confirmed" : "probable",
-      evidence: [model ? "modèle ADS-B Q400/DH8D" : "indicatif MILAN"]
+      confidence: attributed ? "probable" : model ? "confirmed" : "to-confirm",
+      evidence: [model ? "type ADS-B Q400/DH8D" : "type non confirmé", ...(dashCallsign ? ["indicatif MILAN/BENGALE"] : []), ...(civilSecurity ? ["opérateur déclaré Sécurité civile"] : [])]
     };
   }
 
@@ -76,7 +106,7 @@ export function identifyNationalAsset(input: NationalIdentityInput): NationalIde
   }
 
   if (/^DRAGON/.test(value.callsign)) {
-    return { category: "Hélicoptère Dragon", badge: "HÉLICOPTÈRE DRAGON", model: input.aircraftType || input.description || null, operator: value.operator || "Sécurité civile", probableMission: "Secours et sécurité civile", confidence: "confirmed", evidence: ["indicatif opérationnel DRAGON"] };
+    return { category: "Hélicoptère Dragon", badge: "HÉLICOPTÈRE DRAGON", model: input.aircraftType || input.description || null, operator: value.operator || "Sécurité civile", probableMission: "Secours et sécurité civile", confidence: "probable", evidence: ["indicatif opérationnel DRAGON", "identité individuelle à confirmer"] };
   }
   if (/^CONDOR[A-Z]?/.test(value.callsign) && /SAF/.test(value.operatorUpper)) {
     return { category: "Hélicoptère SAF", badge: "HÉLICOPTÈRE SAF", model: input.aircraftType || input.description || null, operator: value.operator, probableMission: null, confidence: "probable", evidence: ["indicatif CONDOR", "opérateur SAF"] };

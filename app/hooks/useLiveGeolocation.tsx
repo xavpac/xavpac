@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 
-const MAX_USABLE_ACCURACY_METERS = 2000;
+const MAX_USABLE_ACCURACY_METERS = 500;
 
 export type LiveGeolocation = {
   position: [number, number] | null;
@@ -86,7 +86,7 @@ function useLiveGeolocationSource(): LiveGeolocation {
       {
         enableHighAccuracy: true,
         timeout: 20000,
-        maximumAge: 15000
+        maximumAge: 0
       }
     );
 

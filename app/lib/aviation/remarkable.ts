@@ -9,9 +9,6 @@ export type RemarkableAircraft = {
 };
 
 const rules: Array<{ key: string; icon: string; label: string; pattern: RegExp }> = [
-  { key: "canadair", icon: "🚒", label: "Canadair", pattern: /\b(CL2[15]|CL-?415|CANADAIR|PELICAN)\b/i },
-  { key: "dash", icon: "🚒", label: "Dash Sécurité Civile", pattern: /\b(DH8[ABD]|DASH\s?8|MILAN)\b/i },
-  { key: "dragon", icon: "🚁", label: "Dragon Sécurité Civile", pattern: /\bDRAGON/i },
   { key: "condor", icon: "🚁", label: "Hélicoptère CONDOR", pattern: /\bCONDOR[A-Z]?\b/i },
   { key: "samu", icon: "🚑", label: "SAMU", pattern: /\b(SAMU|SMUR)\b/i },
   { key: "gendarmerie", icon: "🚓", label: "Gendarmerie", pattern: /\b(GENDARMERIE|F-MJ|GEND)\b/i },
@@ -30,8 +27,44 @@ const rules: Array<{ key: string; icon: string; label: string; pattern: RegExp }
 
 export function detectRemarkable(input: { callsign?: string | null; aircraftType?: string | null; description?: string | null; operator?: string | null }, enriched?: EnrichedAircraft | null): RemarkableAircraft[] {
   const typed = `${enriched?.aircraftType ?? input.aircraftType ?? ""} ${enriched?.manufacturer ?? ""}`;
-  const contextual = `${input.callsign ?? ""} ${input.description ?? ""} ${enriched?.operator ?? input.operator ?? ""}`;
+  const operator = enriched?.operator ?? input.operator ?? "";
+  const contextual = `${input.callsign ?? ""} ${input.description ?? ""} ${operator}`;
   const detected: RemarkableAircraft[] = [];
+  const verifiedCivilSecurity = /S[ÉE]CURIT[ÉE] CIVILE|CIVIL SECURITY/i.test(operator)
+    && enriched?.identityFields.operator?.confidence === "confirmed";
+  const canadairType = /\b(CL2[15]|CL-?415|CANADAIR)\b/i.test(typed);
+  const canadairCallsign = /\bP[ÉE]LICAN[A-Z0-9-]*\b/i.test(contextual);
+  const fireBossType = /\b(AT8T|AT-?802[AF]?|FIRE\s*BOSS)\b/i.test(`${typed} ${contextual}`);
+  const dashType = /\b(DH8[ABD]|Q400|DASH\s?8)\b/i.test(typed);
+  const dashCallsign = /\b(MILAN|BENGALE)[A-Z0-9-]*\b/i.test(contextual);
+  const dragonCallsign = /\bDRAGON[A-Z0-9-]*\b/i.test(contextual);
+
+  if (canadairType || canadairCallsign) {
+    const civilSecurity = verifiedCivilSecurity || canadairCallsign;
+    detected.push({
+      key: "canadair", icon: "🚒", label: civilSecurity ? "Canadair Sécurité Civile" : "Canadair CL-415",
+      confidence: verifiedCivilSecurity || (canadairType && !civilSecurity) ? "confirmed" : "probable",
+      evidence: verifiedCivilSecurity ? "Opérateur vérifié et type correspondant" : canadairCallsign ? "Indicatif PÉLICAN, appartenance à confirmer" : "Type d’appareil confirmé, opérateur non confirmé"
+    });
+  }
+  if (fireBossType) detected.push({
+    key: "fire-boss", icon: "🔥", label: "Fire Boss — lutte contre les feux",
+    confidence: /AQUARIUS\s+AERIAL\s+FIREFIGHTING/i.test(contextual) ? "probable" : "confirmed",
+    evidence: /AQUARIUS\s+AERIAL\s+FIREFIGHTING/i.test(contextual) ? "Type et opérateur spécialisé reçus" : "Type Fire Boss reçu ou enrichi"
+  });
+  if (dashType || dashCallsign) {
+    const civilSecurity = verifiedCivilSecurity || dashCallsign;
+    detected.push({
+      key: "dash", icon: "🚒", label: civilSecurity ? "Dash Sécurité Civile" : "Dash 8",
+      confidence: verifiedCivilSecurity || (dashType && !civilSecurity) ? "confirmed" : "probable",
+      evidence: verifiedCivilSecurity ? "Opérateur vérifié et type correspondant" : dashCallsign ? "Indicatif MILAN/BENGALE, appartenance à confirmer" : "Type Dash 8 confirmé, opérateur non confirmé"
+    });
+  }
+  if (dragonCallsign) detected.push({
+    key: "dragon", icon: "🚁", label: "Dragon Sécurité Civile",
+    confidence: verifiedCivilSecurity ? "confirmed" : "probable",
+    evidence: verifiedCivilSecurity ? "Opérateur vérifié et indicatif DRAGON" : "Indicatif DRAGON, identité individuelle à confirmer"
+  });
   for (const rule of rules) {
     if (rule.pattern.test(typed)) detected.push({ key: rule.key, icon: rule.icon, label: rule.label, confidence: "confirmed", evidence: "Type d’appareil reçu ou enrichi" });
     else if (rule.pattern.test(contextual)) detected.push({ key: rule.key, icon: rule.icon, label: rule.label, confidence: "probable", evidence: "Callsign ou opérateur correspondant à une règle locale" });

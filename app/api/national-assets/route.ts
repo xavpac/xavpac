@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { identifyNationalAsset } from "../../lib/nationalAssetIdentification";
 import { fetchAirplanesLive } from "../../lib/aviation/providers/airplanesLive";
+import { fetchAdsbFi } from "../../lib/aviation/providers/adsbFi";
 
 export const dynamic = "force-dynamic";
-export const revalidate = 60;
+export const revalidate = 360;
 
 type RawAircraft = {
   hex?: string;
@@ -26,9 +27,9 @@ const searchPoints = [
   { lat: 43.8, lon: 4.8, radius: 250 }
 ];
 
-// Un modèle seul (Q400, Beechcraft, etc.) ne prouve jamais qu'il s'agit d'un moyen national.
-// Le filtre exige un indicatif opérationnel ou un organisme public français identifiable.
-const operationalPattern = /(DRAGON|CONDOR[A-Z]?|PELICAN|PÉLICAN|MILAN|BENGALE|SECURITE\s*CIVILE|SÉCURITÉ\s*CIVILE|SAMU|SMUR|GENDARMERIE|DOUANES|POLICE\s*NATIONALE|ARM[ÉE]E\s+DE\s+L['’ ]AIR|FRENCH\s+AIR\s+FORCE|MARINE\s+NATIONALE)/i;
+// Un modèle générique (Q400, Beechcraft, etc.) ne prouve jamais qu'il s'agit d'un moyen opérationnel.
+// Les types exclusivement dédiés à la lutte incendie, comme Fire Boss, restent admissibles.
+const operationalPattern = /(DRAGON|CONDOR[A-Z]?|PELICAN|PÉLICAN|MILAN|BENGALE|SECURITE\s*CIVILE|SÉCURITÉ\s*CIVILE|SAMU|SMUR|GENDARMERIE|DOUANES|POLICE\s*NATIONALE|ARM[ÉE]E\s+DE\s+L['’ ]AIR|FRENCH\s+AIR\s+FORCE|MARINE\s+NATIONALE|FIRE\s*BOSS|AT-?802|AT8T|AQUARIUS\s+AERIAL\s+FIREFIGHTING|LX-AF[A-CF-J])/i;
 
 function isOperational(item: RawAircraft) {
   return operationalPattern.test(
@@ -59,8 +60,14 @@ function normalize(item: RawAircraft) {
 }
 
 async function fetchPoint(point: (typeof searchPoints)[number]) {
-  const data = await fetchAirplanesLive({ latitude: point.lat, longitude: point.lon, radiusNm: point.radius, revalidateSeconds: 60 });
-  return Array.isArray(data.ac) ? (data.ac as RawAircraft[]) : [];
+  const input = { latitude: point.lat, longitude: point.lon, radiusNm: point.radius, revalidateSeconds: 360 };
+  const results = await Promise.allSettled([fetchAirplanesLive(input), fetchAdsbFi(input)]);
+  const aircraft: RawAircraft[] = [];
+  for (const result of results) {
+    if (result.status === "fulfilled" && Array.isArray(result.value.ac)) aircraft.push(...result.value.ac as RawAircraft[]);
+  }
+  if (results.every((result) => result.status === "rejected")) throw new Error("Sources ADS-B indisponibles");
+  return aircraft;
 }
 
 export async function GET() {
@@ -80,20 +87,20 @@ export async function GET() {
 
     return NextResponse.json(
       {
-        source: "Détection ADS-B publique Airplanes.live",
+        source: "Détection ADS-B publique Airplanes.live + adsb.fi",
         fetchedAt: new Date().toISOString(),
         assets: [...unique.values()]
       },
       {
         headers: {
-          "Cache-Control": "public, s-maxage=60, stale-while-revalidate=120"
+          "Cache-Control": "public, s-maxage=360, stale-while-revalidate=600"
         }
       }
     );
   } catch {
     return NextResponse.json(
       {
-        source: "Détection ADS-B publique Airplanes.live",
+        source: "Détection ADS-B publique Airplanes.live + adsb.fi",
         error: "La détection des moyens nationaux est momentanément indisponible.",
         assets: []
       },

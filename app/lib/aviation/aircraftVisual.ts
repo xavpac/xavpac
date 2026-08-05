@@ -15,7 +15,7 @@ export type AircraftVisual = { kind: AircraftVisualKind; label: string };
 
 export function classifyAircraftVisual(...values: Array<string | null | undefined>): AircraftVisual {
   const text = values.filter(Boolean).join(" ").toLowerCase();
-  if (/(canadair|cl-?215|cl-?415|bombardier d.eau|water bomber)/i.test(text)) return { kind: "water-bomber", label: "Avion bombardier d’eau" };
+  if (/(canadair|cl-?215|cl-?415|fire boss|at-?802|at8t|bombardier d.eau|water bomber|aerial firefighting)/i.test(text)) return { kind: "water-bomber", label: "Avion bombardier d’eau" };
   if (/(samu|smur|medical|médical)/i.test(text)) return { kind: "medical", label: "Hélicoptère médical" };
   if (/(dragon|condor[a-z]?|gendarmerie|helic|hélic|rotor|h125|h145|ec145|h135|ec135|as[ .-]?350|as50|écureuil|squirrel)/i.test(text)) return { kind: "helicopter", label: "Hélicoptère" };
   if (/(rafale|mirage|fighter|military|militaire|armée|air force|trainer)/i.test(text)) return { kind: "military", label: "Aéronef militaire" };

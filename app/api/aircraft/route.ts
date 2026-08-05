@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { feetPerMinuteToMetersPerSecond, feetToMeters, knotsToMetersPerSecond } from "../../lib/aviation/units";
 import { enforceRateLimit } from "../../lib/api/guard";
 import { fetchAirplanesLive } from "../../lib/aviation/providers/airplanesLive";
+import { fetchAdsbFi } from "../../lib/aviation/providers/adsbFi";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -133,7 +134,15 @@ export async function GET(request: NextRequest) {
   // Airplanes.live attend un rayon en milles nautiques.
   const radiusNm = clamp(Math.ceil(radiusKm / 1.852), 3, 54);
   try {
-    const payload = await fetchAirplanesLive({ latitude: Number(latitude.toFixed(5)), longitude: Number(longitude.toFixed(5)), radiusNm, revalidateSeconds: 8 });
+    const input = { latitude: Number(latitude.toFixed(5)), longitude: Number(longitude.toFixed(5)), radiusNm, revalidateSeconds: 8 };
+    let source = "Airplanes.live";
+    let payload;
+    try {
+      payload = await fetchAirplanesLive(input);
+    } catch {
+      payload = await fetchAdsbFi(input);
+      source = "adsb.fi";
+    }
     const sourceAircraft = Array.isArray(payload.ac) ? payload.ac as AirplanesLiveAircraft[] : [];
     const rawSourceTimestamp = numberOrNull(payload.now);
     const sourceTimestampMs = rawSourceTimestamp === null
@@ -147,7 +156,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(
       {
-        source: "Airplanes.live",
+        source,
         fetchedAt: new Date().toISOString(),
         center: { latitude, longitude, radiusKm, radiusNm },
         total: aircraft.length,
@@ -174,7 +183,7 @@ export async function GET(request: NextRequest) {
       {
         error: message,
         aircraft: [],
-        source: "Airplanes.live"
+        source: "Airplanes.live + adsb.fi"
       },
       {
         status: 502,

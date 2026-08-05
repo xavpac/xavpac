@@ -183,6 +183,7 @@ export default function AviationPanel() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [manualSelection, setManualSelection] = useState(false);
   const [sourceStatus, setSourceStatus] = useState("Connexion Airplanes.live…");
+  const [trafficSource, setTrafficSource] = useState("Airplanes.live");
   const [error, setError] = useState("");
   const [enrichedByModeS, setEnrichedByModeS] = useState<Record<string, EnrichedAircraft>>({});
   const [enrichmentStatus, setEnrichmentStatus] = useState("Enrichissement en attente");
@@ -216,18 +217,8 @@ export default function AviationPanel() {
     try {
       const stored = window.localStorage.getItem("xavpac-favorites");
       if (stored) setFavoriteIds(JSON.parse(stored));
-      const storedObserver = window.sessionStorage.getItem(MANUAL_OBSERVER_KEY);
-      if (storedObserver) {
-        const value = JSON.parse(storedObserver) as unknown;
-        if (Array.isArray(value) && value.length === 2 && value.every(Number.isFinite)) {
-          const point: [number, number] = [Number(value[0]), Number(value[1])];
-          if (point[0] >= 41 && point[0] <= 52 && point[1] >= -6 && point[1] <= 10) {
-            setManualObserver(point);
-            setObserverCoordinates(`${point[0]}, ${point[1]}`);
-            setObserverMessage("Position corrigée restaurée pour cet onglet.");
-          }
-        }
-      }
+      // Une ancienne position manuelle ne doit jamais remplacer silencieusement le GPS réel.
+      window.sessionStorage.removeItem(MANUAL_OBSERVER_KEY);
     } catch {
       setFavoriteIds([]);
     }
@@ -320,6 +311,7 @@ export default function AviationPanel() {
         }
 
         const source = typeof payload.source === "string" ? payload.source : "Airplanes.live";
+        setTrafficSource(source);
         const withoutPosition = Number(payload.detection?.withoutPosition) || 0;
         setSourceStatus(`${source} • ${sorted.length} appareil${sorted.length > 1 ? "s" : ""}${withoutPosition ? ` • ${withoutPosition} signal${withoutPosition > 1 ? "s" : ""} sans position` : ""}`);
       } catch {
@@ -346,12 +338,6 @@ export default function AviationPanel() {
   const enrichmentSignature = useMemo(() => aircraft.map(enrichmentInputKey).join("|"), [aircraft]);
 
   useEffect(() => {
-    if (!showAircraftView || !aircraft[0] || aircraft[0].id === selectedId) return;
-    setSelectedId(aircraft[0].id);
-    setManualSelection(false);
-  }, [aircraft, selectedId, showAircraftView]);
-
-  useEffect(() => {
     if (!showAircraftView || !selected) {
       previousViewAircraftRef.current = null;
       return;
@@ -364,7 +350,7 @@ export default function AviationPanel() {
   useEffect(() => {
     let cancelled = false;
     const alertObserver = observerPosition;
-    if (!showAircraftView || !alertObserver) {
+    if (!alertObserver) {
       setNearbyNationalAlert(null);
       return;
     }
@@ -396,7 +382,7 @@ export default function AviationPanel() {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [nationalAssetAlert, observerPosition, showAircraftView]);
+  }, [nationalAssetAlert, observerPosition]);
 
   useEffect(() => {
     let cancelled = false;
@@ -540,6 +526,15 @@ export default function AviationPanel() {
         color: "#3aa7ff",
         category: "home"
       }] : []),
+      ...(nearbyNationalAlert && !visibleAircraft.some((item) => item.id === nearbyNationalAlert.id) ? [{
+        id: nearbyNationalAlert.id,
+        lat: nearbyNationalAlert.latitude,
+        lon: nearbyNationalAlert.longitude,
+        name: nearbyNationalAlert.badge,
+        detail: `${nearbyNationalAlert.callsign} • ${nearbyNationalAlert.distanceKm.toFixed(1)} km`,
+        color: "#ff4fd8",
+        category: "remarkable"
+      }] : []),
       ...visibleAircraft.slice(0, 100).map((item) => {
         const visual = aircraftVisual(item);
         const remarkable = detectRemarkable(item, enrichedByModeS[item.id.replace(/^~/, "").toUpperCase()]);
@@ -555,7 +550,7 @@ export default function AviationPanel() {
         };
       })
     ],
-    [observerPosition, manualObserver, observerStatus, enrichedByModeS, selected, visibleAircraft]
+    [observerPosition, manualObserver, observerStatus, enrichedByModeS, nearbyNationalAlert, selected, visibleAircraft]
   );
 
   const mapTrails = useMemo(
@@ -741,6 +736,7 @@ export default function AviationPanel() {
       )}
 
       {((!manualObserver && gpsError) || error) && <div className="aviation-warning-v5">{(!manualObserver && gpsError) || error}</div>}
+      {nearbyNationalAlert && <div className="aviation-warning-v5">🚨 {nearbyNationalAlert.badge} détecté à {nearbyNationalAlert.distanceKm.toFixed(1)} km • {nearbyNationalAlert.identification?.confidence === "confirmed" ? "Confirmé" : "Probable"}</div>}
 
       <div className={`aviation-location-panel panel ${observerPosition ? "ready" : "missing"}`}>
         <div className="aviation-location-state"><span>POSITION D’OBSERVATION</span><strong>{observerStatus}</strong><small>{observerPosition ? "Les avions, distances et passages sont calculés depuis ce point." : "Aucun trafic local n’est affiché tant que votre position n’est pas fiable."}</small></div>
@@ -906,7 +902,7 @@ export default function AviationPanel() {
               ]} />
 
               <div className="fw-source-grid">
-                <div><span>Source</span><strong>Airplanes.live</strong></div>
+                <div><span>Source</span><strong>{trafficSource}</strong></div>
                 <div><span>Suivi</span><strong>ADS-B</strong></div>
                 <div><span>Position ADS-B</span><strong>{formatFreshness(approach?.freshnessSeconds ?? null)}</strong></div>
                 <div><span>Identification du vol</span><strong>{selectedEnriched?.flightNumberIata ? `${selectedEnriched.flightNumberIata} • numéro commercial IATA` : selectedEnriched?.callsignIcao ? `${selectedEnriched.callsignIcao} • callsign ICAO` : `${selected.callsign} • identifiant ADS-B`}</strong></div>
@@ -928,7 +924,7 @@ export default function AviationPanel() {
         </aside>
       </div>
 
-      <div className="flightwall-statusline"><span>Données en direct et temps réel</span><span>Position : {observerStatus}</span><span><i className="live-dot" /> Prochaine actualisation : 10 s</span></div>
+      <div className="flightwall-statusline"><span>Données en direct et temps réel • <a href="https://adsb.fi" target="_blank" rel="noreferrer">adsb.fi</a></span><span>Position : {observerStatus}</span><span><i className="live-dot" /> Prochaine actualisation : 10 s</span></div>
     </section>
   );
 }

@@ -5,6 +5,7 @@ import "../../lib/aviation/providers/adsbdb";
 import "../../lib/aviation/providers/opensky";
 import "../../lib/aviation/providers/planespotters";
 import "../../lib/aviation/providers/airplanesLive";
+import "../../lib/aviation/providers/adsbFi";
 import "../../lib/aviation/providers/celestrak";
 
 export const dynamic = "force-dynamic";

@@ -1048,6 +1048,60 @@ a { color: inherit; }
   .xavpac-aircraft-label span { font-size: 5.5px; }
 }
 
+@media (min-width:951px) and (max-width:1500px) {
+  .aircraft-view-header { padding:20px 3vw 12px; }
+  .aircraft-view-company .operator-brand img { height:54px; max-width:190px; }
+  .aircraft-view-company .operator-brand strong { max-width:210px; font-size:18px; }
+  .aircraft-view-family-banner { top:104px; }
+  .aircraft-view-national-alert { top:104px; max-width:260px; padding:8px 12px; }
+  .aircraft-view-tower-panel { top:180px; bottom:42px; width:30vw; }
+  .aircraft-view-tower-panel { grid-template-rows:44px minmax(0,1fr) 54px minmax(0,1fr); }
+  .aircraft-view-tower-panel>header { min-height:48px; padding:8px 12px; }
+  .aircraft-view-tower-airport { padding:4px 14px; }
+  .aircraft-view-tower-city h3 { font-size:28px; }
+  .aircraft-view-tower-weather { min-width:170px; margin-top:4px; padding:3px 8px; border-radius:14px; }
+  .aircraft-view-tower-weather>span { font-size:30px; }
+  .aircraft-view-tower-weather strong { font-size:23px; }
+  .aircraft-view-tower-weather small { font-size:10px; }
+  .aircraft-view-tower-journey { min-height:0; padding:3px 14px; }
+  .aircraft-view-tower-line { height:45px; }
+  .aircraft-view-photo-stage { top:180px; left:35vw; width:31vw; height:300px; }
+  .aircraft-view-center-focus { top:170px; right:5vw; width:155px; height:155px; }
+  .aircraft-view-center-focus strong { font-size:25px; }
+  .aircraft-view-geo-panel { top:354px; right:3vw; bottom:auto; width:31vw; }
+  .aircraft-view-geo-canvas { height:200px; }
+  .fire-demo-warning { bottom:88px; font-size:10px; }
+}
+
+.fire-demo-page .aircraft-view-tower-panel { grid-template-rows:52px minmax(0,1fr) minmax(0,1fr); }
+.fire-demo-page .aircraft-view-tower-journey { display:none; }
+.fire-demo-page .aircraft-view-tower-airport { justify-content:center; padding:10px 18px; }
+.fire-demo-page .aircraft-view-tower-weather { min-width:0; padding:6px 10px; }
+.fire-demo-page .aircraft-view-tower-weather>span { font-size:44px; }
+.fire-demo-page .aircraft-view-tower-weather strong { font-size:29px; }
+.fire-demo-page .aircraft-view-photo-stage { left:35vw; width:31vw; }
+.fire-demo-page .aircraft-view-center-focus { top:180px; right:7vw; }
+.fire-demo-page .aircraft-view-geo-panel { right:3vw; bottom:126px; width:33vw; }
+.aircraft-view-awake {
+  position:absolute;
+  z-index:9;
+  top:150px;
+  left:50%;
+  display:flex;
+  align-items:center;
+  gap:8px;
+  padding:7px 12px;
+  border:2px solid #fff;
+  border-radius:999px;
+  color:#174364;
+  background:rgba(255,255,255,.92);
+  box-shadow:0 8px 20px rgba(25,104,147,.15);
+  font-size:10px;
+  transform:translateX(-50%);
+}
+.aircraft-view-awake.active span { color:#f5a300; }
+.aircraft-view-awake.unavailable { color:#8a3f30; background:#fff3eb; }
+
 /* En-tête et navigation XavPac 6.1 */
 .app-v61 { width: min(1880px, calc(100% - 18px)); padding-top: 8px; }
 .header-v61 { min-height: 68px; padding: 9px 15px; border-radius: 15px; }
@@ -1828,14 +1882,20 @@ a { color: inherit; }
 .national-mission-card span { color: var(--muted); font-size: 8px; }
 .national-mission-card strong { margin-top: 5px; font-size: 11px; }
 .national-mission-card small { margin-top: 5px; color: #55bfff; font-size: 7px; }
-.national-map-marker { width:94px; display:grid; justify-items:center; gap:3px; filter:drop-shadow(0 5px 8px rgba(0,0,0,.5)); transition:.18s ease; }
-.national-marker-beacon { position:relative; width:48px; height:48px; display:grid; place-items:center; border:3px solid var(--national-color); border-radius:15px; color:#fff; background:linear-gradient(145deg,rgba(13,35,53,.98),rgba(2,12,22,.98)); box-shadow:0 0 0 2px rgba(255,255,255,.88),0 0 16px color-mix(in srgb,var(--national-color) 62%,transparent); }
-.national-marker-beacon::after { content:""; position:absolute; inset:5px; border:1px solid color-mix(in srgb,var(--national-color) 38%,transparent); border-radius:9px; pointer-events:none; }
-.national-marker-beacon svg { z-index:1; width:34px; height:34px; fill:#fff; filter:drop-shadow(0 2px 2px rgba(0,0,0,.55)); }
-.national-marker-beacon span { position:absolute; z-index:2; right:-18px; top:-9px; min-width:35px; padding:3px 5px; border:2px solid #fff; border-radius:6px; color:#06111d; background:var(--national-color); box-shadow:0 2px 6px rgba(0,0,0,.45); font-size:6px; font-weight:950; letter-spacing:.04em; text-align:center; }
-.national-map-marker>strong { max-width:92px; padding:3px 7px; border:1px solid rgba(255,255,255,.75); border-radius:7px; color:#fff; background:rgba(2,12,22,.96); box-shadow:0 3px 7px rgba(0,0,0,.42); font-size:8px; font-weight:950; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.national-map-marker.selected { z-index:3; transform:scale(1.16); }
-.national-map-marker.selected .national-marker-beacon { box-shadow:0 0 0 3px #fff,0 0 24px var(--national-color); }
+.national-map-marker { position:relative; width:110px; height:100px; filter:drop-shadow(0 7px 9px rgba(0,0,0,.42)); transition:.18s ease; transform-origin:55px 90px; }
+.national-marker-beacon { position:absolute; z-index:4; top:0; left:29px; width:52px; height:52px; display:grid; place-items:center; border:4px solid #fff; border-radius:19px; color:#fff; background:linear-gradient(145deg,color-mix(in srgb,var(--national-color) 86%,#fff),color-mix(in srgb,var(--national-color) 72%,#071b2c)); box-shadow:0 0 0 3px var(--national-color),0 10px 22px color-mix(in srgb,var(--national-color) 42%,transparent); transform:rotate(-4deg); }
+.national-marker-beacon::after { content:""; position:absolute; inset:5px; border:1px solid rgba(255,255,255,.55); border-radius:12px; pointer-events:none; }
+.national-marker-beacon img { position:absolute; z-index:1; inset:0; display:block; width:100%; max-width:100%; height:100%; object-fit:cover; border-radius:15px; }
+.national-marker-beacon .national-marker-fallback { z-index:1; display:grid; place-items:center; width:100%; height:100%; font-size:24px; filter:drop-shadow(0 2px 2px rgba(0,0,0,.3)); }
+.national-marker-beacon .national-marker-kind { position:absolute; z-index:5; right:-25px; top:-10px; min-width:42px; padding:4px 6px; border:3px solid #fff; border-radius:999px; color:#fff; background:#071b2c; box-shadow:0 3px 8px rgba(0,0,0,.32); font-size:7px; font-weight:950; letter-spacing:.04em; text-align:center; }
+.national-map-marker>strong { position:absolute; z-index:5; top:56px; left:50%; max-width:104px; padding:4px 8px; border:2px solid #fff; border-radius:999px; color:#071b2c; background:color-mix(in srgb,var(--national-color) 28%,#fff); box-shadow:0 4px 9px rgba(0,0,0,.24); font-size:8px; font-weight:950; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; transform:translateX(-50%); }
+.national-position-pin { position:absolute; z-index:3; left:50px; top:72px; width:11px; height:18px; border:3px solid #fff; border-radius:8px 8px 50% 50%; background:var(--national-color); box-shadow:0 0 0 3px color-mix(in srgb,var(--national-color) 35%,transparent); }
+.national-position-pin::after { content:""; position:absolute; left:50%; bottom:-8px; width:7px; height:7px; border:2px solid #fff; border-radius:50%; background:var(--national-color); transform:translateX(-50%); }
+.national-marker-pulse { position:absolute; z-index:1; left:35px; top:70px; width:40px; height:40px; border:3px solid var(--national-color); border-radius:50%; opacity:.42; animation:national-position-pulse 2s ease-out infinite; }
+@keyframes national-position-pulse { 0%{transform:scale(.3);opacity:.7} 75%,100%{transform:scale(1.4);opacity:0} }
+.national-map-marker.selected { z-index:3; transform:scale(1.2); }
+.national-map-marker.selected .national-marker-beacon { box-shadow:0 0 0 4px #fff,0 0 0 7px var(--national-color),0 12px 28px color-mix(in srgb,var(--national-color) 65%,transparent); }
+.national-map-marker.selected .national-position-pin::before { content:""; position:absolute; left:-20px; top:10px; width:44px; height:2px; background:color-mix(in srgb,var(--national-color) 75%,#071b2c); box-shadow:0 -21px 0 -1px transparent; }
 .national-map-marker.faded { opacity:.5; filter:grayscale(.35) drop-shadow(0 4px 6px rgba(0,0,0,.45)); }
 .ops-counter-symbol{width:25px!important;height:25px;display:grid!important;place-items:center;border:1px solid rgba(88,212,255,.35);border-radius:7px;color:#63d8ff;font-size:7px!important;font-weight:950}.ops-empty-symbol{width:62px;height:62px;display:grid!important;place-items:center;border:1px solid rgba(88,212,255,.3);border-radius:16px;color:#63d8ff;background:rgba(88,212,255,.08);font-size:15px!important;font-weight:950}
 .national-flightwall .fw-nearest-list button { grid-template-columns: 22px minmax(110px, .55fr) minmax(210px, 1.45fr) 76px; }
@@ -1874,6 +1934,12 @@ a { color: inherit; }
 .national-detail-photo { min-height: 176px; margin: 10px 0; overflow: hidden; border:1px solid rgba(87,151,201,.16); border-radius: 10px; background: rgba(0,0,0,.2); }
 .national-detail-photo img { width: 100%; height: 150px; display: block; object-fit: cover; object-position:center; }
 .national-detail-photo > small { display:block; padding:6px 8px; color:var(--muted); font-size:7px; }
+.national-header-real-photo { position:relative; width:132px; height:92px; overflow:hidden; border:3px solid #fff; border-radius:14px; background:#071b2c; box-shadow:0 8px 20px rgba(0,0,0,.3); transform:rotate(2deg); }
+.national-header-real-photo img { display:block; width:100%; height:100%; object-fit:cover; }
+.national-header-real-photo span { position:absolute; right:5px; bottom:5px; padding:3px 5px; border-radius:999px; color:#071b2c; background:#fff; font-size:6px; font-weight:950; letter-spacing:.08em; }
+.national-header-photo-missing { width:132px; height:92px; display:grid; place-content:center; gap:4px; border:1px dashed rgba(127,185,216,.36); border-radius:14px; color:#7f9db1; background:rgba(7,27,44,.7); text-align:center; }
+.national-header-photo-missing span { font-size:7px; font-weight:950; letter-spacing:.12em; }
+.national-header-photo-missing strong { font-size:8px; }
 .aircraft-photo-frame { position:relative; overflow:hidden; }
 .aircraft-photo-frame.loading .aircraft-type-illustration { opacity:.62; }
 .aircraft-type-illustration { min-height:138px; display:grid; place-items:center; align-content:center; gap:3px; padding:13px; color:#7fb9d8; background:radial-gradient(circle at center,rgba(48,166,236,.15),rgba(4,15,26,.86)); }
@@ -2269,6 +2335,296 @@ a { color: inherit; }
 .aircraft-view-map-button > span { font-size:26px; }
 .aircraft-view-map-button b { margin-left:auto; font-size:28px; }
 .aircraft-view-data-note { display:block; margin-top:8px; color:#7189a8; font-size:8px; text-align:center; }
+
+/* Vue avion 6.4.2 : ambiance adaptée à la famille, photo centrale et repérage prioritaire. */
+.aircraft-view { --family-accent:#35b9ff; }
+.aircraft-view.aircraft-family-medical { --family-accent:#35df9a; }
+.aircraft-view.aircraft-family-fire,.aircraft-view.aircraft-family-civil-security { --family-accent:#ff713c; }
+.aircraft-view.aircraft-family-military,.aircraft-view.aircraft-family-public-service { --family-accent:#9d8cff; }
+.aircraft-view.aircraft-family-helicopter { --family-accent:#39d2e9; }
+.aircraft-view.aircraft-family-remarkable { --family-accent:#ffca38; }
+.aircraft-view.aircraft-family-light { --family-accent:#7ddc6f; }
+.aircraft-view .aircraft-view-hero { background:radial-gradient(circle at 72% 26%,color-mix(in srgb,var(--family-accent) 34%,transparent),transparent 34%),radial-gradient(circle at 50% 35%,#0f5b9a,#03152b 72%); }
+.aircraft-view-family-banner { position:absolute; z-index:8; top:112px; left:38vw; display:flex; align-items:center; gap:10px; padding:9px 14px; border:1px solid color-mix(in srgb,var(--family-accent) 75%,#fff); border-radius:999px; color:#fff; background:color-mix(in srgb,var(--family-accent) 34%,rgba(2,15,34,.92)); box-shadow:0 0 26px color-mix(in srgb,var(--family-accent) 34%,transparent); }
+.aircraft-view-family-banner span { font-size:22px; }.aircraft-view-family-banner strong { font-size:12px; letter-spacing:.08em; }.aircraft-view-family-banner small { color:#d9e9f7; font-size:8px; }
+.aircraft-view-photo-stage { top:150px; right:3vw; bottom:auto; left:auto; width:clamp(250px,22vw,400px); height:clamp(145px,20vh,230px); padding:8px; border:1px solid color-mix(in srgb,var(--family-accent) 55%,transparent); border-radius:18px; background:rgba(2,15,34,.74); }
+.aircraft-view-focus-media { mask-image:none; border-radius:12px; overflow:hidden; }
+.aircraft-view-focus-media>img { object-fit:cover; }
+.aircraft-view-tower-panel,.aircraft-view-geo-panel,.aircraft-view-distance-callout { border-color:color-mix(in srgb,var(--family-accent) 68%,transparent); }
+.aircraft-view-tower-city h3 { font-size:clamp(42px,3.9vw,76px); }
+.aircraft-view-geo-panel { width:clamp(520px,58vw,1100px); }
+.aircraft-view-geo-canvas { height:clamp(245px,31vh,370px); }
+.aircraft-view-distance-callout strong { color:var(--family-accent); }
+.aircraft-view-metrics > div:last-child svg { stroke:var(--family-accent); }
+
+/* Lecture à distance : le logo devient l'identité visuelle principale.
+   La photo reste volontairement une vignette secondaire. */
+.aircraft-view-company {
+  padding:8px 12px;
+  border:1px solid color-mix(in srgb,var(--family-accent) 48%,transparent);
+  border-radius:16px;
+  background:rgba(2,15,34,.82);
+  box-shadow:0 12px 32px rgba(0,0,0,.34);
+  backdrop-filter:blur(14px);
+}
+.aircraft-view-company .operator-brand { gap:15px; }
+.aircraft-view-company .operator-brand img {
+  min-width:110px;
+  max-width:min(280px,25vw);
+  height:72px;
+  padding:8px 14px;
+  border:2px solid rgba(255,255,255,.76);
+  border-radius:13px;
+  background:#fff;
+}
+.aircraft-view-company .operator-brand strong {
+  max-width:320px;
+  font-size:clamp(18px,1.7vw,29px);
+}
+.aircraft-view-photo-stage {
+  top:clamp(170px,20vh,215px);
+  right:3vw;
+  width:clamp(185px,15vw,260px);
+  height:clamp(100px,12vh,135px);
+  padding:5px;
+  border-radius:13px;
+  opacity:.9;
+}
+.aircraft-view-focus-media { border-radius:9px; }
+.aircraft-view-focus-media>small { font-size:5px; }
+.aircraft-view-tower-city { align-items:flex-start; }
+.aircraft-view-tower-city h3 {
+  overflow:visible;
+  font-size:clamp(34px,3vw,58px);
+  line-height:.92;
+  text-overflow:clip;
+  white-space:normal;
+}
+.aircraft-view-national-alert { top:108px; left:3vw; }
+
+/* Vue avion claire et ludique : trois zones équilibrées, lisibles à distance. */
+.aircraft-view { color:#0a2d4d; }
+.aircraft-view .aircraft-view-hero {
+  background:
+    radial-gradient(circle at 52% 40%,color-mix(in srgb,var(--family-accent) 24%,transparent),transparent 25%),
+    linear-gradient(155deg,#f8fdff 0%,#d9f3ff 46%,#bfe7ff 100%);
+}
+.aircraft-view-terrain {
+  background:
+    radial-gradient(circle at 76% 16%,rgba(255,255,255,.94) 0 5%,transparent 5.3%),
+    linear-gradient(180deg,rgba(255,255,255,.2),rgba(74,180,233,.16));
+}
+.aircraft-view-terrain::before {
+  bottom:-16%;
+  height:49%;
+  opacity:.34;
+  background:repeating-radial-gradient(ellipse at 55% 115%,transparent 0 36px,rgba(31,130,174,.22) 37px 39px,transparent 40px 74px);
+}
+.aircraft-view-terrain::after { opacity:.18; }
+.aircraft-view-shade { background:linear-gradient(180deg,rgba(255,255,255,.58),transparent 24%,transparent 82%,rgba(46,146,203,.12)); }
+.aircraft-view-header { padding:22px 3vw 16px; }
+.aircraft-view-title h2,.aircraft-view-title p,.aircraft-view-company .operator-brand strong { color:#092b48; text-shadow:none; }
+.aircraft-view-title > button { color:#073356; border-color:rgba(8,74,115,.2); background:rgba(255,255,255,.78); }
+.aircraft-view-title b { color:#08733d; background:#e8fff2; }
+.aircraft-view-title em { color:#075985; background:#e5f6ff; }
+.aircraft-view-company { background:rgba(255,255,255,.86); box-shadow:0 12px 30px rgba(19,92,133,.16); }
+.aircraft-view-family-banner { top:104px; left:50%; color:#07314f; background:rgba(255,255,255,.88); transform:translateX(-50%); }
+.aircraft-view-family-banner small { color:#476980; }
+.aircraft-view-national-alert { top:104px; left:3vw; color:#fff; }
+.aircraft-view-photo-stage { top:132px; right:3vw; width:190px; height:105px; background:rgba(255,255,255,.88); box-shadow:0 10px 24px rgba(18,83,120,.16); }
+.aircraft-view-tower-panel {
+  top:180px;
+  bottom:126px;
+  left:3vw;
+  width:29vw;
+  border-color:color-mix(in srgb,var(--family-accent) 58%,#65a9ce);
+  color:#092c49;
+  background:rgba(255,255,255,.9);
+  box-shadow:0 18px 42px rgba(19,92,133,.18);
+}
+.aircraft-view-tower-panel>header { background:linear-gradient(90deg,#e5f7ff,#f8fdff); }
+.aircraft-view-tower-panel>header strong,.aircraft-view-tower-city h3,.aircraft-view-tower-weather strong,.aircraft-view-tower-journey strong { color:#092c49; text-shadow:none; }
+.aircraft-view-tower-weather small,.aircraft-view-tower-journey small { color:#527087; }
+.aircraft-view-tower-journey { background:#edf8fe; }
+.aircraft-view-center-focus {
+  position:absolute;
+  z-index:6;
+  top:clamp(190px,24vh,245px);
+  bottom:clamp(170px,21vh,220px);
+  left:35vw;
+  width:27vw;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  padding:20px;
+  border:3px solid color-mix(in srgb,var(--family-accent) 72%,#fff);
+  border-radius:42% 58% 48% 52% / 46% 42% 58% 54%;
+  color:#082c49;
+  background:rgba(255,255,255,.76);
+  box-shadow:0 20px 55px rgba(22,111,161,.2),inset 0 0 45px color-mix(in srgb,var(--family-accent) 13%,transparent);
+  animation:aircraft-focus-float 4s ease-in-out infinite;
+  backdrop-filter:blur(12px);
+}
+@keyframes aircraft-focus-float { 0%,100%{transform:translateY(0) rotate(-1deg)} 50%{transform:translateY(-8px) rotate(1deg)} }
+.aircraft-view-center-kicker { color:#417089; font-size:clamp(10px,.8vw,14px); font-weight:950; letter-spacing:.18em; }
+.aircraft-view-center-icon { margin:15px 0 4px; color:var(--family-accent); font-size:clamp(70px,7vw,120px); line-height:.8; filter:drop-shadow(0 12px 15px rgba(15,95,137,.2)); }
+.aircraft-view-center-focus strong { font-size:clamp(38px,4vw,72px); line-height:1; }
+.aircraft-view-center-focus b { margin-top:6px; color:#0c6a9d; font-size:clamp(25px,2.4vw,42px); }
+.aircraft-view-center-focus small { margin-top:15px; padding:8px 12px; border-radius:999px; color:#294e66; background:#fff; font-size:clamp(9px,.8vw,13px); font-weight:900; }
+.aircraft-view-geo-panel { right:3vw; bottom:126px; width:33vw; border-color:#5bb8e5; background:#fff; box-shadow:0 18px 42px rgba(19,92,133,.18); transform:none; }
+.aircraft-view-geo-panel>header { background:linear-gradient(90deg,#dff5ff,#f8fdff); }
+.aircraft-view-geo-panel>header strong { color:#092c49; }
+.aircraft-view-geo-canvas { height:clamp(270px,36vh,420px); transform:none; }
+.aircraft-view-distance-callout { display:none; }
+.aircraft-view-footer { color:#092c49; border-color:rgba(44,130,178,.2); background:rgba(244,251,255,.98); box-shadow:0 -12px 32px rgba(30,101,141,.14); }
+.aircraft-view-metrics > div { border-color:rgba(42,137,188,.25); background:#fff; box-shadow:0 7px 18px rgba(26,97,137,.08); }
+.aircraft-view-metrics span { color:#527087; }
+.aircraft-view-metrics strong { color:#092c49; }
+.aircraft-view-data-note { color:#648096; }
+
+/* Ajustements validés : avion plus présent, boussole compacte, météo expressive. */
+.aircraft-view-photo-stage {
+  top:126px;
+  right:3vw;
+  width:clamp(290px,25vw,430px);
+  height:clamp(165px,21vh,230px);
+  padding:7px;
+  border-width:2px;
+  border-radius:20px;
+  opacity:1;
+}
+.aircraft-view-focus-media { border-radius:14px; }
+.aircraft-view-center-focus {
+  top:clamp(255px,31vh,315px);
+  bottom:clamp(220px,27vh,285px);
+  left:38vw;
+  width:21vw;
+  min-height:250px;
+  border-radius:50%;
+}
+.aircraft-view-center-icon { margin:10px 0 2px; font-size:clamp(52px,5vw,82px); }
+.aircraft-view-center-focus strong { font-size:clamp(31px,3.1vw,54px); }
+.aircraft-view-center-focus b { font-size:clamp(21px,1.9vw,32px); }
+.aircraft-view-center-focus small { margin-top:10px; }
+.aircraft-view-geo-panel {
+  width:35vw;
+  border:3px solid #62c6e9;
+  border-radius:28px;
+  box-shadow:0 18px 38px rgba(18,106,151,.16),0 0 0 8px rgba(255,255,255,.5);
+}
+.aircraft-view-geo-panel>header {
+  background:linear-gradient(90deg,#fff3a8,#c7f2ff 48%,#d9ffd2);
+}
+.aircraft-view-geo-canvas .leaflet-tile-pane {
+  filter:saturate(.68) brightness(1.12) contrast(.82) !important;
+}
+.aircraft-view-geo-canvas::after {
+  background:linear-gradient(135deg,rgba(255,242,153,.14),transparent 38%,rgba(112,221,255,.12));
+}
+.aircraft-view-tower-weather {
+  width:max-content;
+  min-width:230px;
+  padding:9px 14px 9px 10px;
+  border:2px solid rgba(75,184,226,.2);
+  border-radius:22px;
+  background:linear-gradient(120deg,#fff8c8,#eafaff);
+  box-shadow:0 8px 18px rgba(33,121,163,.1);
+}
+.aircraft-view-tower-weather>span {
+  font-size:clamp(58px,4.6vw,84px);
+  filter:drop-shadow(0 7px 8px rgba(238,175,20,.22));
+}
+.aircraft-view-tower-weather strong { font-size:clamp(28px,2.35vw,42px); }
+.aircraft-view-tower-weather small { font-size:clamp(11px,.9vw,15px); }
+
+/* Hiérarchie finale : l'avion au centre, la boussole en repère secondaire. */
+.aircraft-view-photo-stage {
+  top:clamp(190px,22vh,235px);
+  right:auto;
+  left:35vw;
+  width:31vw;
+  height:clamp(330px,43vh,500px);
+  padding:10px;
+  border-width:3px;
+  border-radius:34px;
+  box-shadow:0 24px 55px rgba(20,103,149,.22),0 0 0 9px rgba(255,255,255,.48);
+}
+.aircraft-view-focus-media { border-radius:25px; }
+.aircraft-view-focus-media>img { object-fit:cover; }
+.aircraft-view-center-focus {
+  top:clamp(330px,39vh,410px);
+  bottom:auto;
+  left:auto;
+  right:4vw;
+  width:clamp(170px,13vw,235px);
+  height:clamp(170px,20vh,225px);
+  min-height:0;
+  padding:13px;
+  border-width:2px;
+  border-radius:50%;
+}
+.aircraft-view-center-kicker { font-size:8px; letter-spacing:.12em; }
+.aircraft-view-center-icon { margin:6px 0 0; font-size:clamp(35px,3vw,52px); }
+.aircraft-view-center-focus strong { font-size:clamp(23px,2.1vw,35px); }
+.aircraft-view-center-focus b { margin-top:2px; font-size:clamp(16px,1.35vw,23px); }
+.aircraft-view-center-focus small { margin-top:5px; padding:5px 8px; font-size:7px; }
+
+/* Carte de proximité épurée : seuls le point d'observation, l'avion et le lien dominent. */
+.aircraft-view-geo-canvas .leaflet-tile-pane {
+  opacity:.78;
+  filter:saturate(.48) brightness(1.18) contrast(.72) !important;
+}
+.aircraft-view-geo-canvas .leaflet-overlay-pane { filter:drop-shadow(0 3px 4px rgba(44,35,83,.24)); }
+.aircraft-view-geo-canvas .xavpac-aircraft-marker { transform:scale(1.06); }
+.aircraft-view-geo-canvas .xavpac-aircraft-marker.is-selected .xavpac-aircraft-svg {
+  filter:drop-shadow(0 0 11px #fff) drop-shadow(0 0 15px #ff3f88) drop-shadow(0 6px 7px rgba(0,0,0,.38));
+}
+.aircraft-view-geo-canvas .xavpac-aircraft-marker.is-selected .xavpac-aircraft-label {
+  border:3px solid #fff;
+  background:#ff3f88;
+  box-shadow:0 7px 18px rgba(182,29,94,.32);
+}
+.aircraft-view-geo-canvas .xavpac-home-marker.compact {
+  width:25px;
+  height:25px;
+  border:4px solid #fff;
+  background:#286cff;
+  box-shadow:0 0 0 7px rgba(40,108,255,.2),0 6px 13px rgba(16,59,146,.32);
+}
+.aircraft-view-geo-canvas .xavpac-home-marker.compact::after {
+  content:"VOUS";
+  position:absolute;
+  top:28px;
+  left:50%;
+  padding:4px 8px;
+  border:2px solid #fff;
+  border-radius:999px;
+  color:#fff;
+  background:#286cff;
+  font-size:9px;
+  font-weight:950;
+  transform:translateX(-50%);
+}
+.fire-demo-warning {
+  position:fixed;
+  z-index:10020;
+  left:50%;
+  bottom:104px;
+  padding:10px 18px;
+  border:3px solid #fff;
+  border-radius:999px;
+  color:#fff;
+  background:#c62828;
+  box-shadow:0 8px 24px rgba(120,0,0,.3);
+  font-size:13px;
+  font-weight:950;
+  letter-spacing:.08em;
+  transform:translateX(-50%);
+  white-space:nowrap;
+}
+@media(max-width:1100px){.aircraft-view-family-banner{top:94px;left:42vw}.aircraft-view-photo-stage{top:135px;width:30vw;height:150px}.aircraft-view-tower-city h3{font-size:38px}}
+@media(max-width:720px){.aircraft-view-family-banner{top:102px;left:8px;right:8px;justify-content:center}.aircraft-view-family-banner small{display:none}.aircraft-view-photo-stage{top:148px;right:8px;width:45vw;height:120px}.aircraft-view-tower-city h3{font-size:29px}.aircraft-view-geo-canvas{height:245px}}
 
 @media (max-width: 950px) {
   .aircraft-view { overflow-y:auto; }
