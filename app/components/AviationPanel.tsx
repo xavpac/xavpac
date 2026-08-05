@@ -683,18 +683,19 @@ export default function AviationPanel() {
 
   async function searchObserverCommune() {
     if (!observerCommune.trim()) return;
-    setObserverMessage("Recherche de la commune…");
+    setObserverMessage("Recherche de l’adresse dans la Base Adresse Nationale…");
     try {
-      const response = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(observerCommune)}&count=5&language=fr&countryCode=FR`);
+      const response = await fetch(`https://data.geopf.fr/geocodage/search?q=${encodeURIComponent(observerCommune)}&index=address&limit=1`);
       const payload = await response.json();
-      const result = payload.results?.[0];
-      if (!result || !Number.isFinite(result.latitude) || !Number.isFinite(result.longitude)) {
-        setObserverMessage("Commune introuvable.");
+      const result = payload.features?.[0];
+      const coordinates = result?.geometry?.coordinates;
+      if (!Array.isArray(coordinates) || !Number.isFinite(coordinates[0]) || !Number.isFinite(coordinates[1])) {
+        setObserverMessage("Adresse introuvable dans la Base Adresse Nationale.");
         return;
       }
-      setObserverPoint([result.latitude, result.longitude], `${result.name}${result.admin1 ? ` — ${result.admin1}` : ""}`);
+      setObserverPoint([coordinates[1], coordinates[0]], `${result.properties?.label ?? observerCommune} • source IGN/BAN`);
     } catch {
-      setObserverMessage("Recherche de commune momentanément indisponible.");
+      setObserverMessage("Service officiel de recherche d’adresse momentanément indisponible.");
     }
   }
 
@@ -767,7 +768,7 @@ export default function AviationPanel() {
       <div className={`aviation-location-panel panel ${observerPosition ? "ready" : "missing"}`}>
         <div className="aviation-location-state"><span>POSITION D’OBSERVATION</span><strong>{observerStatus}</strong><small>{observerPosition ? "Les avions, distances et passages sont calculés depuis ce point." : "Aucun trafic local n’est affiché tant que votre position n’est pas fiable."}</small></div>
         <div className="aviation-location-inputs">
-          <label>Commune <span><input value={observerCommune} onChange={(event) => setObserverCommune(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void searchObserverCommune(); } }} placeholder="Ex. Mâcon" /><button type="button" onClick={() => void searchObserverCommune()}>Me placer</button></span></label>
+          <label>Adresse ou commune <span><input value={observerCommune} onChange={(event) => setObserverCommune(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void searchObserverCommune(); } }} placeholder="Ex. 12 rue…, 01380 Bâgé-Dommartin" /><button type="button" onClick={() => void searchObserverCommune()}>Me placer</button></span></label>
           <label>Latitude, longitude <span><input value={observerCoordinates} onChange={(event) => setObserverCoordinates(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); applyObserverCoordinates(); } }} placeholder="46.306, 4.831" /><button type="button" onClick={applyObserverCoordinates}>Appliquer</button></span></label>
           <button type="button" className="aviation-gps-retry" onClick={useGpsObserver}>{manualObserver ? "Reprendre le GPS" : "Relancer le GPS"}</button>
           <button type="button" className="aviation-home-save" disabled={!observerPosition} onClick={saveCurrentHome}>🏠 Enregistrer ce HOME</button>

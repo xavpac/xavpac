@@ -1088,7 +1088,14 @@ a { color: inherit; }
 .spotting-log-empty { padding:70px 20px; text-align:center; background:linear-gradient(145deg,#fff,#effaff); }
 .spotting-log-empty b { font-size:58px; }.spotting-log-empty h3 { margin:8px 0; font-size:24px; }.spotting-log-empty p { color:#60788a; }
 .aviation-home-save { color:#744c00; background:#fff0b7; }.aviation-home-use { color:#fff; background:#15a8c4; }
+.home-traffic { padding:22px; color:#173b56; background:linear-gradient(135deg,#e6fbff,#fff9d5); }
+.home-traffic>header { display:flex; align-items:flex-end; justify-content:space-between; gap:16px; }
+.home-traffic>header span { color:#f53e80; font-size:10px; font-weight:950; letter-spacing:.12em; }.home-traffic h3 { margin:4px 0 0; font-size:25px; }
+.home-traffic label { display:grid; gap:5px; color:#60798c; font-size:10px; font-weight:900; text-transform:uppercase; }.home-traffic select { min-width:130px; padding:10px 12px; border:1px solid #cce1e8; border-radius:11px; color:#173b56; background:#fff; font-weight:900; }
+.home-traffic-periods { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-top:18px; }.home-traffic-periods article { padding:16px; border-radius:17px; background:rgba(255,255,255,.86); box-shadow:0 8px 24px rgba(36,90,115,.08); }.home-traffic-periods small,.home-traffic-periods strong,.home-traffic-periods span,.home-traffic-periods em { display:block; }.home-traffic-periods small { color:#637e91; font-weight:900; }.home-traffic-periods strong { margin-top:3px; color:#ff3f88; font-size:38px; }.home-traffic-periods span { font-size:11px; font-weight:950; text-transform:uppercase; }.home-traffic-periods em { margin-top:8px; color:#6b62d9; font-size:10px; font-style:normal; font-weight:900; }
+.home-traffic>p { margin:14px 0 0; color:#60798c; font-size:11px; font-weight:700; }.home-traffic .home-traffic-missing { padding:20px; border-radius:14px; background:#fff; font-size:13px; }
 @media(max-width:800px){.spotting-log-hero{grid-template-columns:1fr}.spotting-log-toolbar{align-items:stretch;flex-direction:column}.spotting-log-toolbar>div{overflow:auto}.spotting-card{grid-template-columns:105px 1fr}}
+@media(max-width:800px){.home-traffic>header{align-items:stretch;flex-direction:column}.home-traffic-periods{grid-template-columns:repeat(2,1fr)}}
 
 @media (min-width:951px) and (max-width:1500px) {
   .aircraft-view-header { padding:20px 3vw 12px; }

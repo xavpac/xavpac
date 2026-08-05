@@ -3,6 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { readObservations, type SpottingObservation } from "../lib/aviation/observations";
+import { distanceKm } from "../lib/aviation/geometry";
+
+const SAVED_HOME_KEY = "xavpac:saved-observer-home-v1";
 
 const confidenceLabel = {
   confirmed: "🟢 Confirmée",
@@ -35,8 +38,16 @@ export default function SpottingLogPanel() {
   const [observations, setObservations] = useState<SpottingObservation[]>([]);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"all" | "remarkable" | "fire">("all");
+  const [home, setHome] = useState<[number, number] | null>(null);
+  const [homeRadius, setHomeRadius] = useState(5);
 
-  useEffect(() => setObservations(readObservations()), []);
+  useEffect(() => {
+    setObservations(readObservations());
+    try {
+      const parsed = JSON.parse(window.localStorage.getItem(SAVED_HOME_KEY) ?? "null");
+      if (Array.isArray(parsed) && parsed.length === 2 && parsed.every(Number.isFinite)) setHome(parsed as [number, number]);
+    } catch { setHome(null); }
+  }, []);
 
   const filtered = useMemo(() => observations.filter((item) => {
     const labels = observationLabels(item);
@@ -63,6 +74,22 @@ export default function SpottingLogPanel() {
     return { all, home };
   }, [observations]);
 
+  const homeTraffic = useMemo(() => {
+    const periods = [
+      { key: "day", label: "24 heures", duration: 24 * 60 * 60 * 1000 },
+      { key: "week", label: "7 jours", duration: 7 * 24 * 60 * 60 * 1000 },
+      { key: "month", label: "30 jours", duration: 30 * 24 * 60 * 60 * 1000 },
+      { key: "year", label: "365 jours", duration: 365 * 24 * 60 * 60 * 1000 }
+    ];
+    if (!home) return periods.map((period) => ({ ...period, count: 0, perKm: 0 }));
+    const now = Date.now();
+    const nearby = observations.filter((item) => Number.isFinite(item.latitude) && Number.isFinite(item.longitude) && distanceKm(home, [item.latitude, item.longitude]) <= homeRadius);
+    return periods.map((period) => {
+      const count = nearby.filter((item) => now - Date.parse(item.observedAt) <= period.duration).length;
+      return { ...period, count, perKm: count / homeRadius };
+    });
+  }, [home, homeRadius, observations]);
+
   return <section className="spotting-log">
     <header className="spotting-log-hero panel">
       <div><span>MON CARNET</span><h2>Les avions que j’ai croisés ✈️</h2><p>Enregistré uniquement sur cet appareil. Aucune donnée personnelle n’est envoyée ailleurs.</p></div>
@@ -73,6 +100,14 @@ export default function SpottingLogPanel() {
         <article><strong>{stats.remarkable}</strong><span>remarquables</span></article>
       </div>
     </header>
+
+    <section className="home-traffic panel">
+      <header><div><span>🏠 TRAFIC AU-DESSUS DE HOME</span><h3>Combien d’avions passent près de chez moi ?</h3></div><label>Rayon analysé <select value={homeRadius} onChange={(event) => setHomeRadius(Number(event.target.value))}>{[1, 2, 5, 10, 20, 50].map((radius) => <option key={radius} value={radius}>{radius} km</option>)}</select></label></header>
+      {!home ? <p className="home-traffic-missing">Enregistrez d’abord votre position avec le bouton « Enregistrer ce HOME » dans l’onglet Trafic.</p> : <>
+        <div className="home-traffic-periods">{homeTraffic.map((period) => <article key={period.key}><small>Derniers {period.label}</small><strong>{period.count}</strong><span>passage{period.count > 1 ? "s" : ""}</span><em>{period.perKm.toFixed(1)} passage{period.perKm >= 2 ? "s" : ""} / km</em></article>)}</div>
+        <p>Calcul effectué localement dans un rayon de {homeRadius} km autour de HOME. Une observation correspond à un appareil identifié pendant une tranche horaire ; ce n’est pas un comptage radar certifié.</p>
+      </>}
+    </section>
 
     <div className="spotting-log-toolbar panel">
       <input aria-label="Rechercher dans le carnet" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Rechercher un avion, une immatriculation…" />
