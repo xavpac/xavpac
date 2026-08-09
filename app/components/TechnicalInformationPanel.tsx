@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { BUILD_INFO, DATA_UPDATE_EVENT, type DataModule } from "../lib/buildInfo";
+import { getBrowserStorage, safeGetItem } from "../lib/safeStorage";
 
 type SourceDiagnostic = {
   id: string;
@@ -29,11 +30,16 @@ const emptyUpdates = { aviation: null, operations: null, drone: null, weather: n
 const stateLabels = { available: "Disponible", degraded: "Dégradée", offline: "Hors ligne", disabled: "Désactivée" };
 
 function readUpdates() {
-  return Object.fromEntries(modules.map(([key]) => [key, localStorage.getItem(`xavpac:update:${key}`)])) as Record<DataModule, string | null>;
+  const storage = getBrowserStorage("local");
+  return Object.fromEntries(modules.map(([key]) => {
+    const value = safeGetItem(storage, `xavpac:update:${key}`);
+    return [key, value && Number.isFinite(Date.parse(value)) ? value : null];
+  })) as Record<DataModule, string | null>;
 }
 
 function displayDate(value: string | null, fallback = "Non actualisée sur cet appareil") {
-  return value ? new Date(value).toLocaleString("fr-FR") : fallback;
+  if (!value || !Number.isFinite(Date.parse(value))) return fallback;
+  try { return new Date(value).toLocaleString("fr-FR"); } catch { return fallback; }
 }
 
 export default function TechnicalInformationPanel() {

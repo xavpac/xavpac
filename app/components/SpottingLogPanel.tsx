@@ -4,8 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { readObservations, type SpottingObservation } from "../lib/aviation/observations";
 import { distanceKm } from "../lib/aviation/geometry";
+import { getBrowserStorage, isCoordinatePair, parseStoredJson, safeGetItem, XAVPAC_STORAGE_KEYS } from "../lib/safeStorage";
 
-const SAVED_HOME_KEY = "xavpac:saved-observer-home-v1";
+const SAVED_HOME_KEY = XAVPAC_STORAGE_KEYS.savedHome;
 
 const confidenceLabel = {
   confirmed: "🟢 Confirmée",
@@ -43,10 +44,8 @@ export default function SpottingLogPanel() {
 
   useEffect(() => {
     setObservations(readObservations());
-    try {
-      const parsed = JSON.parse(window.localStorage.getItem(SAVED_HOME_KEY) ?? "null");
-      if (Array.isArray(parsed) && parsed.length === 2 && parsed.every(Number.isFinite)) setHome(parsed as [number, number]);
-    } catch { setHome(null); }
+    const parsed = parseStoredJson(safeGetItem(getBrowserStorage("local"), SAVED_HOME_KEY));
+    setHome(isCoordinatePair(parsed) ? parsed : null);
   }, []);
 
   const filtered = useMemo(() => observations.filter((item) => {

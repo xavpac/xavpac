@@ -1,4 +1,5 @@
 import type { AirportIdentity, EnrichedAircraft } from "./types";
+import { getBrowserStorage, parseStoredJson, safeGetItem, safeWriteJson, XAVPAC_STORAGE_KEYS } from "../safeStorage.ts";
 
 export type SpottingObservation = {
   id: string;
@@ -24,15 +25,76 @@ export type SpottingObservation = {
   observationSite?: "home" | "other";
 };
 
-const STORAGE_KEY = "xavpac-spotting-observations-v1";
+const STORAGE_KEY = XAVPAC_STORAGE_KEYS.observations;
 const MAX_OBSERVATIONS = 2500;
 
+const routeConfidences = new Set<EnrichedAircraft["routeConfidence"]>(["confirmed", "probable", "inferred", "unavailable"]);
+
+function nullableString(value: unknown) {
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function nullableNumber(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function normalizeAirport(value: unknown): AirportIdentity | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const airport = value as Record<string, unknown>;
+  return {
+    name: nullableString(airport.name),
+    municipality: nullableString(airport.municipality),
+    iata: nullableString(airport.iata),
+    icao: nullableString(airport.icao),
+    latitude: nullableNumber(airport.latitude),
+    longitude: nullableNumber(airport.longitude)
+  };
+}
+
+export function normalizeObservation(value: unknown): SpottingObservation | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const observation = value as Record<string, unknown>;
+  const modeS = nullableString(observation.modeS);
+  const observedAt = nullableString(observation.observedAt);
+  const latitude = nullableNumber(observation.latitude);
+  const longitude = nullableNumber(observation.longitude);
+  if (!modeS || !observedAt || !Number.isFinite(Date.parse(observedAt)) || latitude === null || longitude === null) return null;
+  const id = nullableString(observation.id) ?? `${modeS}:${observedAt}`;
+  const routeConfidence = routeConfidences.has(observation.routeConfidence as EnrichedAircraft["routeConfidence"])
+    ? observation.routeConfidence as EnrichedAircraft["routeConfidence"]
+    : "unavailable";
+  const remarkableLabels = Array.isArray(observation.remarkableLabels)
+    ? observation.remarkableLabels.filter((item): item is string => typeof item === "string")
+    : undefined;
+  return {
+    id,
+    modeS,
+    callsign: nullableString(observation.callsign),
+    registration: nullableString(observation.registration),
+    observedAt,
+    latitude,
+    longitude,
+    distanceKm: nullableNumber(observation.distanceKm),
+    altitudeMeters: nullableNumber(observation.altitudeMeters),
+    operator: nullableString(observation.operator),
+    aircraftType: nullableString(observation.aircraftType),
+    photoUrl: nullableString(observation.photoUrl) ?? "",
+    departureAirport: normalizeAirport(observation.departureAirport),
+    arrivalAirport: normalizeAirport(observation.arrivalAirport),
+    routeConfidence,
+    routeSource: nullableString(observation.routeSource),
+    remarkableLabels,
+    positionSource: nullableString(observation.positionSource),
+    observerLatitude: nullableNumber(observation.observerLatitude),
+    observerLongitude: nullableNumber(observation.observerLongitude),
+    observationSite: observation.observationSite === "home" ? "home" : "other"
+  };
+}
+
 export function readObservations(): SpottingObservation[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const value = JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "[]");
-    return Array.isArray(value) ? value : [];
-  } catch { return []; }
+  const value = parseStoredJson(safeGetItem(getBrowserStorage("local"), STORAGE_KEY));
+  if (!Array.isArray(value)) return [];
+  return value.map(normalizeObservation).filter((item): item is SpottingObservation => item !== null).slice(0, MAX_OBSERVATIONS);
 }
 
 export function recordObservations(values: SpottingObservation[]) {
@@ -46,7 +108,7 @@ export function recordObservations(values: SpottingObservation[]) {
       : value);
   }
   const next = [...byPassage.values()].sort((a, b) => b.observedAt.localeCompare(a.observedAt)).slice(0, MAX_OBSERVATIONS);
-  try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch { /* stockage privé ou plein */ }
+  safeWriteJson(getBrowserStorage("local"), STORAGE_KEY, next);
 }
 
 export function deducedRoute(callsign: string | null) {

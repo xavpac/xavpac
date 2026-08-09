@@ -182,6 +182,18 @@ test("recalcule la distance depuis les coordonnées GPS exactes fournies", () =>
   const fromExactGps = analyze(store, current, 8, [46, 3.95]);
   const fromApproximatePlace = analyze(store, current, 8, [46, 4.25]);
   assert.ok((fromExactGps.currentDistanceKm ?? Infinity) < (fromApproximatePlace.currentDistanceKm ?? 0));
+  assert.ok((fromExactGps.observedMinimumDistanceKm ?? Infinity) < (fromApproximatePlace.observedMinimumDistanceKm ?? 0));
+});
+
+test("estime l'altitude au passage uniquement avec un taux vertical disponible", () => {
+  const store = approachingHistory("ALT001");
+  const current = { ...aircraft("ALT001", 3.86), verticalRateMetersPerSecond: -2 };
+  const result = analyze(store, current);
+  assert.ok((result.estimatedSecondsToClosest ?? 0) > 0);
+  assert.ok((result.estimatedAltitudeAtClosestMeters ?? Infinity) < 1000);
+
+  const withoutVerticalRate = analyze(store, aircraft("ALT001", 3.86));
+  assert.equal(withoutVerticalRate.estimatedAltitudeAtClosestMeters, null);
 });
 
 test("une position unique reste en attente même avec cap et vitesse", () => {
@@ -201,6 +213,7 @@ test("la fonction de priorité accepte un résultat sans alerte", () => {
     estimatedSecondsToClosest: null,
     estimatedMinimumDistanceKm: 9,
     observedMinimumDistanceKm: 12,
+    estimatedAltitudeAtClosestMeters: null,
     secondsSinceClosest: null,
     passageSide: null,
     freshnessSeconds: 2,

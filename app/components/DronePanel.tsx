@@ -8,6 +8,7 @@ import { reportDataUpdate } from "../lib/buildInfo";
 import { detectRemarkable } from "../lib/aviation/remarkable";
 import { distanceKm } from "../lib/aviation/geometry";
 import type { LiveAircraft } from "../lib/aviation/liveAircraft";
+import type { SofiaNotam } from "../lib/aviation/sofiaNotams";
 import { readNotamInFrench } from "../lib/aviation/notam";
 import {
   assessRtba,
@@ -24,6 +25,10 @@ import {
   PassageHistoryStore,
   type PassageAnalysis
 } from "../lib/aviation/passageTracker";
+import { getBrowserStorage, isCoordinatePair, parseStoredJson, safeGetItem, safeRemoveItem, safeWriteJson, XAVPAC_STORAGE_KEYS } from "../lib/safeStorage";
+import { assessNotamForMission } from "../lib/drone/notamMission";
+import { DRONE_TIME_ZONE, formatMissionLocal, normalizeStoredDroneMission, resolveMissionWindow } from "../lib/drone/mission";
+import { evaluateRtbaMission, type RtbaActivationFeed } from "../lib/drone/rtbaSchedule";
 
 const StableMap = dynamic(() => import("./StableMap"), { ssr: false });
 
@@ -43,27 +48,54 @@ type MetarReport = {
 
 type NearbyPlace = { id: string; name: string; icao: string | null; kind: "aerodrome" | "heliport"; latitude: number; longitude: number; distanceKm: number; bearing: number };
 type AnalyzedDroneTraffic = LiveAircraft & { distance: number; passage: PassageAnalysis; isHelicopter: boolean; isRemarkable: boolean; priority: number };
-type OfficialNotam = {
-  id: string;
-  reference: string;
-  itemA: string;
-  category: string;
-  qCode: string;
-  startsAt: string;
-  endsAt: string;
-  lowerFl: number | null;
-  upperFl: number | null;
-  distanceToCenterKm: number | null;
-  distanceToAreaKm: number | null;
-  impactsPoint: boolean;
-  activeNow: boolean;
-  originalText: string;
-  frenchText: string;
-  translationSource: "sofia" | "assisted";
-};
+type MissionReference = "moi" | "home" | "manual";
+type OfficialNotam = SofiaNotam;
 
 const FRANCE_OVERVIEW_CENTER: [number, number] = [46.603354, 1.888334];
 const OFFICIAL_NOTAM_LIMIT = 2;
+const RTBA_UNAVAILABLE_FEED: RtbaActivationFeed = {
+  state: "unavailable",
+  source: "SIA/AZBA officiel",
+  publishedAt: null,
+  retrievedAt: null,
+  coverageStartsAt: null,
+  coverageEndsAt: null,
+  slots: null,
+  message: "L’accès authentifié aux créneaux AZBA n’est pas configuré dans XavPac. Consultez la carte officielle."
+};
+
+function parisFormParts(epochMs = Date.now()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: DRONE_TIME_ZONE,
+    year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23"
+  }).formatToParts(new Date(epochMs));
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return { date: `${values.year}-${values.month}-${values.day}`, time: `${values.hour}:${values.minute}` };
+}
+
+function initialMissionForm() {
+  const now = parisFormParts();
+  const later = parisFormParts(Date.now() + 45 * 60_000);
+  return { date: now.date, startTime: now.time, endTime: later.date === now.date ? later.time : "23:59" };
+}
+
+function formatNotamMoment(iso: string | null, fallback: string) {
+  if (!iso) return fallback;
+  const value = new Date(iso);
+  if (!Number.isFinite(value.getTime())) return fallback;
+  const local = value.toLocaleString("fr-FR", { timeZone: DRONE_TIME_ZONE, dateStyle: "short", timeStyle: "short" });
+  const utc = value.toLocaleString("fr-FR", { timeZone: "UTC", dateStyle: "short", timeStyle: "short" });
+  return `${local} heure locale • ${utc} UTC`;
+}
+
+function sourceAgeText(iso: string | null) {
+  if (!iso) return "âge inconnu";
+  const ageSeconds = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000));
+  if (!Number.isFinite(ageSeconds)) return "âge inconnu";
+  if (ageSeconds < 60) return `il y a ${ageSeconds} s`;
+  if (ageSeconds < 3600) return `il y a ${Math.round(ageSeconds / 60)} min`;
+  return `il y a ${Math.round(ageSeconds / 3600)} h`;
+}
 
 function directionText(value?: number | string) {
   if (value === undefined || value === null) return "inconnue";
@@ -138,7 +170,14 @@ export default function DronePanel() {
   const [traffic, setTraffic] = useState<LiveAircraft[]>([]);
   const [lastUpdated, setLastUpdated] = useState("—");
   const [manualPoint, setManualPoint] = useState<[number, number] | null>(null);
+  const [missionReference, setMissionReference] = useState<MissionReference>("moi");
+  const [savedHome, setSavedHome] = useState<[number, number] | null>(null);
   const [requestedHeight, setRequestedHeight] = useState(60);
+  const [missionNowMode, setMissionNowMode] = useState(true);
+  const [missionDate, setMissionDate] = useState("");
+  const [missionStartTime, setMissionStartTime] = useState("");
+  const [missionEndTime, setMissionEndTime] = useState("");
+  const [missionNowAnchorMs, setMissionNowAnchorMs] = useState(0);
   const [coordinateInput, setCoordinateInput] = useState("");
   const [commune, setCommune] = useState("");
   const [locationMessage, setLocationMessage] = useState("");
@@ -149,21 +188,75 @@ export default function DronePanel() {
   const [officialNotamMessage, setOfficialNotamMessage] = useState("Position requise pour interroger SOFIA.");
   const [officialNotamUpdatedAt, setOfficialNotamUpdatedAt] = useState<string | null>(null);
   const [notamRefreshVersion, setNotamRefreshVersion] = useState(0);
+  const [missionStorageReady, setMissionStorageReady] = useState(false);
   const passageHistoryRef = useRef(new PassageHistoryStore());
   const passageReferenceRef = useRef("gps");
   const [passageHistoryVersion, setPassageHistoryVersion] = useState(0);
 
-  const selectedPosition = manualPoint ?? position;
+  const selectedPosition = missionReference === "moi" ? position : manualPoint;
   const mapCenter = selectedPosition ?? FRANCE_OVERVIEW_CENTER;
   const notamLocationKey = selectedPosition ? `${selectedPosition[0].toFixed(3)}:${selectedPosition[1].toFixed(3)}` : "";
+  const missionWindow = useMemo(() => missionStorageReady ? resolveMissionWindow({
+    date: missionDate,
+    startTime: missionStartTime,
+    endTime: missionEndTime,
+    nowMode: missionNowMode,
+    nowMs: missionNowAnchorMs,
+    nowDurationMinutes: 45
+  }) : null, [missionDate, missionEndTime, missionNowAnchorMs, missionNowMode, missionStartTime, missionStorageReady]);
 
   useEffect(() => {
-    const reference = manualPoint ? `manual:${manualPoint[0].toFixed(5)}:${manualPoint[1].toFixed(5)}` : "gps";
+    if (!missionNowMode) return;
+    const timer = window.setInterval(() => setMissionNowAnchorMs(Date.now()), 10 * 60_000);
+    return () => window.clearInterval(timer);
+  }, [missionNowMode]);
+
+  useEffect(() => {
+    const parsed = parseStoredJson(safeGetItem(getBrowserStorage("local"), XAVPAC_STORAGE_KEYS.savedHome));
+    setSavedHome(isCoordinatePair(parsed) ? parsed : null);
+    const session = getBrowserStorage("session");
+    const rawMission = safeGetItem(session, XAVPAC_STORAGE_KEYS.droneMission);
+    const storedMission = normalizeStoredDroneMission(parseStoredJson(rawMission));
+    if (storedMission) {
+      setMissionReference(storedMission.reference);
+      setManualPoint(storedMission.reference === "moi" ? null : storedMission.point);
+      setRequestedHeight(storedMission.heightMeters);
+      setMissionNowMode(storedMission.nowMode);
+      setMissionDate(storedMission.date);
+      setMissionStartTime(storedMission.startTime);
+      setMissionEndTime(storedMission.endTime);
+      if (storedMission.reference !== "moi") setLocationMessage("MISSION conservée pendant votre navigation.");
+    } else {
+      if (rawMission !== null) safeRemoveItem(session, XAVPAC_STORAGE_KEYS.droneMission);
+      const defaults = initialMissionForm();
+      setMissionDate(defaults.date);
+      setMissionStartTime(defaults.startTime);
+      setMissionEndTime(defaults.endTime);
+    }
+    setMissionNowAnchorMs(Date.now());
+    setMissionStorageReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!missionStorageReady) return;
+    safeWriteJson(getBrowserStorage("session"), XAVPAC_STORAGE_KEYS.droneMission, {
+      reference: missionReference,
+      point: missionReference === "moi" ? null : manualPoint,
+      heightMeters: requestedHeight,
+      nowMode: missionNowMode,
+      date: missionDate,
+      startTime: missionStartTime,
+      endTime: missionEndTime
+    });
+  }, [manualPoint, missionDate, missionEndTime, missionNowMode, missionReference, missionStartTime, missionStorageReady, requestedHeight]);
+
+  useEffect(() => {
+    const reference = selectedPosition ? `${missionReference}:${selectedPosition[0].toFixed(5)}:${selectedPosition[1].toFixed(5)}` : missionReference;
     if (reference === passageReferenceRef.current) return;
     passageReferenceRef.current = reference;
     passageHistoryRef.current.clear();
     setPassageHistoryVersion((value) => value + 1);
-  }, [manualPoint]);
+  }, [missionReference, selectedPosition]);
 
   useEffect(() => {
     let cancelled = false;
@@ -206,13 +299,16 @@ export default function DronePanel() {
   }, [selectedPosition]);
 
   useEffect(() => {
-    if (!notamLocationKey) {
+    const activeMissionWindow = missionWindow;
+    if (!notamLocationKey || !activeMissionWindow) {
       setOfficialNotams([]);
       setOfficialNotamStatus("idle");
-      setOfficialNotamMessage("Position requise pour interroger SOFIA.");
+      setOfficialNotamMessage(!notamLocationKey ? "Position requise pour interroger SOFIA." : "Créneau de mission invalide.");
       setOfficialNotamUpdatedAt(null);
       return;
     }
+    const missionStartIso = activeMissionWindow.startIso;
+    const missionEndIso = activeMissionWindow.endIso;
     const [latitude, longitude] = notamLocationKey.split(":").map(Number);
     let cancelled = false;
     let controller = new AbortController();
@@ -223,7 +319,8 @@ export default function DronePanel() {
       setOfficialNotamStatus("loading");
       setOfficialNotamMessage("Recherche officielle autour du point…");
       try {
-        const response = await fetch(`/api/notams?lat=${latitude}&lon=${longitude}`, { cache: "no-store", signal: controller.signal });
+        const query = new URLSearchParams({ lat: String(latitude), lon: String(longitude), start: missionStartIso, end: missionEndIso });
+        const response = await fetch(`/api/notams?${query}`, { cache: "no-store", signal: controller.signal });
         const payload = await response.json();
         if (cancelled) return;
         if (!response.ok) throw new Error(typeof payload.error === "string" ? payload.error : "Recherche SOFIA indisponible.");
@@ -249,7 +346,7 @@ export default function DronePanel() {
       controller.abort();
       window.clearInterval(timer);
     };
-  }, [notamLocationKey, notamRefreshVersion]);
+  }, [notamLocationKey, missionWindow, notamRefreshVersion]);
 
   useEffect(() => {
     let cancelled = false;
@@ -278,7 +375,7 @@ export default function DronePanel() {
               trackDegrees: item.trueTrack,
               positionTimestampMs: aircraftPositionTimestamp(item.lastPositionAt),
               observer: observerCoordinates,
-              observerTimestampMs: manualPoint ? receivedAtMs : timestamp
+              observerTimestampMs: missionReference === "moi" ? timestamp : receivedAtMs
             }) || historyChanged;
           }
           if (historyChanged) setPassageHistoryVersion((value) => value + 1);
@@ -287,7 +384,7 @@ export default function DronePanel() {
     }
     loadTraffic(); const timer = window.setInterval(loadTraffic, 15000);
     return () => { cancelled = true; window.clearInterval(timer); };
-  }, [selectedPosition, manualPoint, timestamp]);
+  }, [selectedPosition, missionReference, timestamp]);
 
   const nearbyTraffic = useMemo<AnalyzedDroneTraffic[]>(() => {
     if (!selectedPosition) return [];
@@ -300,12 +397,13 @@ export default function DronePanel() {
           longitude: item.longitude,
           altitudeMeters: item.barometricAltitude,
           groundSpeedMetersPerSecond: item.velocity,
+          verticalRateMetersPerSecond: item.verticalRate,
           trackDegrees: item.trueTrack,
           positionTimestampMs: aircraftPositionTimestamp(item.lastPositionAt)
         },
         history: passageHistoryRef.current.get(item.id),
         observer: selectedPosition,
-        gpsAccuracyMeters: manualPoint ? null : accuracy,
+        gpsAccuracyMeters: missionReference === "moi" ? accuracy : null,
         nowMs
       });
       const helicopter = isHelicopter(item);
@@ -321,7 +419,7 @@ export default function DronePanel() {
     }).sort((a, b) => a.priority - b.priority || a.distance - b.distance);
   // Le compteur publie les nouveaux points du store Mode-S auprès du calcul mémorisé.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedPosition, manualPoint, accuracy, traffic, passageHistoryVersion]);
+  }, [selectedPosition, missionReference, accuracy, traffic, passageHistoryVersion]);
   const alertTraffic = nearbyTraffic.filter((item) => {
     const projectedDistance = item.passage.estimatedMinimumDistanceKm ?? item.distance;
     const operationallySensitive = (item.barometricAltitude ?? Infinity) <= 1500 || item.isHelicopter || item.isRemarkable;
@@ -339,10 +437,22 @@ export default function DronePanel() {
     [rtbaAssessment]
   );
   const notamReading = useMemo(() => readNotamInFrench(notamText), [notamText]);
+  const rtbaMissionStatus = useMemo(() => missionWindow
+    ? evaluateRtbaMission(rtbaAssessment, RTBA_UNAVAILABLE_FEED, missionWindow.startMs, missionWindow.endMs)
+    : evaluateRtbaMission(rtbaAssessment, RTBA_UNAVAILABLE_FEED, 0, 0), [missionWindow, rtbaAssessment]);
+  const notamAssessments = useMemo(() => new Map(officialNotams.map((notam) => [notam.id, missionWindow
+    ? assessNotamForMission(notam, missionWindow.startMs, missionWindow.endMs, requestedHeight)
+    : null])), [missionWindow, officialNotams, requestedHeight]);
+  const directNotams = officialNotams.filter((notam) => notamAssessments.get(notam.id)?.level === "direct");
+  const rtbaDataConfirmed = !["unconfirmed", "outside-local"].includes(rtbaMissionStatus.code);
 
   const decision = useMemo(() => evaluateDroneFlight({
     hasPosition: Boolean(selectedPosition),
-    zones: containingZones.map((zone) => ({ name: zone.id, containsPoint: zone.affectsRequestedHeight, status: "unknown" as const })),
+    zones: containingZones.map((zone) => ({
+      name: zone.id,
+      containsPoint: zone.affectsRequestedHeight,
+      status: rtbaMissionStatus.severity === "blocking" ? "active" as const : rtbaDataConfirmed ? "inactive" as const : "unknown" as const
+    })),
     aerodromeDistanceKm: nearbyPlaces.find((place) => place.kind === "aerodrome")?.distanceKm ?? null,
     requestedHeightM: requestedHeight,
     weatherAvailable: Boolean(metar),
@@ -350,8 +460,10 @@ export default function DronePanel() {
     gustKnots: metar?.wgst ?? metar?.wspd,
     visibilityKm: typeof metar?.visib === "number" ? metar.visib * 1.60934 : null,
     restrictionsChecked: false,
-    nearbyAircraftCount: alertTraffic.length
-  }), [alertTraffic.length, containingZones, metar, nearbyPlaces, requestedHeight, selectedPosition]);
+    nearbyAircraftCount: alertTraffic.length,
+    directNotamCount: directNotams.length,
+    criticalDataAvailable: Boolean(missionWindow && officialNotamStatus === "success" && rtbaDataConfirmed)
+  }), [alertTraffic.length, containingZones, directNotams.length, metar, missionWindow, nearbyPlaces, officialNotamStatus, requestedHeight, rtbaDataConfirmed, rtbaMissionStatus.severity, selectedPosition]);
 
   const ceilingMeters = useMemo(() => {
     const layers = metar?.clouds?.filter((cloud) => ["BKN", "OVC", "VV"].includes(cloud.cover ?? "") && typeof cloud.base === "number") ?? [];
@@ -360,20 +472,24 @@ export default function DronePanel() {
 
   const nearestAerodrome = nearbyPlaces.find((place) => place.kind === "aerodrome") ?? null;
   const nearestHeliport = nearbyPlaces.find((place) => place.kind === "heliport") ?? null;
+  const weatherBlocking = (metar?.wgst ?? metar?.wspd ?? 0) >= 35 || (typeof metar?.visib === "number" && metar.visib * 1.60934 < 1.5);
   const checklist = [
     { label: "Position", state: selectedPosition ? "Conforme" : "À vérifier", detail: selectedPosition ? "Point d’analyse défini" : "GPS ou point manuel requis" },
-    { label: "RTBA / espaces", state: !selectedPosition || rtbaAssessment?.level === "coverage-unavailable" || containingZones.some((zone) => zone.affectsRequestedHeight) ? "À vérifier" : "Conforme", detail: rtbaAssessment ? rtbaAssessment.level === "inside-volume" ? `${containingZones.filter((zone) => zone.affectsRequestedHeight).map((zone) => zone.id).join(", ")} — activation AZBA à vérifier` : rtbaAssessment.level === "below-floor" ? "Dans le contour horizontal, sous le plancher publié" : rtbaAssessment.level === "outside-local" ? "Aucun contour LF-R45 local au point" : "Couverture locale insuffisante" : "Position requise" },
-    { label: "NOTAM", state: "À vérifier", detail: officialNotamStatus === "loading" ? "Recherche SOFIA en cours" : officialNotamStatus === "success" ? `${officialNotams.length} NOTAM officiel${officialNotams.length === 1 ? "" : "s"} reçu${officialNotams.length === 1 ? "" : "s"}` : officialNotamStatus === "error" ? "SOFIA temporairement indisponible" : notamReading ? "Lecture française disponible — original prioritaire" : "Position requise" },
-    { label: "Météo", state: !metar ? "À vérifier" : decision.level === "forbidden" ? "Bloquant" : "Conforme", detail: metar ? "Observation du point reçue" : "Donnée absente" },
+    { label: "RTBA / espaces", state: rtbaMissionStatus.severity === "blocking" ? "Bloquant" : rtbaMissionStatus.severity === "clear" ? "Conforme" : "À vérifier", detail: rtbaMissionStatus.label },
+    { label: "NOTAM", state: directNotams.length ? "Bloquant" : officialNotamStatus === "success" ? "Conforme" : "À vérifier", detail: officialNotamStatus === "loading" ? "Recherche SOFIA en cours" : officialNotamStatus === "success" ? directNotams.length ? `${directNotams.length} impact direct mission` : `${officialNotams.length} NOTAM analysé${officialNotams.length === 1 ? "" : "s"}` : officialNotamStatus === "error" ? "SOFIA temporairement indisponible" : notamReading ? "Lecture française disponible — original prioritaire" : "Position requise" },
+    { label: "Météo", state: !metar ? "À vérifier" : weatherBlocking ? "Bloquant" : "Conforme", detail: metar ? "Prévision au point reçue" : "Donnée absente" },
     { label: "Hauteur", state: requestedHeight > 120 ? "Bloquant" : "Conforme", detail: requestedHeight > 120 ? "Hauteur supérieure à 120 m" : "Hauteur demandée ≤ 120 m" },
     { label: "Autorisation", state: "À vérifier", detail: "À confirmer par le télépilote" },
     { label: "Sécurité", state: decision.level === "forbidden" ? "Bloquant" : "À vérifier", detail: alertTraffic.length ? "Trafic proche détecté" : "Surveillance continue nécessaire" }
   ] as const;
+  const attentionCount = checklist.filter((item) => item.state !== "Conforme").length;
 
   const message = !selectedPosition
     ? "Position GPS indisponible : recherchez une commune, saisissez des coordonnées ou cliquez sur la carte."
-    : rtbaAssessment?.level === "inside-volume"
-      ? "Le point et la hauteur demandée intersectent un volume RTBA publié. Vérifiez impérativement son activation officielle."
+    : rtbaMissionStatus.severity === "blocking"
+      ? rtbaMissionStatus.detail
+      : rtbaAssessment?.level === "inside-volume"
+      ? "Le point et la hauteur demandée intersectent un volume RTBA publié. Le statut d’activation officiel doit être confirmé."
       : rtbaAssessment?.level === "below-floor"
         ? "Le point est dans une emprise RTBA horizontale, mais la hauteur demandée reste sous son plancher publié."
         : "Analyse géographique effectuée. Les activations, NOTAM et autres restrictions officielles restent à vérifier.";
@@ -390,13 +506,15 @@ export default function DronePanel() {
 
   const mapPoints = [
     ...(selectedPosition ? [{
-        id: manualPoint ? "selected-point" : "home",
+        id: "mission",
         lat: selectedPosition[0],
         lon: selectedPosition[1],
-        name: manualPoint ? "Point sélectionné" : "Votre position HOME",
-        detail: manualPoint ? "Point choisi manuellement" : positionStatus,
-        category: manualPoint ? "location" : "home"
+        name: "MISSION",
+        detail: missionReference === "home" ? "Mission placée à HOME" : missionReference === "moi" ? "Mission placée sur MOI" : "Point de mission choisi manuellement",
+        category: "mission"
       }] : []),
+    ...(position && missionReference !== "moi" ? [{ id: "moi", lat: position[0], lon: position[1], name: "MOI", detail: positionStatus, category: "moi" }] : []),
+    ...(savedHome && missionReference !== "home" ? [{ id: "saved-home", lat: savedHome[0], lon: savedHome[1], name: "HOME", detail: "Position fixe enregistrée", category: "home" }] : []),
     ...nearbyPlaces.map((place) => ({ id: place.id, lat: place.latitude, lon: place.longitude, name: place.icao ?? place.name, detail: `${place.kind === "heliport" ? "Héliport" : "Aérodrome"} • ${place.name} • ${place.distanceKm.toFixed(1)} km`, category: "aerodrome" })),
     ...nearbyTraffic.map((item) => ({ id:`traffic-${item.id}`, lat:item.latitude, lon:item.longitude, name:item.callsign, detail:`${dronePassageLabel(item.passage)} • ${item.distance.toFixed(1)} km • Alt. ${item.barometricAltitude === null ? "Non déterminée" : `${Math.round(item.barometricAltitude)} m`} • donnée ${freshnessText(item.passage.freshnessSeconds)}`, category:item.isHelicopter ? "helicopter" : "aircraft", heading:item.trueTrack }))
   ];
@@ -404,7 +522,7 @@ export default function DronePanel() {
   function applyCoordinates() {
     const values = coordinateInput.split(/[;,\s]+/).map(Number).filter(Number.isFinite);
     if (values.length < 2 || values[0] < 41 || values[0] > 52 || values[1] < -6 || values[1] > 10) { setLocationMessage("Coordonnées invalides pour la France."); return; }
-    setManualPoint([values[0], values[1]]); setLocationMessage("Coordonnées appliquées."); setMapMode("map");
+    setManualPoint([values[0], values[1]]); setMissionReference("manual"); setLocationMessage("Point MISSION appliqué."); setMapMode("map");
   }
 
   async function searchCommune() {
@@ -413,8 +531,17 @@ export default function DronePanel() {
       const response = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(commune)}&count=5&language=fr&countryCode=FR`);
       const payload = await response.json(); const result = payload.results?.[0];
       if (!result) { setLocationMessage("Commune introuvable."); return; }
-      setManualPoint([result.latitude, result.longitude]); setLocationMessage(`${result.name}${result.admin1 ? ` — ${result.admin1}` : ""}`); setMapMode("map");
+      setManualPoint([result.latitude, result.longitude]); setMissionReference("manual"); setLocationMessage(`MISSION : ${result.name}${result.admin1 ? ` — ${result.admin1}` : ""}`); setMapMode("map");
     } catch { setLocationMessage("Recherche de commune indisponible."); }
+  }
+
+  function useNowMission() {
+    const defaults = initialMissionForm();
+    setMissionDate(defaults.date);
+    setMissionStartTime(defaults.startTime);
+    setMissionEndTime(defaults.endTime);
+    setMissionNowAnchorMs(Date.now());
+    setMissionNowMode(true);
   }
 
   return (
@@ -426,24 +553,57 @@ export default function DronePanel() {
           <p>GPS réel ou point manuel, trafic aérien, météo exacte et contrôles réglementaires.</p>
         </div>
         <div className={`drone-decision-status ${decision.level}`}>
-          <span>{decision.level === "possible" ? "🟢" : decision.level === "forbidden" ? "🔴" : "🟠"}</span>
+          <span>{decision.level === "possible" ? "🟢" : decision.level === "forbidden" ? "🔴" : decision.level === "insufficient" ? "⚪" : "🟠"}</span>
           <div><strong>{decision.label}</strong><small>Mise à jour {lastUpdated}</small></div>
         </div>
+      </section>
+
+      <section className="panel drone-mission-planner">
+        <header>
+          <div><span className="eyebrow">MISSION DRONE</span><h2>{requestedHeight} m • {missionWindow ? missionWindow.isNow ? "Maintenant" : `${formatMissionLocal(missionWindow.startMs)} → ${formatMissionLocal(missionWindow.endMs)}` : "Créneau invalide"}</h2></div>
+          <div className="drone-mission-mode"><button type="button" className={missionNowMode ? "active" : ""} onClick={useNowMission}>MAINTENANT</button><button type="button" className={!missionNowMode ? "active" : ""} onClick={() => setMissionNowMode(false)}>PLANIFIER</button></div>
+        </header>
+        <div className="drone-mission-fields">
+          <label>Date<input type="date" value={missionDate} onChange={(event) => { setMissionDate(event.target.value); setMissionNowMode(false); }} /></label>
+          <label>Début<input type="time" value={missionStartTime} onChange={(event) => { setMissionStartTime(event.target.value); setMissionNowMode(false); }} /></label>
+          <label>Fin<input type="time" value={missionEndTime} onChange={(event) => { setMissionEndTime(event.target.value); setMissionNowMode(false); }} /></label>
+          <label>Hauteur<input type="number" min="0" max="500" value={requestedHeight} onChange={(event) => setRequestedHeight(Math.max(0, Number(event.target.value) || 0))} /><span>m</span></label>
+        </div>
+        <div className="drone-mission-reference"><span>🎯</span><div><strong>Point MISSION • {selectedPosition ? missionReference === "home" ? "HOME" : missionReference === "moi" ? "MOI" : "POINT CHOISI" : "NON DÉFINI"}</strong><small>{selectedPosition ? `${selectedPosition[0].toFixed(5)} / ${selectedPosition[1].toFixed(5)}` : "Choisissez MOI, HOME, une commune, des coordonnées ou un point sur la carte."}</small></div></div>
+        {!missionWindow && <p className="drone-mission-error">La fin doit être postérieure au début, avec une durée maximale de 12 heures.</p>}
+        <footer>Heure principale : Europe/Paris. Les NOTAM conservent aussi leur heure UTC officielle.</footer>
       </section>
 
       <section className={`panel drone-decision-panel ${decision.level}`}>
         <div><span className="eyebrow">AIDE À LA DÉCISION</span><h2>{decision.label}</h2><p>{message}</p></div>
         <div className="drone-decision-why">
-          <header><strong>{decision.level === "check" ? "Pourquoi le vol est à vérifier ?" : decision.level === "forbidden" ? "Pourquoi le vol est refusé ?" : "Pourquoi le vol paraît possible ?"}</strong><span>{decision.checkReasons.length + decision.blockingReasons.length} point{decision.checkReasons.length + decision.blockingReasons.length === 1 ? "" : "s"} à traiter</span></header>
+          <header><strong>{decision.level === "check" ? "Pourquoi des vérifications sont-elles nécessaires ?" : decision.level === "forbidden" ? "Quel élément bloquant a été détecté ?" : decision.level === "insufficient" ? "Quelles données manquent ?" : "Pourquoi aucun obstacle n’a été détecté ?"}</strong><span>{decision.checkReasons.length + decision.blockingReasons.length} point{decision.checkReasons.length + decision.blockingReasons.length === 1 ? "" : "s"} à traiter</span></header>
           {decision.blockingReasons.map((reason) => <p className="blocking" key={reason}><b>×</b><span>{reason}</span></p>)}
           {decision.checkReasons.map((reason) => <p className="checking" key={reason}><b>!</b><span>{reason}</span></p>)}
           {decision.positiveReasons.map((reason) => <p className="positive" key={reason}><b>✓</b><span>{reason}</span></p>)}
         </div>
         <div className="drone-decision-actions">
           <label>Hauteur demandée <input type="number" min="0" max="500" value={requestedHeight} onChange={(event) => setRequestedHeight(Math.max(0, Number(event.target.value) || 0))} /> m</label>
-          <div className="drone-point-actions"><button type="button" disabled={!position} onClick={() => setManualPoint(null)}>📍 Utiliser HOME</button><small>{manualPoint ? `${manualPoint[0].toFixed(5)} / ${manualPoint[1].toFixed(5)}` : position ? "Position GPS réelle" : "Position GPS indisponible"}</small></div>
+          <div className="drone-point-actions">
+            <button type="button" disabled={!position} onClick={() => { setManualPoint(null); setMissionReference("moi"); }}>📍 MISSION = MOI</button>
+            {savedHome && <button type="button" onClick={() => { setManualPoint(savedHome); setMissionReference("home"); }}>🏠 MISSION = HOME</button>}
+            <small>{selectedPosition ? `${missionReference === "home" ? "HOME" : missionReference === "moi" ? "MOI" : "POINT CHOISI"} • ${selectedPosition[0].toFixed(5)} / ${selectedPosition[1].toFixed(5)}` : "Position de mission indisponible"}</small>
+          </div>
         </div>
         <footer>Cette synthèse est une aide opérationnelle. Elle ne remplace pas la vérification réglementaire du télépilote (AZBA, NOTAM, SUP AIP, AIP et restrictions locales).</footer>
+      </section>
+
+      <section className="panel drone-briefing-v65">
+        <header><div><span className="eyebrow">BRIEFING DRONE</span><h2>{attentionCount} élément{attentionCount === 1 ? "" : "s"} nécessite{attentionCount === 1 ? "" : "nt"} votre attention</h2></div><small>{missionWindow ? `${formatMissionLocal(missionWindow.startMs)} • ${missionWindow.durationMinutes} min` : "Créneau invalide"}</small></header>
+        <div className="drone-briefing-grid">
+          <article><span>📍 GPS</span><strong>{missionReference === "moi" ? positionStatus : "Coordonnées choisies"}</strong><small>{missionReference === "moi" && accuracy !== null ? `Précision ±${Math.round(accuracy)} m` : "Référence MISSION explicite"}</small></article>
+          <article className={rtbaMissionStatus.severity}><span>📡 RTBA</span><strong>{rtbaMissionStatus.label}</strong><small>{rtbaMissionStatus.detail}</small></article>
+          <article className={directNotams.length ? "blocking" : officialNotamStatus === "success" ? "clear" : "unconfirmed"}><span>📄 NOTAM</span><strong>{directNotams.length ? `${directNotams.length} impact direct` : officialNotamStatus === "success" ? `${officialNotams.length} analysé${officialNotams.length === 1 ? "" : "s"}` : "Données non confirmées"}</strong><small>{officialNotamMessage}</small></article>
+          <article className={alertTraffic.length ? "check" : "clear"}><span>✈ TRAFIC</span><strong>{alertTraffic.length ? `${alertTraffic.length} rapprochement${alertTraffic.length === 1 ? "" : "s"} à surveiller` : "Aucun rapprochement préoccupant identifié"}</strong><small>Réception ADS-B non exhaustive</small></article>
+          <article className={!metar ? "unconfirmed" : weatherBlocking ? "blocking" : "clear"}><span>🌬 MÉTÉO</span><strong>{metar ? `Vent ${metar.wspd ?? "—"} kt • rafales ${metar.wgst ?? "—"} kt` : "Donnée indisponible"}</strong><small>{metarStatus}</small></article>
+          <article className="unconfirmed"><span>⚡ FOUDRE</span><strong>Données non disponibles</strong><small>Connexion autorisée prévue en phase Météo</small></article>
+          <article className="unconfirmed"><span>☀ LUMIÈRE</span><strong>Calcul non disponible</strong><small>Ne pas déduire un horaire sans source solaire fiable</small></article>
+        </div>
       </section>
 
       <section className="drone-airspace-brief">
@@ -465,36 +625,42 @@ export default function DronePanel() {
           ) : rtbaAssessment ? (
             <p className="rtba-nearest">Tronçon analysé le plus proche : <strong>{rtbaAssessment.nearest[0]?.zone.id ?? "non déterminé"}</strong>{rtbaAssessment.nearest[0] ? ` à environ ${rtbaAssessment.nearest[0].distanceKm.toFixed(1)} km` : ""}.</p>
           ) : null}
-          <div className="rtba-activation-warning">
-            <strong>Activation actuelle : NON DÉTERMINÉE DANS XAVPAC</strong>
-            <span>Les zones LF-R45 sont activées par NOTAM. La présence dans le contour ne suffit pas à savoir si elles sont actives maintenant.</span>
+          <div className={`rtba-activation-warning ${rtbaMissionStatus.severity}`}>
+            <strong>{rtbaMissionStatus.label}</strong>
+            <span>{rtbaMissionStatus.detail}</span>
+            <small>{missionWindow ? `Mission analysée : ${formatMissionLocal(missionWindow.startMs)} → ${formatMissionLocal(missionWindow.endMs)}` : "Créneau MISSION invalide"}</small>
+            <small>Source : {RTBA_UNAVAILABLE_FEED.source} • dernière récupération réussie : aucune • âge : non disponible</small>
           </div>
           <div className="rtba-official-actions">
             <a href={RTBA_ACTIVATION_URL} target="_blank" rel="noreferrer">Vérifier l’AZBA officiel maintenant ↗</a>
             <a href={RTBA_SOURCE_URL} target="_blank" rel="noreferrer">Voir les limites AIP ↗</a>
           </div>
-          <footer>{RTBA_SOURCE_LABEL}. Couverture embarquée : LF-R45 Bourgogne, Mâconnais et Jura. Hors de ce secteur, XavPac ne conclut jamais « hors RTBA ».</footer>
+          <footer>{RTBA_SOURCE_LABEL}. Activation : SIA/AZBA officiel, accès authentifié non configuré. Couverture géométrique embarquée : LF-R45 Bourgogne, Mâconnais et Jura. Hors de ce secteur, XavPac ne conclut jamais « hors RTBA ».</footer>
         </article>
 
         <article className="panel notam-fr-card">
           <header><div><span className="eyebrow">NOTAM OFFICIELS EN FRANÇAIS</span><h2>Récupération automatique au point</h2></div><a href="https://sofia-briefing.aviation-civile.gouv.fr/sofia/pages/notamsearcharea.html" target="_blank" rel="noreferrer">Ouvrir SOFIA Briefing ↗</a></header>
-          <p>Dès qu’une position est disponible, XavPac interroge SOFIA pour un vol VFR entre FL 000 et FL 010, dans un rayon de 10 NM et sur les 12 prochaines heures.</p>
+          <p>Dès que le point et le créneau MISSION sont valides, XavPac interroge SOFIA pour un vol VFR entre FL 000 et FL 010 dans un rayon de 10 NM, pendant la mission.</p>
           <div className={`notam-auto-status ${officialNotamStatus}`}>
             <span>{officialNotamStatus === "loading" ? "◌" : officialNotamStatus === "success" ? "●" : officialNotamStatus === "error" ? "!" : "📍"}</span>
-            <div><strong>{officialNotamMessage}</strong><small>{officialNotamUpdatedAt ? `SOFIA consulté à ${new Date(officialNotamUpdatedAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}` : "Coordonnées envoyées uniquement au service officiel SIA/DSNA."}</small></div>
+            <div><strong>{officialNotamMessage}</strong><small>{officialNotamUpdatedAt ? `Source SOFIA-Briefing SIA/DSNA • récupérée le ${new Date(officialNotamUpdatedAt).toLocaleString("fr-FR", { timeZone: DRONE_TIME_ZONE, dateStyle: "short", timeStyle: "medium" })} • ${sourceAgeText(officialNotamUpdatedAt)}` : "Coordonnées et créneau envoyés uniquement au service officiel SIA/DSNA."}</small></div>
             <button type="button" disabled={!selectedPosition || officialNotamStatus === "loading"} onClick={() => setNotamRefreshVersion((value) => value + 1)}>Actualiser</button>
           </div>
           {officialNotams.length > 0 && <div className="official-notam-list">
-            {officialNotams.slice(0, OFFICIAL_NOTAM_LIMIT).map((notam, index) => <article key={notam.id} className={notam.activeNow ? "active-now" : "upcoming"}>
-              <header><div><span>{notam.category} • {notam.qCode}</span><strong>{notam.reference}</strong></div><b>{notam.activeNow ? "VALIDE MAINTENANT" : "À VENIR"}</b></header>
-              <div className="official-notam-rank">N° {index + 1} LE PLUS PROCHE</div>
-              <div className="official-notam-meta"><span>Zone : {notam.itemA}</span><span>{notam.impactsPoint ? "Le périmètre couvre votre position — 0 km" : notam.distanceToAreaKm === null ? "Distance non déterminée" : `Bord du périmètre à ≈ ${notam.distanceToAreaKm.toFixed(1)} km`}</span><span>FL {String(notam.lowerFl ?? 0).padStart(3, "0")} → FL {String(notam.upperFl ?? 999).padStart(3, "0")}</span></div>
-              <span className="notam-translation-label">Traduction en français</span>
-              <p>{notam.frenchText}</p>
-              <small>{notam.startsAt} → {notam.endsAt} • {notam.translationSource === "sofia" ? "Texte français fourni par SOFIA" : "Lecture assistée XavPac"}</small>
-              <details><summary>Voir le texte original</summary><pre>{notam.originalText}</pre></details>
-            </article>)}
-            {officialNotams.length > OFFICIAL_NOTAM_LIMIT && <small className="official-notam-more">Les deux NOTAM les plus proches sont affichés • {officialNotams.length - OFFICIAL_NOTAM_LIMIT} autre{officialNotams.length - OFFICIAL_NOTAM_LIMIT === 1 ? "" : "s"} disponible{officialNotams.length - OFFICIAL_NOTAM_LIMIT === 1 ? "" : "s"} dans le briefing officiel.</small>}
+            {officialNotams.slice(0, OFFICIAL_NOTAM_LIMIT).map((notam, index) => {
+              const assessment = notamAssessments.get(notam.id);
+              return <article key={notam.id} className={`mission-${assessment?.level ?? "information"}`}>
+                <header><div><span>{notam.notamType} • {notam.category} • {notam.qCode}</span><strong>{notam.publicationReference}</strong></div><b>{assessment?.level === "direct" ? "🔴 IMPACT DIRECT MISSION" : assessment?.level === "relevant" ? "🟠 PERTINENT / PROCHE" : "⚪ INFORMATION"}</b></header>
+                <div className="official-notam-rank">N° {index + 1} LE PLUS PROCHE • ✓ DONNÉE OFFICIELLE</div>
+                <div className="official-notam-meta"><span>Zone A) : {notam.itemA}</span><span>{notam.impactsPoint ? "Point MISSION dans le périmètre — 0 km" : notam.distanceToAreaKm === null ? "Distance non déterminée" : `Bord du périmètre à ≈ ${notam.distanceToAreaKm.toFixed(1)} km`}</span><span>FL {String(notam.lowerFl ?? 0).padStart(3, "0")} → FL {String(notam.upperFl ?? 999).padStart(3, "0")}</span><span>Coordonnées : {notam.coordinates ?? "non indiquées"}{notam.radiusNm === null ? "" : ` • rayon ${notam.radiusNm} NM`}</span></div>
+                <div className="notam-validity-v65"><span><b>Début local puis UTC</b>{formatNotamMoment(notam.startsAtIso, notam.startsAt)}</span><span><b>Fin locale puis UTC</b>{formatNotamMoment(notam.endsAtIso, notam.endsAt)}</span>{notam.schedule && <span><b>Horaires D)</b>{notam.schedule}</span>}</div>
+                <div className="notam-provenance-v65"><span><b>Autorité de publication</b>{notam.publicationAuthority}</span><span><b>Bureau NOTAM / NOF</b>{notam.nof ?? "Non indiqué"}</span><span><b>FIR</b>{notam.fir ?? "Non indiquée"}</span><span><b>Activité</b>{notam.category}</span><span><b>Organisme à l’origine de la demande</b>{notam.requestingOrganization ?? "Non indiqué dans le NOTAM"}</span></div>
+                <details className="notam-original-v65"><summary>1 — ORIGINAL OFFICIEL{notam.originalTextSource === "reconstructed" ? " • CHAMPS SOFIA RECONSTITUÉS" : ""}</summary><pre>{notam.originalText}</pre></details>
+                <section className="notam-translation-v65"><span>{notam.translationSource === "sofia" ? "2 — TRADUCTION FRANÇAISE OFFICIELLE SOFIA" : "2 — 🇫🇷 TRADUCTION XAVPAC • NON OFFICIELLE"}</span><p>{notam.frenchText}</p></section>
+                <section className={`notam-mission-explanation-v65 ${assessment?.level ?? "information"}`}><span>3 — EXPLICATION POUR LA MISSION</span>{assessment?.explanation.map((line) => <p key={line}>{line}</p>) ?? <p>Analyse impossible sans créneau MISSION valide.</p>}</section>
+              </article>;
+            })}
+            {officialNotams.length > OFFICIAL_NOTAM_LIMIT && <small className="official-notam-more">Les deux NOTAM les plus proches sont affichés • ouvrez SOFIA pour consulter les {officialNotams.length - OFFICIAL_NOTAM_LIMIT} autre{officialNotams.length - OFFICIAL_NOTAM_LIMIT === 1 ? "" : "s"} dans le briefing officiel complet.</small>}
           </div>}
           {officialNotamStatus === "success" && officialNotams.length === 0 && <div className="notam-empty">Aucun NOTAM retourné par cette recherche officielle. Vérifiez néanmoins les SUP AIP, l’AZBA et les autres restrictions applicables.</div>}
           {officialNotamStatus === "error" && <div className="notam-source-error">SOFIA est indisponible depuis XavPac. Utilisez le lien officiel ci-dessus avant toute décision de vol.</div>}
@@ -524,7 +690,7 @@ export default function DronePanel() {
       {alertTraffic.length > 0 && <section className="panel drone-traffic-alert"><strong>ALERTE — TRAFIC EN RAPPROCHEMENT DU SITE</strong>{alertTraffic.slice(0,3).map((item) => <p key={item.id}><b>{item.isHelicopter ? "🚁" : "✈️"} {item.callsign}</b> — {item.passage.estimatedSecondsToClosest === null ? "rapprochement mesuré" : `passage estimé dans ${formatPassageDuration(item.passage.estimatedSecondsToClosest)}`} {item.passage.estimatedMinimumDistanceKm === null ? "" : `à environ ${item.passage.estimatedMinimumDistanceKm.toFixed(1)} km`} • altitude {item.barometricAltitude === null ? "non déterminée" : `${Math.round(item.barometricAltitude)} m`} • donnée reçue il y a {freshnessText(item.passage.freshnessSeconds)}</p>)}<small>Aide à la vigilance uniquement : cette détection ADS-B n’est pas exhaustive.</small></section>}
 
       <section className="panel drone-passage-panel">
-        <header><div><span className="eyebrow">TRAFIC CLASSÉ PAR PERTINENCE OPÉRATIONNELLE</span><h3>Rapprochement réel du site de mission</h3></div><small>{selectedPosition ? manualPoint ? "Calcul au point manuel exact" : "Calcul depuis la position GPS réelle" : "Position requise"}</small></header>
+        <header><div><span className="eyebrow">TRAFIC CLASSÉ PAR PERTINENCE OPÉRATIONNELLE</span><h3>Rapprochement réel du site de mission</h3></div><small>{selectedPosition ? `Calcul MISSION depuis ${missionReference === "home" ? "HOME" : missionReference === "moi" ? "MOI" : "le point choisi"}` : "Position requise"}</small></header>
         <div className="drone-passage-list">
           {relevantTraffic.map((item) => <article key={item.id} className={`status-${item.passage.status}`}>
             <div className="drone-passage-identity"><b>{item.isHelicopter ? "🚁" : item.isRemarkable ? "◆" : "✈️"}</b><strong>{item.callsign}<small>{item.aircraftType ?? item.description ?? "Type non déterminé"} • priorité {item.priority}</small></strong></div>
@@ -537,7 +703,7 @@ export default function DronePanel() {
           </article>)}
           {!relevantTraffic.length && <p className="drone-passage-empty">Aucun trafic pertinent analysable pour le moment.</p>}
         </div>
-        {!manualPoint && accuracy !== null && accuracy > 50 && <p className="drone-passage-gps-warning">Estimation limitée par une précision GPS de ± {Math.round(accuracy)} mètres.</p>}
+        {missionReference === "moi" && accuracy !== null && accuracy > 50 && <p className="drone-passage-gps-warning">Estimation limitée par une précision GPS de ± {Math.round(accuracy)} mètres.</p>}
         <footer>L’absence d’aéronef ADS-B détecté ne signifie jamais que l’espace aérien est libre. Maintenez l’observation visuelle et auditive et appliquez les procédures du télépilote.</footer>
       </section>
 
@@ -545,8 +711,8 @@ export default function DronePanel() {
         <article className="panel drone-synthesis">
           <header><span className="eyebrow">SYNTHÈSE OPÉRATIONNELLE</span><h3>Situation au point analysé</h3></header>
           <div>
-            <p><span>GPS</span><strong>{selectedPosition ? manualPoint ? "Point manuel" : "Position réelle" : "Non disponible"}</strong></p>
-            <p><span>Précision</span><strong>{!manualPoint && accuracy ? `±${Math.round(accuracy)} m` : "Non déterminé"}</strong></p>
+            <p><span>Référence mission</span><strong>{selectedPosition ? missionReference === "home" ? "HOME fixe" : missionReference === "moi" ? "MOI — GPS" : "Point choisi" : "Non disponible"}</strong></p>
+            <p><span>Précision</span><strong>{missionReference === "moi" && accuracy ? `±${Math.round(accuracy)} m` : missionReference === "moi" ? "Non déterminée" : "Coordonnées choisies"}</strong></p>
             <p><span>Altitude demandée</span><strong>{requestedHeight} m</strong></p>
             <p><span>Vent</span><strong>{metar?.wspd !== undefined ? `${metar.wspd} kt` : "Non déterminé"}</strong></p>
             <p><span>Rafales</span><strong>{metar?.wgst !== undefined ? `${metar.wgst} kt` : "Non déterminé"}</strong></p>
@@ -581,7 +747,8 @@ export default function DronePanel() {
               <button type="button" className={mapMode === "map" ? "active" : ""} onClick={() => setMapMode("map")}>Carte locale</button>
             </div>
             <div className="drone-map-actions">
-              <button type="button" disabled={!position} onClick={() => { setManualPoint(null); setMapMode("map"); }}>Recentrer</button>
+              <button type="button" disabled={!position} onClick={() => { setManualPoint(null); setMissionReference("moi"); setMapMode("map"); }}>MISSION = MOI</button>
+              {savedHome && <button type="button" onClick={() => { setManualPoint(savedHome); setMissionReference("home"); setMapMode("map"); }}>MISSION = HOME</button>}
               <button type="button" onClick={() => position ? setTrackingEnabled(!trackingEnabled) : retryGeolocation()}>{position ? trackingEnabled ? "Désactiver suivi GPS" : "Activer suivi GPS" : "Relancer le GPS"}</button>
             </div>
           </div>
@@ -617,7 +784,7 @@ export default function DronePanel() {
                   zoom={selectedPosition ? 10 : 6}
                   mapVariant="layers"
                   showZoneLabels
-                  onMapClick={(point) => setManualPoint(point)}
+                  onMapClick={(point) => { setManualPoint(point); setMissionReference("manual"); }}
                 />
               </div>
               <div className="rtba-legend-v4">
@@ -637,9 +804,9 @@ export default function DronePanel() {
           <article className="panel rtba-check-card">
             <span className="eyebrow">GÉOLOCALISATION CONTINUE</span>
             <div className="check-row"><span>{isLive ? "🟢" : "🟠"}</span><div><strong>GPS</strong><small>{positionStatus}</small></div></div>
-            <div className="check-row"><span>📍</span><div><strong>{manualPoint ? "Point sélectionné" : "HOME"}</strong><small>{selectedPosition ? `${selectedPosition[0].toFixed(5)} / ${selectedPosition[1].toFixed(5)}` : "Position GPS indisponible"}</small></div></div>
+            <div className="check-row"><span>🎯</span><div><strong>MISSION • {missionReference === "home" ? "HOME" : missionReference === "moi" ? "MOI" : "POINT CHOISI"}</strong><small>{selectedPosition ? `${selectedPosition[0].toFixed(5)} / ${selectedPosition[1].toFixed(5)}` : "Position de mission indisponible"}</small></div></div>
             <div className="check-row"><span>🧭</span><div><strong>Latitude / longitude</strong><small>{selectedPosition ? `${selectedPosition[0].toFixed(6)} / ${selectedPosition[1].toFixed(6)}` : "Position indisponible"}</small></div></div>
-            <div className="check-row"><span>🎯</span><div><strong>Précision / altitude GPS</strong><small>{manualPoint ? "Point manuel" : position && accuracy ? `±${Math.round(accuracy)} m • ${altitude === null ? "altitude non disponible" : `${Math.round(altitude)} m`}` : "Position GPS indisponible"}</small></div></div>
+            <div className="check-row"><span>📍</span><div><strong>MOI • précision / altitude GPS</strong><small>{position && accuracy ? `±${Math.round(accuracy)} m • ${altitude === null ? "altitude non disponible" : `${Math.round(altitude)} m`}` : "Position GPS indisponible"}</small></div></div>
             <div className="check-row"><span>🕒</span><div><strong>Dernière position</strong><small>{timestamp ? new Date(timestamp).toLocaleTimeString("fr-FR") : "Non disponible"}</small></div></div>
             <p className="safety-note">La carte est une aide de repérage. L’AZBA, les NOTAM, SUP AIP et AIP officiels restent prioritaires.</p>
           </article>

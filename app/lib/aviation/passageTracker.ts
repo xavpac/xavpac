@@ -43,6 +43,7 @@ export type PassageAircraft = {
   altitudeMeters: number | null;
   groundSpeedMetersPerSecond: number | null;
   trackDegrees: number | null;
+  verticalRateMetersPerSecond?: number | null;
   positionTimestampMs: number;
 };
 
@@ -54,6 +55,7 @@ export type PassageAnalysis = {
   estimatedSecondsToClosest: number | null;
   estimatedMinimumDistanceKm: number | null;
   observedMinimumDistanceKm: number | null;
+  estimatedAltitudeAtClosestMeters: number | null;
   secondsSinceClosest: number | null;
   passageSide: string | null;
   freshnessSeconds: number | null;
@@ -207,6 +209,7 @@ const EMPTY_ANALYSIS: Omit<PassageAnalysis, "status" | "gpsAccuracyLimited" | "g
   estimatedSecondsToClosest: null,
   estimatedMinimumDistanceKm: null,
   observedMinimumDistanceKm: null,
+  estimatedAltitudeAtClosestMeters: null,
   secondsSinceClosest: null,
   passageSide: null,
   freshnessSeconds: null,
@@ -239,7 +242,14 @@ export function analyzeAircraftPassage(input: {
     return { ...base, status: "stale" };
   }
 
-  const history = input.history.filter((item) => nowMs - item.positionTimestampMs <= PASSAGE_HISTORY_MAX_AGE_MS);
+  const history = input.history
+    .filter((item) => nowMs - item.positionTimestampMs <= PASSAGE_HISTORY_MAX_AGE_MS)
+    .map((item) => ({
+      ...item,
+      // La même télémétrie peut être analysée depuis MOI ou HOME : la distance
+      // doit donc toujours être recalculée pour la référence demandée.
+      distanceKm: distanceKm(input.observer as [number, number], [item.latitude, item.longitude])
+    }));
   if (history.length < 2) return { ...base, historyPointCount: history.length, status: "waiting" };
 
   const previous = history[history.length - 2];
@@ -307,6 +317,13 @@ export function analyzeAircraftPassage(input: {
   const secondsSinceClosest = status === "receding"
     ? Math.max(0, (nowMs - minimumObservation.positionTimestampMs) / 1000)
     : null;
+  const estimatedAltitudeAtClosestMeters = projectedFutureIsUsable
+    && projectedSeconds !== null
+    && input.aircraft.altitudeMeters !== null
+    && input.aircraft.verticalRateMetersPerSecond !== null
+    && input.aircraft.verticalRateMetersPerSecond !== undefined
+    ? Math.max(0, input.aircraft.altitudeMeters + input.aircraft.verticalRateMetersPerSecond * projectedSeconds)
+    : null;
 
   return {
     ...base,
@@ -317,6 +334,7 @@ export function analyzeAircraftPassage(input: {
     estimatedSecondsToClosest: status === "closest" ? 0 : status === "approaching" && projectedFutureIsUsable ? projectedSeconds : null,
     estimatedMinimumDistanceKm: projectedFutureIsUsable ? projectedMinimum : null,
     observedMinimumDistanceKm,
+    estimatedAltitudeAtClosestMeters,
     secondsSinceClosest,
     passageSide: projectedFutureIsUsable || status === "closest" ? passageSide : null,
     progressPercent: ["approaching", "closest", "receding"].includes(status) ? progressPercent : null

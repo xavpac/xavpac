@@ -185,12 +185,14 @@ a { color: inherit; }
 .drone-console-v4 { display: grid; grid-template-columns: minmax(0,1fr) 420px; gap: 12px; }
 .drone-panel-flow { display:flex; flex-direction:column; }
 .drone-panel-flow > .gps-banner-v5 { order:1; }
-.drone-panel-flow > .drone-console-v4 { order:2; margin-bottom:12px; }
-.drone-panel-flow > .drone-decision-panel { order:3; }
-.drone-panel-flow > .drone-airspace-brief { order:4; }
-.drone-panel-flow > .drone-traffic-alert { order:5; }
-.drone-panel-flow > .drone-passage-panel { order:6; }
-.drone-panel-flow > .drone-ops-overview { order:7; }
+.drone-panel-flow > .drone-mission-planner { order:2; }
+.drone-panel-flow > .drone-console-v4 { order:3; margin-bottom:12px; }
+.drone-panel-flow > .drone-decision-panel { order:4; }
+.drone-panel-flow > .drone-briefing-v65 { order:5; }
+.drone-panel-flow > .drone-airspace-brief { order:6; }
+.drone-panel-flow > .drone-traffic-alert { order:7; }
+.drone-panel-flow > .drone-passage-panel { order:8; }
+.drone-panel-flow > .drone-ops-overview { order:9; }
 .drone-map-v4 { height: 620px; overflow: hidden; border-radius: 16px; border: 1px solid var(--line); }
 .official-button { padding: 9px 11px; border-radius: 11px; background: rgba(88,212,255,.09); border: 1px solid rgba(88,212,255,.24); color: #dff7ff; text-decoration: none; font-size: 10px; font-weight: 850; }
 .rtba-legend-v4 { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding-top: 10px; color: var(--muted); font-size: 10px; }
@@ -2053,6 +2055,38 @@ a { color: inherit; }
 .drone-decision-status.possible, .drone-decision-panel.possible { border-color: rgba(85,229,161,.55); }
 .drone-decision-status.check, .drone-decision-panel.check { border-color: rgba(255,189,89,.55); }
 .drone-decision-status.forbidden, .drone-decision-panel.forbidden { border-color: rgba(255,97,121,.65); }
+.drone-decision-status.insufficient, .drone-decision-panel.insufficient { border-color: rgba(191,205,216,.48); background:rgba(175,194,207,.035); }
+.drone-mission-planner { display:grid; gap:12px; margin-bottom:12px; border-color:rgba(88,212,255,.3); background:linear-gradient(145deg,rgba(12,51,78,.78),rgba(4,24,40,.94)); }
+.drone-mission-planner>header,.drone-briefing-v65>header { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
+.drone-mission-planner h2,.drone-briefing-v65 h2 { margin:4px 0 0; font-size:17px; }
+.drone-mission-mode { display:flex; gap:5px; }
+.drone-mission-mode button { padding:8px 10px; border:1px solid var(--line); border-radius:8px; color:#a9bfd0; background:rgba(4,22,36,.72); font-size:8px; font-weight:900; cursor:pointer; }
+.drone-mission-mode button.active { border-color:#58d4ff; color:#061a28; background:#58d4ff; }
+.drone-mission-fields { display:grid; grid-template-columns:1.2fr 1fr 1fr .8fr; gap:8px; }
+.drone-mission-fields label { position:relative; display:grid; gap:4px; min-width:0; color:#8fb0c4; font-size:8px; font-weight:850; text-transform:uppercase; }
+.drone-mission-fields input { box-sizing:border-box; width:100%; min-width:0; padding:9px; border:1px solid rgba(101,160,200,.28); border-radius:8px; color:#f4fbff; color-scheme:dark; background:rgba(1,16,28,.7); font-size:10px; }
+.drone-mission-fields label:last-child { grid-template-columns:1fr auto; }
+.drone-mission-fields label:last-child input { grid-column:1; }
+.drone-mission-fields label:last-child span { grid-column:2; align-self:center; color:#d8e7ef; font-size:10px; }
+.drone-mission-reference { display:flex; align-items:center; gap:10px; padding:10px; border-radius:9px; background:rgba(155,98,255,.09); }
+.drone-mission-reference>span { font-size:22px; }
+.drone-mission-reference strong,.drone-mission-reference small { display:block; }
+.drone-mission-reference strong { color:#e8dcff; font-size:10px; }
+.drone-mission-reference small { margin-top:3px; color:#aebed0; font-size:8px; }
+.drone-mission-error { margin:0; padding:8px; border-radius:8px; color:#ffc5ce; background:rgba(169,45,67,.13); font-size:9px; }
+.drone-mission-planner>footer { color:#819bab; font-size:7px; }
+.drone-briefing-v65 { display:grid; gap:11px; margin-bottom:12px; }
+.drone-briefing-v65>header>small { color:var(--muted); font-size:8px; }
+.drone-briefing-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:7px; }
+.drone-briefing-grid article { min-width:0; padding:10px; border:1px solid rgba(105,153,184,.18); border-radius:9px; background:rgba(255,255,255,.022); }
+.drone-briefing-grid span,.drone-briefing-grid strong,.drone-briefing-grid small { display:block; }
+.drone-briefing-grid span { color:#75bfe5; font-size:8px; font-weight:900; }
+.drone-briefing-grid strong { margin-top:6px; color:#f2f8fb; font-size:9px; line-height:1.35; }
+.drone-briefing-grid small { margin-top:4px; color:#8fa5b4; font-size:7px; line-height:1.4; }
+.drone-briefing-grid .blocking { border-color:rgba(255,97,121,.48); background:rgba(154,35,55,.09); }
+.drone-briefing-grid .check { border-color:rgba(255,189,89,.42); background:rgba(145,89,14,.08); }
+.drone-briefing-grid .clear { border-color:rgba(85,229,161,.3); background:rgba(41,139,91,.07); }
+.drone-briefing-grid .unconfirmed { border-color:rgba(185,200,211,.28); }
 .drone-decision-panel { display: grid; grid-template-columns: minmax(220px,.8fr) minmax(320px,1.4fr) minmax(180px,.6fr); gap: 14px; align-items: center; margin-bottom: 12px; }
 .drone-decision-panel h2 { margin: 4px 0; }
 .drone-decision-panel p, .drone-decision-panel li, .drone-decision-panel footer { color: var(--muted); font-size: 9px; line-height: 1.45; }
@@ -2094,6 +2128,13 @@ a { color: inherit; }
 .rtba-activation-warning { display:grid; gap:4px; margin-top:10px; padding:10px; border-left:3px solid #ffbd59; border-radius:8px; background:rgba(255,189,89,.09); }
 .rtba-activation-warning strong { color:#ffd47f; font-size:10px; }
 .rtba-activation-warning span { color:#e4cda6; font-size:8px; line-height:1.45; }
+.rtba-activation-warning small { color:#9fb2be; font-size:7px; }
+.rtba-activation-warning.blocking { border-left-color:#ff6179; background:rgba(155,38,59,.1); }
+.rtba-activation-warning.blocking strong { color:#ff9ead; }
+.rtba-activation-warning.clear { border-left-color:#55e5a1; background:rgba(47,143,98,.08); }
+.rtba-activation-warning.clear strong { color:#83efb8; }
+.rtba-activation-warning.unconfirmed { border-left-color:#c3d0d8; background:rgba(178,196,208,.05); }
+.rtba-activation-warning.unconfirmed strong { color:#d7e1e7; }
 .rtba-official-actions { display:flex; gap:7px; flex-wrap:wrap; margin-top:10px; }
 .rtba-official-actions a,.notam-fr-card>header a { padding:8px 10px; border:1px solid rgba(88,212,255,.34); border-radius:8px; color:#bfeeff; background:rgba(19,111,157,.16); font-size:8px; font-weight:850; text-decoration:none; }
 .rtba-answer-card>footer { margin-top:10px; padding-top:8px; border-top:1px solid var(--line); color:#849eaf; font-size:7px; line-height:1.45; }
@@ -2130,6 +2171,8 @@ a { color: inherit; }
 .official-notam-list { display:grid; gap:7px; margin-top:10px; }
 .official-notam-list>article { padding:10px; border:1px solid rgba(93,151,199,.2); border-radius:9px; background:rgba(1,15,26,.5); }
 .official-notam-list>article.active-now { border-color:rgba(255,189,89,.35); }
+.official-notam-list>article.mission-direct { border-color:rgba(255,97,121,.55); background:rgba(135,30,48,.1); }
+.official-notam-list>article.mission-relevant { border-color:rgba(255,189,89,.4); }
 .official-notam-rank { width:fit-content; margin:8px 0 4px; padding:4px 7px; border-radius:6px; color:#071c28; background:#ffcf78; font-size:7px; font-weight:950; letter-spacing:.05em; }
 .official-notam-list>article>header { display:flex; justify-content:space-between; gap:10px; align-items:flex-start; }
 .official-notam-list header span,.official-notam-list header strong { display:block; }
@@ -2139,6 +2182,18 @@ a { color: inherit; }
 .official-notam-list>article.upcoming header b { color:#9fcde4; background:rgba(88,170,210,.1); }
 .official-notam-meta { display:flex; gap:5px; flex-wrap:wrap; margin:8px 0; }
 .official-notam-meta span { padding:4px 6px; border-radius:5px; color:#b9ccd8; background:rgba(255,255,255,.04); font-size:7px; }
+.notam-validity-v65,.notam-provenance-v65 { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:5px; margin:7px 0; }
+.notam-validity-v65 span,.notam-provenance-v65 span { min-width:0; padding:7px; border-radius:6px; color:#c8d8e2; background:rgba(255,255,255,.025); font-size:7px; line-height:1.4; }
+.notam-validity-v65 b,.notam-provenance-v65 b { display:block; margin-bottom:3px; color:#75b9dc; font-size:6px; text-transform:uppercase; }
+.notam-provenance-v65 { grid-template-columns:repeat(3,minmax(0,1fr)); }
+.notam-original-v65 { padding:7px 8px; border:1px solid rgba(121,169,198,.18); border-radius:7px; }
+.notam-translation-v65,.notam-mission-explanation-v65 { margin-top:8px; padding:9px; border-radius:8px; }
+.notam-translation-v65 { border:1px solid rgba(88,212,255,.28); background:rgba(40,132,176,.08); }
+.notam-mission-explanation-v65 { border:1px solid rgba(165,184,197,.2); background:rgba(255,255,255,.025); }
+.notam-mission-explanation-v65.direct { border-color:rgba(255,97,121,.42); background:rgba(149,34,54,.09); }
+.notam-mission-explanation-v65.relevant { border-color:rgba(255,189,89,.35); background:rgba(146,90,15,.07); }
+.notam-translation-v65>span,.notam-mission-explanation-v65>span { color:#75d8ff; font-size:7px; font-weight:950; letter-spacing:.04em; }
+.notam-mission-explanation-v65.direct>span { color:#ff93a3; }
 .notam-translation-label { display:inline-block; padding:3px 6px; border-radius:5px; color:#071c28; background:#72d9ff; font-size:7px; font-weight:900; letter-spacing:.05em; text-transform:uppercase; }
 .official-notam-list p { max-height:100px; margin:7px 0; overflow:auto; color:#ecf5fa; font-size:8px; line-height:1.5; white-space:pre-line; }
 .official-notam-list>article>small { display:block; color:#8ca7b8; font-size:7px; line-height:1.4; }
@@ -2149,8 +2204,9 @@ a { color: inherit; }
 .notam-source-error { margin-top:9px; padding:9px; border-left:3px solid #ff6179; border-radius:7px; color:#ffc1ca; background:rgba(151,39,58,.1); font-size:8px; line-height:1.45; }
 .notam-manual-tool { padding-top:9px; border-top:1px solid var(--line); }
 .notam-fr-card>footer { margin-top:10px; padding-top:8px; border-top:1px solid var(--line); color:#849eaf; font-size:7px; line-height:1.45; }
-@media(max-width:980px){.drone-airspace-brief{grid-template-columns:1fr}.rtba-match-list>div{grid-template-columns:1fr 1fr}.rtba-match-list strong{grid-column:1/-1}}
-@media(max-width:620px){.rtba-answer-card>header,.notam-fr-card>header{flex-direction:column}.notam-facts{grid-template-columns:1fr 1fr}.rtba-match-list>div{grid-template-columns:1fr}.rtba-match-list strong,.rtba-match-list small{grid-column:auto}.notam-fr-card>header a{width:100%;box-sizing:border-box;text-align:center}.notam-auto-status{grid-template-columns:auto 1fr}.notam-auto-status button{grid-column:1/-1}.official-notam-list>article>header{flex-direction:column}}
+@media(max-width:980px){.drone-airspace-brief{grid-template-columns:1fr}.rtba-match-list>div{grid-template-columns:1fr 1fr}.rtba-match-list strong{grid-column:1/-1}.drone-briefing-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:620px){.rtba-answer-card>header,.notam-fr-card>header,.drone-mission-planner>header,.drone-briefing-v65>header{flex-direction:column}.notam-facts{grid-template-columns:1fr 1fr}.rtba-match-list>div{grid-template-columns:1fr}.rtba-match-list strong,.rtba-match-list small{grid-column:auto}.notam-fr-card>header a{width:100%;box-sizing:border-box;text-align:center}.notam-auto-status{grid-template-columns:auto 1fr}.notam-auto-status button{grid-column:1/-1}.official-notam-list>article>header{flex-direction:column}.drone-mission-fields{grid-template-columns:1fr 1fr}.notam-provenance-v65{grid-template-columns:1fr 1fr}}
+@media(max-width:420px){.drone-mission-fields,.drone-briefing-grid,.notam-validity-v65,.notam-provenance-v65{grid-template-columns:1fr}}
 .drone-ops-overview{display:grid;grid-template-columns:1.6fr .8fr;gap:12px;margin-bottom:12px}.drone-synthesis header h3,.drone-checklist header h3{margin:4px 0 10px}.drone-synthesis>div{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}.drone-synthesis p{margin:0;padding:8px;border-radius:8px;background:rgba(255,255,255,.025)}.drone-synthesis span,.drone-synthesis strong{display:block}.drone-synthesis span{color:var(--muted);font-size:7px}.drone-synthesis strong{margin-top:4px;font-size:9px}.drone-checklist p{display:flex;justify-content:space-between;gap:8px;margin:0;padding:7px 0;border-bottom:1px solid var(--line);font-size:9px}.check-state{padding:3px 6px;border-radius:5px;background:#566b7e;font-size:7px}.check-state.conforme{background:#247c57}.check-state.a-verifier{background:#9a681b}.check-state.bloquant{background:#a82f42}.drone-checklist footer{margin-top:10px;color:var(--muted);font-size:8px;line-height:1.45}.drone-map-actions{display:flex;gap:5px;flex-wrap:wrap}.drone-map-actions button{padding:6px 8px;border:1px solid var(--line);border-radius:7px;color:#fff;background:rgba(8,35,57,.92);font-size:8px;cursor:pointer}.drone-map-actions button:disabled{opacity:.4}.rtba-panel-title-v51{flex-wrap:wrap}
 .drone-traffic-alert{margin-bottom:12px;padding:13px 16px;border-color:#e49a31;background:rgba(120,66,7,.18)}.drone-traffic-alert>strong{color:#ffbd59;font-size:11px}.drone-traffic-alert p{margin:6px 0 0;font-size:10px}.drone-traffic-alert>small{display:block;margin-top:9px;color:#ffdca4;font-size:8px}
 .drone-passage-panel{margin-bottom:12px;padding:14px 16px}.drone-passage-panel>header{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.drone-passage-panel h3{margin:4px 0 0}.drone-passage-panel>header>small{color:var(--muted);font-size:8px}.drone-passage-list{display:grid;gap:6px;margin-top:12px}.drone-passage-list article{display:grid;grid-template-columns:minmax(150px,1.35fr) repeat(6,minmax(75px,1fr));gap:7px;align-items:center;padding:9px;border:1px solid rgba(93,151,199,.18);border-radius:9px;background:rgba(255,255,255,.022)}.drone-passage-list article.status-approaching{border-color:rgba(53,221,137,.42);background:rgba(53,221,137,.045)}.drone-passage-list article.status-closest{border-color:rgba(255,193,57,.58);background:rgba(255,193,57,.05)}.drone-passage-list article.status-stale{opacity:.66}.drone-passage-list article>div{min-width:0}.drone-passage-list article span,.drone-passage-list article strong,.drone-passage-list article small{display:block}.drone-passage-list article span{color:#76bfe8;font-size:7px;text-transform:uppercase}.drone-passage-list article strong{margin-top:3px;overflow:hidden;text-overflow:ellipsis;font-size:9px;white-space:nowrap}.drone-passage-identity{display:flex;align-items:center;gap:8px}.drone-passage-identity>b{font-size:18px}.drone-passage-identity strong{font-size:11px!important}.drone-passage-identity small{margin-top:3px;color:var(--muted);font-size:7px;font-weight:500}.drone-passage-empty{margin:0;color:var(--muted);font-size:9px}.drone-passage-gps-warning{margin:9px 0 0;padding:7px 9px;border-radius:7px;color:#ffd27d;background:rgba(255,189,89,.09);font-size:8px}.drone-passage-panel>footer{margin-top:10px;padding-top:9px;border-top:1px solid var(--line);color:#ffcf82;font-size:8px;line-height:1.45}
@@ -2826,3 +2882,82 @@ a { color: inherit; }
   .aircraft-view-weather-item small { font-size:8px; }
   .aircraft-view-map-button { min-width:0; min-height:50px; border-radius:10px; }
 }
+.module-boundary-content { min-width:0; }
+.module-error-boundary { min-height:360px; display:flex; align-items:center; justify-content:center; gap:24px; padding:40px; text-align:left; }
+.module-error-boundary>span { width:70px; height:70px; flex:0 0 auto; display:grid; place-items:center; border:1px solid rgba(255,183,77,.5); border-radius:22px; color:#ffc369; background:rgba(125,72,12,.2); font-size:34px; }
+.module-error-boundary p { margin:0; color:var(--muted); line-height:1.55; }
+.module-error-boundary div>p:first-child { color:#ffc369; font-size:10px; font-weight:900; letter-spacing:.14em; }
+.module-error-boundary h2 { margin:8px 0 10px; color:var(--text); }
+.module-error-boundary div>div { display:flex; flex-wrap:wrap; gap:10px; margin-top:20px; }
+.module-error-boundary button { min-height:44px; padding:10px 16px; border:1px solid rgba(77,185,255,.5); border-radius:10px; color:#fff; background:#0b6fae; font-weight:800; cursor:pointer; }
+.module-error-boundary button.secondary { color:#cfeeff; background:rgba(8,55,88,.6); }
+@media(max-width:620px){.module-error-boundary{min-height:300px;align-items:flex-start;gap:14px;padding:24px 18px}.module-error-boundary>span{width:50px;height:50px;border-radius:15px;font-size:24px}.module-error-boundary div>div{flex-direction:column}.module-error-boundary button{width:100%}}
+
+/* XavPac 6.5 — caméra prévisible et marqueurs ADS-B centrés */
+.xavpac-silhouette-marker { position:relative; width:48px; height:48px; display:grid; place-items:center; transition:opacity .18s ease,filter .18s ease,transform .18s ease; }
+.xavpac-marker-accessible-name { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+.xavpac-reference-marker { position:relative; width:36px; height:36px; display:grid; place-items:center; border:3px solid #fff; border-radius:50%; color:#fff; background:#1584dd; box-shadow:0 0 0 5px rgba(21,132,221,.2),0 5px 11px rgba(0,0,0,.42); }
+.xavpac-reference-marker>span { font-size:18px; font-weight:950; line-height:1; }
+.xavpac-reference-marker>strong { position:absolute; left:41px; top:50%; min-width:max-content; padding:4px 7px; border:1px solid rgba(255,255,255,.8); border-radius:6px; color:#fff; background:rgba(4,29,48,.92); box-shadow:0 4px 10px rgba(0,0,0,.3); font-size:8px; transform:translateY(-50%); }
+.xavpac-reference-marker.home { color:#0c4066; background:#fff; border-color:#1684da; box-shadow:0 0 0 5px rgba(21,132,221,.18),0 5px 11px rgba(0,0,0,.38); }
+.xavpac-reference-marker.home>strong { background:#0f6fac; }
+.xavpac-reference-marker.moi { animation:xavpac-reference-pulse 2.2s ease-in-out infinite; }
+.xavpac-reference-marker.mission { background:#8d4ce8; box-shadow:0 0 0 5px rgba(141,76,232,.2),0 5px 11px rgba(0,0,0,.42); }
+.xavpac-reference-marker.mission>strong { background:#59259b; }
+@keyframes xavpac-reference-pulse { 50% { box-shadow:0 0 0 9px rgba(21,132,221,.10),0 5px 11px rgba(0,0,0,.42); } }
+.xavpac-silhouette-svg { position:relative; z-index:2; width:28px; height:28px; filter:drop-shadow(0 1px 1px rgba(255,255,255,.95)) drop-shadow(0 4px 5px rgba(0,0,0,.62)); }
+.xavpac-silhouette-svg svg { display:block; width:100%; height:100%; overflow:visible; transform-origin:center; }
+.xavpac-silhouette-label { position:absolute; z-index:3; top:39px; left:50%; min-width:58px; max-width:118px; padding:3px 6px; border:1px solid rgba(255,255,255,.7); border-radius:6px; color:#fff; background:rgba(3,17,29,.91); box-shadow:0 4px 10px rgba(0,0,0,.35); text-align:center; transform:translateX(-50%); pointer-events:none; }
+.xavpac-silhouette-label strong,.xavpac-silhouette-label span { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.xavpac-silhouette-label strong { font-size:8px; line-height:1.1; }
+.xavpac-silhouette-label span { margin-top:2px; color:#c8d9e7; font-size:6px; }
+.xavpac-silhouette-marker.is-selected { transform:scale(1.14); }
+.xavpac-silhouette-marker.is-selected::before { content:""; position:absolute; z-index:1; inset:4px; border:3px solid #27b7ff; border-radius:50%; box-shadow:0 0 0 7px rgba(39,183,255,.14),0 0 20px rgba(39,183,255,.72); }
+.xavpac-silhouette-marker.is-operational::before { border-color:var(--aircraft-color); box-shadow:0 0 0 7px color-mix(in srgb,var(--aircraft-color) 20%,transparent),0 0 18px color-mix(in srgb,var(--aircraft-color) 70%,transparent); }
+.xavpac-silhouette-marker.is-remarkable .xavpac-silhouette-svg { animation:remarkablePulse 1.8s ease-in-out infinite; }
+.xavpac-silhouette-marker.is-faded { opacity:.55; filter:saturate(.72); }
+.fw-camera-controls { position:absolute; z-index:820; right:12px; bottom:12px; display:flex; align-items:center; gap:5px; padding:5px; border:1px solid rgba(255,255,255,.34); border-radius:11px; background:rgba(3,18,31,.93); box-shadow:0 9px 24px rgba(0,0,0,.28); backdrop-filter:blur(7px); }
+.fw-camera-controls button { min-width:44px; min-height:36px; padding:7px 8px; border:1px solid rgba(98,199,255,.28); border-radius:7px; color:#eaf8ff; background:rgba(15,72,112,.72); font-size:8px; font-weight:900; cursor:pointer; }
+.fw-camera-controls button:hover,.fw-camera-controls button.active { border-color:#63c7ff; background:#126db5; }
+.fw-camera-controls button:disabled { opacity:.38; cursor:not-allowed; }
+.fw-camera-mode { padding:5px 7px; border-radius:999px; color:#9fb4c7; background:rgba(255,255,255,.06); font-size:7px; font-weight:950; letter-spacing:.08em; }
+.fw-camera-mode.follow { color:#8ff0be; background:rgba(46,207,133,.14); }
+.fw-camera-mode.focus { color:#8edcff; background:rgba(39,183,255,.14); }
+@media(max-width:680px){.fw-camera-controls{right:8px;bottom:8px;max-width:calc(100% - 16px)}.fw-camera-controls button{min-width:42px;padding:6px}.fw-camera-mode{display:none}}
+
+/* XavPac 6.5 — Phase Aviation */
+.aviation-source-health { display:flex; gap:7px; padding:8px; overflow-x:auto; }
+.aviation-source-health>span { min-width:122px; padding:7px 9px; display:grid; grid-template-columns:1fr auto; gap:2px 8px; border:1px solid rgba(143,164,183,.2); border-radius:9px; background:rgba(7,24,40,.92); }
+.aviation-source-health b { color:#d9e8f3; font-size:8px; }
+.aviation-source-health strong { font-size:7px; letter-spacing:.06em; }
+.aviation-source-health small { grid-column:1/-1; color:#8fa4b7; font-size:6px; white-space:nowrap; }
+.aviation-source-health .available strong { color:#65e5a5; }
+.aviation-source-health .degraded strong { color:#ffd176; }
+.aviation-source-health .offline strong { color:#ff7587; }
+.aviation-source-health .disabled strong { color:#8495a5; }
+.aviation-compact-summary { padding:8px 11px; display:flex; align-items:center; gap:10px 18px; color:#a9bdcc; font-size:8px; }
+.aviation-compact-summary strong { color:#eaf7ff; }
+.aviation-compact-summary span:last-child { margin-left:auto; }
+.aviation-watch-now { padding:11px 12px; }
+.aviation-watch-now>header { display:flex; justify-content:space-between; gap:12px; align-items:center; }
+.aviation-watch-now>header span,.aviation-watch-now>header strong { display:block; }
+.aviation-watch-now>header span { color:#ffbd59; font-size:7px; font-weight:950; letter-spacing:.12em; }
+.aviation-watch-now>header strong { margin-top:3px; font-size:11px; }
+.aviation-watch-now>header small { color:#8fa4b7; font-size:7px; }
+.aviation-watch-now>div { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; margin-top:9px; }
+.aviation-watch-now button { min-width:0; min-height:50px; padding:8px; display:grid; grid-template-columns:22px 1fr auto; gap:2px 7px; align-items:center; border:1px solid rgba(255,189,89,.22); border-radius:9px; color:#fff; background:rgba(255,189,89,.05); text-align:left; cursor:pointer; }
+.aviation-watch-now button>b { grid-row:1/3; width:21px; height:21px; display:grid; place-items:center; border-radius:50%; color:#17202a; background:#ffbd59; font-size:8px; }
+.aviation-watch-now button>strong { overflow:hidden; font-size:10px; text-overflow:ellipsis; white-space:nowrap; }
+.aviation-watch-now button>span { overflow:hidden; color:#b8cad8; font-size:7px; text-overflow:ellipsis; white-space:nowrap; }
+.aviation-watch-now button>em { grid-row:1/3; color:#67d3ff; font-size:8px; font-style:normal; font-weight:900; }
+.aviation-watch-now p { grid-column:1/-1; margin:0; color:#8fa4b7; font-size:8px; }
+.aviation-unknown-identity { display:inline-flex; margin:5px 0; padding:4px 7px; border:1px solid rgba(169,185,199,.35); border-radius:6px; color:#d5e0e8; background:rgba(121,140,155,.13); font-size:7px; font-weight:950; letter-spacing:.08em; }
+.fw-close-selection { width:30px; height:30px; display:grid; place-items:center; border:1px solid rgba(160,181,197,.3); border-radius:8px; color:#d6e4ee; background:rgba(255,255,255,.04); font-size:18px; cursor:pointer; }
+.fw-home-passage-strip { margin-top:10px; padding:10px; display:grid; grid-template-columns:minmax(190px,1.5fr) repeat(3,minmax(90px,1fr)); gap:8px; border:1px solid rgba(78,191,255,.24); border-radius:10px; background:rgba(20,104,158,.08); }
+.fw-home-passage-strip>div { min-width:0; padding:7px; border-radius:7px; background:rgba(255,255,255,.025); }
+.fw-home-passage-strip span,.fw-home-passage-strip strong,.fw-home-passage-strip small { display:block; }
+.fw-home-passage-strip span { color:#69d0ff; font-size:7px; font-weight:900; }
+.fw-home-passage-strip strong { margin-top:4px; font-size:9px; }
+.fw-home-passage-strip small { margin-top:3px; color:#8fa4b7; font-size:6px; }
+.fw-look-grid>small { grid-column:1/-1; color:#8fa4b7; font-size:6px; }
+@media(max-width:680px){.aviation-watch-now>div{display:flex;overflow-x:auto}.aviation-watch-now button{min-width:245px}.aviation-watch-now>header small{display:none}.fw-home-passage-strip{grid-template-columns:1fr 1fr}.fw-home-passage-strip>div:first-child{grid-column:1/-1}.aviation-source-health>span{min-width:112px}.aviation-compact-summary{display:grid;gap:4px}.aviation-compact-summary span:last-child{margin-left:0}}

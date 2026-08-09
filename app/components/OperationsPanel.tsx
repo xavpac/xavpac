@@ -1,14 +1,17 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import AircraftPhoto from "./aviation/AircraftPhoto";
 import FlightMetrics from "./aviation/FlightMetrics";
 import OperatorBrand from "./aviation/OperatorBrand";
 import { useLiveGeolocation } from "../hooks/useLiveGeolocation";
 import { reportDataUpdate } from "../lib/buildInfo";
-import { distanceKm } from "../lib/aviation/geometry";
+import { bearingDegrees, distanceKm } from "../lib/aviation/geometry";
+import { nationalMarkerCategory } from "../lib/aviation/nationalAlerts";
 import type { MapStyle } from "../lib/map/types";
+import type { MapCameraCommand, MapCameraMode } from "./StableMap";
+import { getBrowserStorage, isCoordinatePair, parseStoredJson, safeGetItem, XAVPAC_STORAGE_KEYS } from "../lib/safeStorage";
 
 const StableMap = dynamic(() => import("./StableMap"), { ssr: false });
 
@@ -39,21 +42,6 @@ type NationalAsset = {
 
 type ExactPhoto = { image: string; link: string | null; photographer: string | null };
 
-function markerCategory(asset: NationalAsset) {
-  const badge = asset.identification.badge;
-  if (badge.includes("CANADAIR")) return "national-canadair";
-  if (badge.includes("FIRE BOSS")) return "national-fireboss";
-  if (badge.includes("DASH")) return "national-dash";
-  if (badge.includes("DRAGON")) return "national-dragon";
-  if (badge.includes("GENDARMERIE")) return "national-gendarmerie";
-  if (badge.includes("SAMU")) return "national-samu";
-  if (badge.includes("BEECHCRAFT")) return "national-beechcraft";
-  if (badge.includes("MILITAIRE")) return "national-military";
-  if (badge.includes("DOUANE")) return "national-customs";
-  if (badge.includes("DRONE")) return "national-drone";
-  return "national-unknown";
-}
-
 function isHelicopter(asset: NationalAsset) {
   const text = `${asset.aircraftType ?? ""} ${asset.description ?? ""} ${asset.operator ?? ""}`.toLowerCase();
   return text.includes("heli") || text.includes("rotor") || /h145|ec145|h135|ec135/.test(text);
@@ -73,6 +61,12 @@ function passageMinutes(home:[number,number], asset:NationalAsset) {
   return hours>0 && hours<=1 ? Math.round(hours*60) : null;
 }
 
+function directionFrom(origin: [number, number], asset: NationalAsset) {
+  const bearing = bearingDegrees(origin, [asset.latitude, asset.longitude]);
+  const labels = ["Nord", "Nord-Est", "Est", "Sud-Est", "Sud", "Sud-Ouest", "Ouest", "Nord-Ouest"];
+  return `${labels[Math.round(bearing / 45) % 8]} • ${Math.round(bearing)}°`;
+}
+
 function confidenceLabel(value: NationalAsset["identification"]["confidence"]) {
   if (value === "confirmed") return "Confirmé";
   if (value === "probable") return "Probable";
@@ -81,6 +75,7 @@ function confidenceLabel(value: NationalAsset["identification"]["confidence"]) {
 
 export default function OperationsPanel() {
   const { position } = useLiveGeolocation();
+  const [savedHome, setSavedHome] = useState<[number, number] | null>(null);
   const [assets, setAssets] = useState<NationalAsset[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [status, setStatus] = useState("Recherche des moyens détectables…");
@@ -88,8 +83,16 @@ export default function OperationsPanel() {
   const [query, setQuery] = useState("");
   const [mapStyle, setMapStyle] = useState<MapStyle>("street");
   const [reloadSignal, setReloadSignal] = useState(0);
+  const [cameraMode, setCameraMode] = useState<MapCameraMode>("focus");
+  const [cameraCommand, setCameraCommand] = useState<MapCameraCommand | null>(null);
+  const cameraCommandIdRef = useRef(0);
   const [photoState, setPhotoState] = useState<{ key: string | null; status: "idle" | "loading" | "ready" | "unavailable"; photo: ExactPhoto | null }>({ key: null, status: "idle", photo: null });
   const [routeState, setRouteState] = useState<{ key: string | null; route: { origin?: { municipality?: string }; destination?: { municipality?: string } } | null }>({ key: null, route: null });
+
+  useEffect(() => {
+    const stored = parseStoredJson(safeGetItem(getBrowserStorage("local"), XAVPAC_STORAGE_KEYS.savedHome));
+    setSavedHome(isCoordinatePair(stored) ? stored : null);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -190,13 +193,10 @@ export default function OperationsPanel() {
       name: asset.callsign,
       detail: asset.identification.model ?? "Non déterminé",
       color: asset.id === selected?.id ? "#00b7ff" : isHelicopter(asset) ? "#4fa8ff" : "#ffb000",
-      category: markerCategory(asset),
-      heading: asset.track,
-      thumbnailUrl: asset.id === selected?.id && photoState.key === asset.id && photoState.status === "ready"
-        ? photoState.photo?.image ?? null
-        : null
+      category: nationalMarkerCategory(asset.identification.badge),
+      heading: asset.track
     })),
-    [photoState, selected?.id, visibleAssets]
+    [selected?.id, visibleAssets]
   );
 
   const helicopters = assets.filter(isHelicopter).length;
@@ -211,6 +211,25 @@ export default function OperationsPanel() {
     }
     return [...counts.entries()].sort((a, b) => b[1] - a[1]);
   }, [assets]);
+
+  function focusMap(center: [number, number], zoom = 8) {
+    cameraCommandIdRef.current += 1;
+    setCameraMode("focus");
+    setCameraCommand({ id: cameraCommandIdRef.current, center, zoom });
+  }
+
+  function selectAsset(id: string) {
+    setSelectedId(id);
+    const asset = assets.find((item) => item.id === id);
+    if (asset) focusMap([asset.latitude, asset.longitude], 9);
+  }
+
+  function followSelected() {
+    if (!selected) return;
+    cameraCommandIdRef.current += 1;
+    setCameraCommand({ id: cameraCommandIdRef.current, center: [selected.latitude, selected.longitude], zoom: 9 });
+    setCameraMode("follow");
+  }
 
   return (
     <section className="flightwall-v61 national-flightwall">
@@ -232,8 +251,12 @@ export default function OperationsPanel() {
                 center={selected ? [selected.latitude, selected.longitude] : [46.6, 2.5]}
                 zoom={selected ? 8 : 6}
                 selectedId={selected?.id}
-                onSelect={setSelectedId}
+                onSelect={selectAsset}
                 mapVariant={mapStyle}
+                cameraMode={cameraMode}
+                cameraCommand={cameraCommand}
+                followTarget={cameraMode === "follow" && selected ? [selected.latitude, selected.longitude] : null}
+                onCameraModeChange={setCameraMode}
               />
 
               <div className="fw-map-search">
@@ -253,6 +276,13 @@ export default function OperationsPanel() {
                 <div><span className="ops-counter-symbol">AIR</span><strong>{airborne}</strong><small>En vol</small></div>
                 <div><span className="ops-counter-symbol">OPS</span><strong>{assets.length}</strong><small>Détectés</small></div>
               </div>
+              <div className="fw-camera-controls" aria-label="Contrôles de la carte des moyens nationaux">
+                <span className={`fw-camera-mode ${cameraMode}`}>{cameraMode === "free" ? "LIBRE" : cameraMode === "follow" ? "SUIVI" : "FOCUS"}</span>
+                <button type="button" disabled={!position} onClick={() => position && focusMap(position, 10)}>Moi</button>
+                <button type="button" disabled={!savedHome} onClick={() => savedHome && focusMap(savedHome, 10)}>Home</button>
+                <button type="button" onClick={() => focusMap([46.6, 2.5], 6)}>France</button>
+                <button type="button" disabled={!selected} className={cameraMode === "follow" ? "active" : ""} onClick={followSelected}>Suivre</button>
+              </div>
             </div>
           </div>
 
@@ -270,8 +300,8 @@ export default function OperationsPanel() {
               <header><div><strong>Moyens détectés</strong><span>Sélectionner un appareil</span></div></header>
               <div className="fw-nearest-list">
                 {visibleAssets.slice(0, 8).map((asset, index) => (
-                  <button type="button" key={asset.id} onClick={() => setSelectedId(asset.id)} className={asset.id === selected?.id ? "selected" : ""}>
-                    <b>{index + 1}</b><strong>{asset.identification.badge}</strong><span>{`${asset.operator ?? "Opérateur non déterminé"} • ${asset.callsign} • ${asset.registration ?? "Immat. non déterminée"} • ${formatAltitude(asset.altitude)} • ${formatSpeed(asset.speed)} • ${asset.lastSeenSeconds === null ? "MAJ non déterminée" : `MAJ ${Math.round(asset.lastSeenSeconds)} s`} • ${confidenceLabel(asset.identification.confidence)}`}</span><em>{position ? `${distanceKm(position, [asset.latitude, asset.longitude]).toFixed(0)} km` : "Distance : Non déterminé"}</em>
+                  <button type="button" key={asset.id} onClick={() => selectAsset(asset.id)} className={asset.id === selected?.id ? "selected" : ""}>
+                    <b>{index + 1}</b><strong>{asset.identification.badge}</strong><span>{`${asset.operator ?? "Opérateur non déterminé"} • ${asset.callsign} • ${asset.registration ?? "Immat. non déterminée"} • ${formatAltitude(asset.altitude)} • ${formatSpeed(asset.speed)} • ${asset.lastSeenSeconds === null ? "MAJ non déterminée" : `MAJ ${Math.round(asset.lastSeenSeconds)} s`} • ${confidenceLabel(asset.identification.confidence)}`}</span><em>{savedHome ? `HOME ${distanceKm(savedHome, [asset.latitude, asset.longitude]).toFixed(0)} km` : position ? `MOI ${distanceKm(position, [asset.latitude, asset.longitude]).toFixed(0)} km` : "Distance : Non déterminée"}</em>
                   </button>
                 ))}
                 {!visibleAssets.length && <p className="fw-empty-text">Aucun résultat pour cette recherche.</p>}
@@ -324,8 +354,9 @@ export default function OperationsPanel() {
                 <div><span>Base</span><strong>Non déterminé</strong></div>
                 <div><span>Départ</span><strong>{route?.origin?.municipality ?? "Non déterminé"}</strong></div>
                 <div><span>Destination</span><strong>{route?.destination?.municipality ?? "Non déterminé"}</strong></div>
-                <div><span>Distance HOME</span><strong>{position ? `${distanceKm(position, [selected.latitude, selected.longitude]).toFixed(1)} km` : "Non déterminé"}</strong></div>
-                <div><span>Passage estimé</span><strong>{position && passageMinutes(position,selected)!==null ? `${passageMinutes(position,selected)} min` : "Non déterminé"}</strong></div>
+                <div><span>Distance HOME</span><strong>{savedHome ? `${distanceKm(savedHome, [selected.latitude, selected.longitude]).toFixed(1)} km` : "HOME non défini"}</strong></div>
+                <div><span>Distance MOI</span><strong>{position ? `${distanceKm(position, [selected.latitude, selected.longitude]).toFixed(1)} km` : "MOI indisponible"}</strong></div>
+                <div><span>Passage HOME estimé</span><strong>{savedHome && passageMinutes(savedHome,selected)!==null ? `≈ ${passageMinutes(savedHome,selected)} min` : "Non déterminé"}</strong></div>
                 <div><span>Dernière détection</span><strong>{selected.lastSeenSeconds === null ? "Non déterminé" : `il y a ${Math.round(selected.lastSeenSeconds)} s`}</strong></div>
               </div>
 
@@ -337,7 +368,7 @@ export default function OperationsPanel() {
               <FlightMetrics metrics={[
                 { label: "Altitude", value: formatAltitude(selected.altitude), detail: selected.onGround ? "Au sol" : "Altitude barométrique" },
                 { label: "Vitesse", value: formatSpeed(selected.speed), detail: "Vitesse sol" },
-                { label: "Où regarder", value: position ? "Depuis la carte" : "—", detail: "Position relative" },
+                { label: "Où regarder", value: position ? directionFrom(position, selected).split(" • ")[0] : "—", detail: position ? `Azimut estimé ${directionFrom(position, selected).split(" • ")[1]}` : "MOI indisponible" },
                 { label: "Position", value: selected.latitude.toFixed(3), detail: selected.longitude.toFixed(3) }
               ]} />
 

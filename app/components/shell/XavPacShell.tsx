@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import AviationPanel from "../AviationPanel";
 import OperationsPanel from "../OperationsPanel";
 import DronePanel from "../DronePanel";
@@ -13,6 +13,8 @@ import { NAVIGATION, moduleBelongsToUniverse, type ModuleId, type Universe } fro
 import AppHeader from "./AppHeader";
 import ModuleNavigation from "./ModuleNavigation";
 import UniverseSwitcher from "./UniverseSwitcher";
+import ModuleErrorBoundary from "../ModuleErrorBoundary";
+import { initializeBrowserStorage } from "../../lib/safeStorage";
 
 function ActivePanel({ module }: { module: ModuleId }) {
   if (module === "aviation") return <AviationPanel />;
@@ -29,6 +31,10 @@ export default function XavPacShell({ universe }: { universe: Universe }) {
   const navigation = NAVIGATION[universe];
   const [activeModule, setActiveModule] = useState<ModuleId>(navigation.defaultModule);
 
+  useEffect(() => {
+    initializeBrowserStorage();
+  }, []);
+
   function selectModule(module: ModuleId) {
     if (module === "technical" || moduleBelongsToUniverse(universe, module)) setActiveModule(module);
   }
@@ -39,7 +45,9 @@ export default function XavPacShell({ universe }: { universe: Universe }) {
     <ModuleNavigation modules={navigation.modules} activeModule={activeModule} onChange={selectModule} />
 
     <section className="v2-workspace" aria-live="polite">
-      <ActivePanel module={activeModule} />
+      <ModuleErrorBoundary key={activeModule} module={activeModule}>
+        <ActivePanel module={activeModule} />
+      </ModuleErrorBoundary>
     </section>
 
     <ModuleNavigation modules={navigation.modules} activeModule={activeModule} onChange={selectModule} mobile />

@@ -22,10 +22,15 @@ async function postSofia(body: URLSearchParams, cookie: string, signal: AbortSig
   return fetch(SOFIA_ENDPOINT, { method: "POST", headers: headers(cookie), body, cache: "no-store", signal });
 }
 
-function requestData(latitude: number, longitude: number, uuid: string, validFrom: string) {
+function durationCode(start: Date, end: Date) {
+  const minutes = Math.max(5, Math.min(72 * 60, Math.ceil((end.getTime() - start.getTime()) / 60_000)));
+  return `${String(Math.floor(minutes / 60)).padStart(2, "0")}${String(minutes % 60).padStart(2, "0")}`;
+}
+
+function requestData(latitude: number, longitude: number, uuid: string, validFrom: string, duration: string) {
   return {
     valid_from: validFrom,
-    duration: "1200",
+    duration,
     traffic: "V",
     fl_lower: "0",
     fl_upper: "10",
@@ -43,6 +48,13 @@ export async function GET(request: NextRequest) {
   if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || latitude < 41 || latitude > 52 || longitude < -6 || longitude > 10) {
     return NextResponse.json({ error: "Coordonnées invalides pour la France." }, { status: 400 });
   }
+  const requestedStart = request.nextUrl.searchParams.get("start");
+  const requestedEnd = request.nextUrl.searchParams.get("end");
+  const start = requestedStart ? new Date(requestedStart) : new Date();
+  const end = requestedEnd ? new Date(requestedEnd) : new Date(start.getTime() + 12 * 60 * 60_000);
+  if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end <= start || end.getTime() - start.getTime() > 72 * 60 * 60_000) {
+    return NextResponse.json({ error: "Créneau de mission invalide ou supérieur à 72 heures." }, { status: 400 });
+  }
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15000);
@@ -54,15 +66,15 @@ export async function GET(request: NextRequest) {
 
     const uuid = randomUUID();
     const queriedAt = new Date();
-    const common = requestData(latitude, longitude, uuid, queriedAt.toISOString());
+    const common = requestData(latitude, longitude, uuid, start.toISOString(), durationCode(start, end));
     const saveBody = new URLSearchParams({
       ":operation": "postsaveinsessionprepa",
       operation: "postAreaPibRequest",
       target: "#aside-target",
       href: "/sofia/pages/notamarea.html",
       typeVol: "",
-      departure_date: queriedAt.toLocaleDateString("fr-FR", { timeZone: "UTC" }),
-      departure_time: queriedAt.toISOString().slice(11, 16).replace(":", ""),
+      departure_date: start.toLocaleDateString("fr-FR", { timeZone: "UTC" }),
+      departure_time: start.toISOString().slice(11, 16).replace(":", ""),
       lang: "fr",
       routeVal: "false",
       ...common
@@ -86,6 +98,7 @@ export async function GET(request: NextRequest) {
       radiusNm: 10,
       lowerFl: 0,
       upperFl: 10,
+      missionWindow: { start: start.toISOString(), end: end.toISOString() },
       notams
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {

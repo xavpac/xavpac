@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { getBrowserStorage, safeGetItem, safeSetItem, XAVPAC_STORAGE_KEYS } from "../lib/safeStorage";
 
-const SOUND_PREFERENCE_KEY = "xavpac:aviation-sounds";
+const SOUND_PREFERENCE_KEY = XAVPAC_STORAGE_KEYS.soundPreference;
 
 type WebkitWindow = Window & typeof globalThis & { webkitAudioContext?: typeof AudioContext };
 
@@ -30,10 +31,8 @@ export function useAviationAudio() {
   const [enabled, setEnabled] = useState(true);
 
   useEffect(() => {
-    try {
-      const stored = window.localStorage.getItem(SOUND_PREFERENCE_KEY);
-      if (stored !== null) setEnabled(stored !== "off");
-    } catch {}
+    const stored = safeGetItem(getBrowserStorage("local"), SOUND_PREFERENCE_KEY);
+    if (stored !== null) setEnabled(stored !== "off");
     return () => { void contextRef.current?.close(); };
   }, []);
 
@@ -50,7 +49,7 @@ export function useAviationAudio() {
 
   const setSoundEnabled = useCallback(async (next: boolean) => {
     setEnabled(next);
-    try { window.localStorage.setItem(SOUND_PREFERENCE_KEY, next ? "on" : "off"); } catch {}
+    safeSetItem(getBrowserStorage("local"), SOUND_PREFERENCE_KEY, next ? "on" : "off");
     if (next && await unlock(true) && contextRef.current) playConfirmation(contextRef.current);
   }, [unlock]);
 

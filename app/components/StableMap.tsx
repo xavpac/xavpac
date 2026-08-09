@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import L from "leaflet";
 import { escapeHtml } from "../lib/security/escapeHtml";
 import {
@@ -48,8 +48,10 @@ export type MapZone = {
 
 type Bounds = [[number, number], [number, number]];
 type MapVariant = "layers" | "street" | "satellite" | "dark";
+export type MapCameraMode = "free" | "follow" | "focus";
+export type MapCameraCommand = { id: number; center: [number, number]; zoom?: number; bounds?: Bounds };
 
-function MapCamera({
+function LegacyMapCamera({
   center,
   zoom,
   radiusKm,
@@ -89,20 +91,136 @@ function MapCamera({
   return null;
 }
 
+function ControlledMapCamera({
+  initialCenter,
+  initialZoom,
+  initialRadiusKm,
+  initialBounds,
+  mode,
+  command,
+  followTarget,
+  onModeChange
+}: {
+  initialCenter: [number, number];
+  initialZoom: number;
+  initialRadiusKm?: number;
+  initialBounds?: Bounds;
+  mode: MapCameraMode;
+  command?: MapCameraCommand | null;
+  followTarget?: [number, number] | null;
+  onModeChange?: (mode: MapCameraMode) => void;
+}) {
+  const map = useMap();
+  const initialized = useRef(false);
+  const lastCommandId = useRef<number | null>(null);
+  const programmatic = useRef(false);
+  const releaseTimer = useRef<number | null>(null);
+
+  const runProgrammatic = useCallback((action: () => void) => {
+    programmatic.current = true;
+    if (releaseTimer.current !== null) window.clearTimeout(releaseTimer.current);
+    action();
+    releaseTimer.current = window.setTimeout(() => { programmatic.current = false; }, 900);
+  }, []);
+
+  useMapEvents({
+    dragstart: () => { if (!programmatic.current) onModeChange?.("free"); },
+    zoomstart: () => { if (!programmatic.current) onModeChange?.("free"); }
+  });
+
+  useEffect(() => {
+    if (initialized.current) return;
+    initialized.current = true;
+    runProgrammatic(() => {
+      if (initialBounds) map.fitBounds(initialBounds, { padding: [20, 20], animate: false });
+      else if (initialRadiusKm) {
+        const latitudeDelta = initialRadiusKm / 111;
+        const longitudeDelta = initialRadiusKm / (111 * Math.max(Math.cos((initialCenter[0] * Math.PI) / 180), .25));
+        map.fitBounds([
+          [initialCenter[0] - latitudeDelta, initialCenter[1] - longitudeDelta],
+          [initialCenter[0] + latitudeDelta, initialCenter[1] + longitudeDelta]
+        ], { padding: [32, 32], animate: false });
+      } else map.setView(initialCenter, initialZoom, { animate: false });
+    });
+  }, [initialBounds, initialCenter, initialRadiusKm, initialZoom, map, runProgrammatic]);
+
+  useEffect(() => {
+    if (!command || command.id === lastCommandId.current) return;
+    lastCommandId.current = command.id;
+    runProgrammatic(() => {
+      if (command.bounds) map.fitBounds(command.bounds, { padding: [28, 28], animate: true, duration: .55 });
+      else map.flyTo(command.center, command.zoom ?? map.getZoom(), { animate: true, duration: .55 });
+    });
+  }, [command, map, runProgrammatic]);
+
+  useEffect(() => {
+    if (mode !== "follow" || !followTarget) return;
+    runProgrammatic(() => map.panTo(followTarget, { animate: false }));
+  }, [followTarget, map, mode, runProgrammatic]);
+
+  useEffect(() => () => {
+    if (releaseTimer.current !== null) window.clearTimeout(releaseTimer.current);
+  }, []);
+
+  return null;
+}
+
 function MapClickHandler({ onMapClick }: { onMapClick?: (position: [number, number]) => void }) {
   useMapEvents({ click: (event) => onMapClick?.([event.latlng.lat, event.latlng.lng]) });
   return null;
 }
 
-function aircraftSvg(color: string, heading: number, helicopter = false) {
-  if (helicopter) {
+function MapViewportGuard() {
+  const map = useMap();
+
+  useEffect(() => {
+    let frame = 0;
+    const container = map.getContainer();
+    const invalidate = () => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => map.invalidateSize({ animate: false, pan: false }));
+    };
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(invalidate);
+    observer?.observe(container);
+    window.addEventListener("resize", invalidate, { passive: true });
+    window.addEventListener("orientationchange", invalidate, { passive: true });
+    window.visualViewport?.addEventListener("resize", invalidate, { passive: true });
+    invalidate();
+    return () => {
+      window.cancelAnimationFrame(frame);
+      observer?.disconnect();
+      window.removeEventListener("resize", invalidate);
+      window.removeEventListener("orientationchange", invalidate);
+      window.visualViewport?.removeEventListener("resize", invalidate);
+    };
+  }, [map]);
+
+  return null;
+}
+
+function aircraftSvg(color: string, heading: number, category = "aircraft") {
+  if (category === "helicopter" || ["dragon", "gendarmerie", "samu"].includes(category)) {
     return `
       <svg viewBox="0 0 64 64" style="transform:rotate(${heading}deg)">
-        <path d="M8 30h26c9 0 15 5 18 13H28c-8 0-14-5-20-13Z" fill="${color}" stroke="#06111f" stroke-width="2.8"/>
-        <path d="M36 18h4v18h-4zM16 21h40v3H16zM47 40l12 9-3 3-16-9z" fill="${color}" stroke="#06111f" stroke-width="1.7"/>
-        <circle cx="23" cy="47" r="3.5" fill="${color}" stroke="#06111f" stroke-width="2"/>
-        <circle cx="44" cy="47" r="3.5" fill="${color}" stroke="#06111f" stroke-width="2"/>
+        <path d="M8 29h27c9 0 15 5 18 14H28c-9 0-15-5-20-14Z" fill="${color}" stroke="#06111f" stroke-width="2.8"/>
+        <path d="M36 16h4v20h-4zM13 20h46v4H13zM47 40l12 9-3 4-17-10z" fill="${color}" stroke="#06111f" stroke-width="1.6"/>
       </svg>`;
+  }
+
+  if (category === "glider") {
+    return `<svg viewBox="0 0 64 64" style="transform:rotate(${heading}deg)"><path d="M32 4l4 22 25 8v5l-25-3-1 17 8 5v3l-11-2-11 2v-3l8-5-1-17-25 3v-5l25-8 4-22Z" fill="${color}" stroke="#06111f" stroke-width="2.2" stroke-linejoin="round"/></svg>`;
+  }
+
+  if (category === "balloon") {
+    return `<svg viewBox="0 0 64 64" style="transform:rotate(${heading}deg)"><path d="M32 5c13 0 22 10 22 23 0 12-9 19-16 24H26C19 47 10 40 10 28 10 15 19 5 32 5Z" fill="${color}" stroke="#06111f" stroke-width="2.8"/><path d="M25 52h14l-3 8h-8z" fill="${color}" stroke="#06111f" stroke-width="2.4"/></svg>`;
+  }
+
+  if (category === "autogyro") {
+    return `<svg viewBox="0 0 64 64" style="transform:rotate(${heading}deg)"><path d="M7 18h50v4H7zM30 20h4v13h-4zM16 36h28l8 10H22c-5 0-8-4-6-10Z" fill="${color}" stroke="#06111f" stroke-width="2.5"/><path d="M41 37l12-8 2 3-9 10z" fill="${color}" stroke="#06111f" stroke-width="2"/></svg>`;
+  }
+
+  if (category === "military") {
+    return `<svg viewBox="0 0 64 64" style="transform:rotate(${heading}deg)"><path d="M32 3l7 24 21 13-3 7-18-6-7 19-7-19-18 6-3-7 21-13 7-24Z" fill="${color}" stroke="#06111f" stroke-width="2.7" stroke-linejoin="round"/></svg>`;
   }
 
   return `
@@ -111,13 +229,15 @@ function aircraftSvg(color: string, heading: number, helicopter = false) {
     </svg>`;
 }
 
-function homeIcon() {
+function referenceIcon(point: MapPoint) {
+  const kind = point.category === "moi" ? "moi" : point.category === "mission" || point.category === "location" ? "mission" : "home";
+  const symbol = kind === "moi" ? "•" : kind === "mission" ? "+" : "H";
   return L.divIcon({
     className: "xavpac-map-icon-root",
-    html: `<div class="xavpac-home-marker compact"><span class="xavpac-home-core">•</span></div>`,
-    iconSize: [24, 24],
-    iconAnchor: [12, 12],
-    popupAnchor: [0, -12]
+    html: `<div class="xavpac-reference-marker ${kind}"><span aria-hidden="true">${symbol}</span><strong>${escapeHtml(point.name)}</strong></div>`,
+    iconSize: [36, 36],
+    iconAnchor: [18, 18],
+    popupAnchor: [0, -19]
   });
 }
 
@@ -136,49 +256,63 @@ function weatherIcon(point: MapPoint) {
   });
 }
 
-function operationalIcon(point: MapPoint, selected: boolean, faded: boolean) {
+function operationalIcon(point: MapPoint, selected: boolean, faded: boolean, labelMode: "none" | "callsign" | "detail") {
   const category = String(point.category).replace("national-", "");
   const colors: Record<string, string> = { canadair: "#ff4d61", fireboss: "#ff6f32", dash: "#ff9d36", dragon: "#28a9ff", gendarmerie: "#4c7dff", samu: "#29d596", beechcraft: "#e1b94d", military: "#a5b1bd", customs: "#28c7b6", drone: "#9b78ff", unknown: "#7fb6d5" };
   const labels: Record<string, string> = { canadair: "CANADAIR", fireboss: "FIRE BOSS", dash: "DASH", dragon: "DRAGON", gendarmerie: "GEND.", samu: "SAMU", beechcraft: "BEECH", military: "ARMÉE", customs: "DOUANE", drone: "DRONE", unknown: "OPS" };
   const color = colors[category] ?? colors.unknown;
-  const fallbacks: Record<string, string> = { canadair: "🔥", fireboss: "🔥", dash: "🚒", dragon: "🚁", gendarmerie: "🚓", samu: "🚑", beechcraft: "✈️", military: "✈️", customs: "🛃", drone: "◆", unknown: "✈️" };
-  const media = point.thumbnailUrl
-    ? `<img src="${escapeHtml(point.thumbnailUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer" />`
-    : `<span class="national-marker-fallback" aria-hidden="true">${fallbacks[category] ?? fallbacks.unknown}</span>`;
+  const label = labelMode === "none" ? "" : `<div class="xavpac-silhouette-label"><strong>${escapeHtml(point.name)}</strong>${labelMode === "detail" ? `<span>${escapeHtml(labels[category] ?? labels.unknown)}</span>` : ""}</div>`;
   return L.divIcon({
     className: "xavpac-map-icon-root",
-    html: `<div class="national-map-marker ${selected ? "selected" : ""} ${faded ? "faded" : ""}" style="--national-color:${color}"><div class="national-marker-pulse"></div><div class="national-marker-beacon">${media}<span class="national-marker-kind">${escapeHtml(labels[category] ?? labels.unknown)}</span></div><strong>${escapeHtml(point.name)}</strong><div class="national-position-pin" aria-hidden="true"></div></div>`,
-    iconSize: [110, 100],
-    iconAnchor: [55, 90],
-    popupAnchor: [0, -88]
+    html: `<div class="xavpac-silhouette-marker is-operational ${selected ? "is-selected" : ""} ${faded ? "is-faded" : ""}" style="--aircraft-color:${color}"><span class="xavpac-marker-accessible-name">${escapeHtml(point.name)}</span><div class="xavpac-silhouette-svg" aria-hidden="true">${aircraftSvg(color, point.heading ?? 0, category)}</div>${label}</div>`,
+    iconSize: [48, 48],
+    iconAnchor: [24, 24],
+    popupAnchor: [0, -25]
   });
 }
 
-function pointIcon(point: MapPoint, selected: boolean, faded: boolean) {
-  if (point.category === "home") return homeIcon();
-  if (point.category === "location") return L.divIcon({ className: "xavpac-map-icon-root", html: `<div class="xavpac-selected-location">📍<strong>POINT</strong></div>`, iconSize: [72, 44], iconAnchor: [36, 40] });
+function pointIcon(point: MapPoint, selected: boolean, faded: boolean, labelMode: "none" | "callsign" | "detail") {
+  if (["home", "moi", "mission", "location"].includes(String(point.category))) return referenceIcon(point);
   if (point.category === "route-airport") return L.divIcon({ className: "xavpac-map-icon-root", html: `<div class="xavpac-route-airport-marker"><span>●</span><strong>${escapeHtml(point.name)}</strong></div>`, iconSize: [126, 48], iconAnchor: [63, 24], popupAnchor: [0, -25] });
   if (point.category === "aerodrome") return L.divIcon({ className: "xavpac-map-icon-root", html: `<div class="xavpac-aerodrome-marker"><span>+</span><strong>${escapeHtml(point.name)}</strong></div>`, iconSize: [74, 42], iconAnchor: [37, 21] });
   if (point.category === "weather") return weatherIcon(point);
-  if (String(point.category).startsWith("national-")) return operationalIcon(point, selected, faded);
+  if (String(point.category).startsWith("national-")) return operationalIcon(point, selected, faded, labelMode);
 
   const color = selected ? "#00b7ff" : point.color ?? "#ffb000";
-  const helicopter = point.category === "helicopter";
   const heading = typeof point.heading === "number" ? point.heading : 0;
+  const label = labelMode === "none" ? "" : `<div class="xavpac-silhouette-label"><strong>${escapeHtml(point.name || "ADS-B")}</strong>${labelMode === "detail" && point.detail ? `<span>${escapeHtml(point.detail)}</span>` : ""}</div>`;
 
   return L.divIcon({
     className: "xavpac-map-icon-root",
-    html: `
-      <div class="xavpac-aircraft-marker ${selected ? "is-selected" : ""} ${point.category === "remarkable" ? "is-remarkable" : ""} ${faded ? "is-faded" : ""}">
-        <div class="xavpac-aircraft-svg">${aircraftSvg(color, heading, helicopter)}</div>
-        <div class="xavpac-aircraft-label">
-          <strong>${escapeHtml(point.name || "ADS-B")}</strong>
-          <span>${escapeHtml(point.detail)}</span>
-        </div>
-      </div>`,
-    iconSize: [148, 108],
-    iconAnchor: [74, 54],
-    popupAnchor: [0, -48]
+    html: `<div class="xavpac-silhouette-marker ${selected ? "is-selected" : ""} ${point.category === "remarkable" ? "is-remarkable" : ""} ${faded ? "is-faded" : ""}" style="--aircraft-color:${color}"><span class="xavpac-marker-accessible-name">${escapeHtml(point.name || "ADS-B")}</span><div class="xavpac-silhouette-svg" aria-hidden="true">${aircraftSvg(color, heading, point.category)}</div>${label}</div>`,
+    iconSize: [48, 48],
+    iconAnchor: [24, 24],
+    popupAnchor: [0, -25]
+  });
+}
+
+function PointMarkers({ points, selectedId, onSelect }: { points: MapPoint[]; selectedId?: string | null; onSelect?: (id: string) => void }) {
+  const map = useMap();
+  const [zoom, setZoom] = useState(() => map.getZoom());
+  useMapEvents({ zoomend: () => setZoom(map.getZoom()) });
+  const labelMode = zoom < 7 ? "none" : zoom < 10 ? "callsign" : "detail";
+
+  return points.map((point) => {
+    const selected = point.id === selectedId;
+    const isUtility = ["home", "moi", "mission", "weather", "location", "route-airport", "aerodrome"].includes(String(point.category));
+    const isReference = ["home", "moi", "mission", "location"].includes(String(point.category));
+    const faded = Boolean(selectedId) && !selected && !isUtility;
+    return (
+      <Marker
+        key={point.id}
+        position={[point.lat, point.lon]}
+        icon={pointIcon(point, selected, faded, labelMode)}
+        zIndexOffset={selected ? 1200 : isReference ? 1100 : point.category === "weather" ? 300 : 0}
+        eventHandlers={{ click: () => !isUtility && onSelect?.(point.id) }}
+      >
+        <Popup><div className="xavpac-popup"><strong>{point.name}</strong><span>{point.detail}</span></div></Popup>
+      </Marker>
+    );
   });
 }
 
@@ -249,6 +383,10 @@ export default function StableMap({
   showZoneLabels = false,
   mapVariant = "street",
   focusSignal = 0,
+  cameraMode,
+  cameraCommand,
+  followTarget,
+  onCameraModeChange,
   controls = true,
   onMapClick
 }: {
@@ -267,6 +405,10 @@ export default function StableMap({
   showZoneLabels?: boolean;
   mapVariant?: MapVariant;
   focusSignal?: number;
+  cameraMode?: MapCameraMode;
+  cameraCommand?: MapCameraCommand | null;
+  followTarget?: [number, number] | null;
+  onCameraModeChange?: (mode: MapCameraMode) => void;
   controls?: boolean;
   onMapClick?: (position: [number, number]) => void;
 }) {
@@ -283,7 +425,17 @@ export default function StableMap({
       preferCanvas
       className={`leaflet-map xavpac-modern-map xavpac-readable-map map-${mapVariant}`}
     >
-      <MapCamera center={center} zoom={zoom} radiusKm={radiusKm} fixedBounds={fixedBounds} focusSignal={focusSignal} />
+      {cameraMode ? <ControlledMapCamera
+        initialCenter={center}
+        initialZoom={zoom}
+        initialRadiusKm={radiusKm}
+        initialBounds={fixedBounds}
+        mode={cameraMode}
+        command={cameraCommand}
+        followTarget={followTarget}
+        onModeChange={onCameraModeChange}
+      /> : <LegacyMapCamera center={center} zoom={zoom} radiusKm={radiusKm} fixedBounds={fixedBounds} focusSignal={focusSignal} />}
+      <MapViewportGuard />
       <MapClickHandler onMapClick={onMapClick} />
       <BaseLayer variant={mapVariant} />
 
@@ -328,22 +480,7 @@ export default function StableMap({
         </Fragment>
       ))}
 
-      {points.map((point) => {
-        const selected = point.id === selectedId;
-        const isUtility = point.category === "home" || point.category === "weather";
-        const faded = Boolean(selectedId) && !selected && !isUtility;
-        return (
-          <Marker
-            key={point.id}
-            position={[point.lat, point.lon]}
-            icon={pointIcon(point, selected, faded)}
-            zIndexOffset={selected ? 1200 : point.category === "home" ? 1100 : point.category === "weather" ? 300 : 0}
-            eventHandlers={{ click: () => !isUtility && onSelect?.(point.id) }}
-          >
-            <Popup><div className="xavpac-popup"><strong>{point.name}</strong><span>{point.detail}</span></div></Popup>
-          </Marker>
-        );
-      })}
+      <PointMarkers points={points} selectedId={selectedId} onSelect={onSelect} />
     </MapContainer>
   );
 }

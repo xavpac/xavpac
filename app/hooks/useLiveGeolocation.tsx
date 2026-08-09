@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useRef, useState } from "react";
+import { assessGpsQuality, formatPositionAge, gpsQualityLabel, type GpsQuality } from "../lib/geolocationQuality";
 
 const MAX_USABLE_ACCURACY_METERS = 500;
 
@@ -9,7 +10,14 @@ export type LiveGeolocation = {
   status: string;
   accuracy: number | null;
   altitude: number | null;
+  heading: number | null;
+  speed: number | null;
   timestamp: number | null;
+  ageSeconds: number | null;
+  source: "gps" | "unavailable";
+  quality: GpsQuality;
+  qualityReason: string;
+  usableForPreciseCalculations: boolean;
   isLive: boolean;
   trackingEnabled: boolean;
   setTrackingEnabled: (enabled: boolean) => void;
@@ -21,15 +29,27 @@ const LiveGeolocationContext = createContext<LiveGeolocation | null>(null);
 
 function useLiveGeolocationSource(): LiveGeolocation {
   const [position, setPosition] = useState<[number, number] | null>(null);
-  const [status, setStatus] = useState("Autorisez la localisation pour afficher HOME");
+  const [status, setStatus] = useState("Autorisez la localisation pour afficher MOI");
   const [accuracy, setAccuracy] = useState<number | null>(null);
   const [altitude, setAltitude] = useState<number | null>(null);
+  const [heading, setHeading] = useState<number | null>(null);
+  const [speed, setSpeed] = useState<number | null>(null);
   const [timestamp, setTimestamp] = useState<number | null>(null);
+  const [clock, setClock] = useState(() => Date.now());
   const [isLive, setIsLive] = useState(false);
   const [trackingEnabled, setTrackingEnabled] = useState(true);
   const [requestVersion, setRequestVersion] = useState(0);
   const [error, setError] = useState("");
   const hasUsablePosition = useRef(false);
+  const ageSeconds = timestamp === null ? null : Math.max(0, (clock - timestamp) / 1000);
+  const qualityAssessment = assessGpsQuality(accuracy, ageSeconds);
+
+  useEffect(() => {
+    if (timestamp === null) return;
+    setClock(Date.now());
+    const timer = window.setInterval(() => setClock(Date.now()), 5000);
+    return () => window.clearInterval(timer);
+  }, [timestamp]);
 
   useEffect(() => {
     if (!trackingEnabled) {
@@ -52,7 +72,10 @@ function useLiveGeolocationSource(): LiveGeolocation {
           if (!hasUsablePosition.current) setPosition(null);
           setAccuracy(result.coords.accuracy);
           setAltitude(result.coords.altitude);
+          setHeading(typeof result.coords.heading === "number" && Number.isFinite(result.coords.heading) ? result.coords.heading : null);
+          setSpeed(typeof result.coords.speed === "number" && Number.isFinite(result.coords.speed) ? result.coords.speed : null);
           setTimestamp(result.timestamp);
+          setClock(Date.now());
           setIsLive(false);
           setError(`Position GPS trop imprécise (±${roundedAccuracy.toLocaleString("fr-FR")} m). Corrigez-la par commune ou coordonnées.`);
           setStatus(`GPS trop imprécis • ±${roundedAccuracy.toLocaleString("fr-FR")} m`);
@@ -62,10 +85,13 @@ function useLiveGeolocationSource(): LiveGeolocation {
         setPosition([result.coords.latitude, result.coords.longitude]);
         setAccuracy(result.coords.accuracy);
         setAltitude(result.coords.altitude);
+        setHeading(typeof result.coords.heading === "number" && Number.isFinite(result.coords.heading) ? result.coords.heading : null);
+        setSpeed(typeof result.coords.speed === "number" && Number.isFinite(result.coords.speed) ? result.coords.speed : null);
         setTimestamp(result.timestamp);
+        setClock(Date.now());
         setIsLive(true);
         setError("");
-        setStatus(`HOME • GPS réel ±${Math.round(result.coords.accuracy)} m`);
+        setStatus(`MOI • GPS réel ±${Math.round(result.coords.accuracy)} m`);
       },
       (geolocationError) => {
         if (!hasUsablePosition.current || geolocationError.code === geolocationError.PERMISSION_DENIED) setPosition(null);
@@ -73,6 +99,8 @@ function useLiveGeolocationSource(): LiveGeolocation {
         if (!hasUsablePosition.current) {
           setAccuracy(null);
           setAltitude(null);
+          setHeading(null);
+          setSpeed(null);
           setTimestamp(null);
         }
         const isMac = /Macintosh|Mac OS X/i.test(navigator.userAgent);
@@ -103,7 +131,29 @@ function useLiveGeolocationSource(): LiveGeolocation {
     setRequestVersion((value) => value + 1);
   }
 
-  return { position, status, accuracy, altitude, timestamp, isLive, trackingEnabled, setTrackingEnabled, retryGeolocation, error };
+  const liveStatus = position && accuracy !== null
+    ? `MOI • GPS ${gpsQualityLabel(qualityAssessment.quality)} ±${Math.round(accuracy)} m • ${formatPositionAge(ageSeconds)}`
+    : status;
+
+  return {
+    position,
+    status: liveStatus,
+    accuracy,
+    altitude,
+    heading,
+    speed,
+    timestamp,
+    ageSeconds,
+    source: position ? "gps" : "unavailable",
+    quality: qualityAssessment.quality,
+    qualityReason: qualityAssessment.reason,
+    usableForPreciseCalculations: qualityAssessment.usableForPreciseCalculations,
+    isLive,
+    trackingEnabled,
+    setTrackingEnabled,
+    retryGeolocation,
+    error
+  };
 }
 
 export function LiveGeolocationProvider({ children }: { children: React.ReactNode }) {

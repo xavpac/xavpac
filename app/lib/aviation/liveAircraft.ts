@@ -17,6 +17,7 @@ export type LiveAircraft = {
   operator?: string | null;
   category?: string | null;
   positionSource?: string;
+  feedSource?: string;
   lastPositionAt?: string | null;
   positionAgeSeconds?: number | null;
 };

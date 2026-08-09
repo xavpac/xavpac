@@ -1,19 +1,45 @@
 import { normalizeModeS } from "./callsign.ts";
 import type { EnrichedAircraft, LearnedAircraftIdentity } from "./types.ts";
+import { getBrowserStorage, parseStoredJson, safeGetItem, safeWriteJson, XAVPAC_STORAGE_KEYS } from "../safeStorage.ts";
 
-const STORAGE_KEY = "xavpac-aircraft-identities-v2";
+const STORAGE_KEY = XAVPAC_STORAGE_KEYS.aircraftIdentities;
 const MAX_IDENTITIES = 1500;
 
 type StoredIdentities = Record<string, LearnedAircraftIdentity>;
 
+const categories = new Set<LearnedAircraftIdentity["category"]>(["airliner", "turboprop", "light", "helicopter", "military", "drone", "specialized", "unknown"]);
+const confidences = new Set<LearnedAircraftIdentity["confidence"]>(["confirmed", "probable", "inferred", "unavailable"]);
+
+function nullableString(value: unknown) {
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function normalizeStoredIdentity(key: string, value: unknown): LearnedAircraftIdentity | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const identity = value as Partial<LearnedAircraftIdentity>;
+  const modeS = normalizeModeS(identity.modeS);
+  const updatedAt = typeof identity.updatedAt === "string" ? identity.updatedAt : "";
+  if (!modeS || modeS !== normalizeModeS(key) || !Number.isFinite(Date.parse(updatedAt))) return null;
+  return {
+    modeS,
+    registration: nullableString(identity.registration),
+    manufacturer: nullableString(identity.manufacturer),
+    aircraftModel: nullableString(identity.aircraftModel),
+    icaoTypeCode: nullableString(identity.icaoTypeCode),
+    operator: nullableString(identity.operator),
+    category: categories.has(identity.category as LearnedAircraftIdentity["category"]) ? identity.category as LearnedAircraftIdentity["category"] : "unknown",
+    confidence: confidences.has(identity.confidence as LearnedAircraftIdentity["confidence"]) ? identity.confidence as LearnedAircraftIdentity["confidence"] : "unavailable",
+    sources: Array.isArray(identity.sources) ? identity.sources.filter((source): source is string => typeof source === "string") : [],
+    updatedAt
+  };
+}
+
 function readAll(): StoredIdentities {
-  if (typeof window === "undefined") return {};
-  try {
-    const parsed = JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "{}");
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as StoredIdentities : {};
-  } catch {
-    return {};
-  }
+  const parsed = parseStoredJson(safeGetItem(getBrowserStorage("local"), STORAGE_KEY));
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+  return Object.fromEntries(Object.entries(parsed)
+    .map(([modeS, value]) => [normalizeModeS(modeS), normalizeStoredIdentity(modeS, value)] as const)
+    .filter((entry): entry is readonly [string, LearnedAircraftIdentity] => Boolean(entry[0] && entry[1]))) as StoredIdentities;
 }
 
 function usable(value: LearnedAircraftIdentity | null | undefined, modeS: string) {
@@ -50,5 +76,5 @@ export function rememberAircraftIdentities(values: EnrichedAircraft[]) {
       .sort(([, a], [, b]) => b.updatedAt.localeCompare(a.updatedAt))
       .slice(0, MAX_IDENTITIES)
   );
-  try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify(limited)); } catch { /* stockage privé ou plein */ }
+  safeWriteJson(getBrowserStorage("local"), STORAGE_KEY, limited);
 }

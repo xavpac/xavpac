@@ -23,6 +23,12 @@ test("déduplique, traduit et classe les NOTAM officiels autour du point", () =>
   assert.equal(result[0].category, "Aéronefs sans pilote / drones");
   assert.equal(result[0].translationSource, "sofia");
   assert.equal(result[0].frenchText, "ACTIVITE DE DRONES");
+  assert.match(result[0].originalText, /Q\)/);
+  assert.match(result[0].originalText, /A\) LFMM/);
+  assert.equal(result[0].originalTextSource, "reconstructed");
+  assert.equal(result[0].nof, "LFFA");
+  assert.equal(result[0].publicationAuthority, "SIA/DSNA");
+  assert.equal(result[0].requestingOrganization, null);
   assert.equal(result[0].impactsPoint, true);
   assert.equal(result[0].activeNow, true);
 });

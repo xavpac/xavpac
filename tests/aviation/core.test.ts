@@ -92,11 +92,14 @@ test("sépare le type confirmé de l'appartenance probable à la Sécurité civi
   assert.equal(genericAirTractor.probableMission, null);
 });
 
-test("la décision drone emploie les trois libellés opérationnels prévus", () => {
+test("la décision drone emploie les quatre libellés opérationnels prévus", () => {
   const decision = evaluateDroneFlight({ hasPosition: true, requestedHeightM: 60, zones: [], aerodromeDistanceKm: null, restrictionsChecked: true, weatherAvailable: true, gustKnots: 8, visibilityKm: 10 });
-  assert.equal(decision.label, "VOL POSSIBLE");
+  assert.equal(decision.label, "Aucun obstacle détecté par XavPac");
   assert.equal(decision.checkReasons.length, 0);
   assert.ok(decision.positiveReasons.length > 0);
+  assert.equal(evaluateDroneFlight({ hasPosition: true, requestedHeightM: 60, zones: [], aerodromeDistanceKm: null, restrictionsChecked: false, weatherAvailable: true }).label, "Vérifications nécessaires");
+  assert.equal(evaluateDroneFlight({ hasPosition: true, requestedHeightM: 121, zones: [], aerodromeDistanceKm: null, restrictionsChecked: true, weatherAvailable: true }).label, "Élément bloquant détecté");
+  assert.equal(evaluateDroneFlight({ hasPosition: true, requestedHeightM: 60, zones: [], aerodromeDistanceKm: null, restrictionsChecked: true, weatherAvailable: true, criticalDataAvailable: false }).label, "Données insuffisantes");
 });
 
 test("construit l’URL publique adsb.fi sans clé ni abonnement", () => {

@@ -1,3 +1,5 @@
+import { getBrowserStorage, safeSetItem } from "./safeStorage";
+
 export const BUILD_INFO = {
   version: process.env.NEXT_PUBLIC_XAVPAC_VERSION ?? "développement",
   date: process.env.NEXT_PUBLIC_BUILD_DATE ?? "Non disponible",
@@ -12,6 +14,6 @@ export const DATA_UPDATE_EVENT = "xavpac:data-update";
 export function reportDataUpdate(module: DataModule) {
   if (typeof window === "undefined") return;
   const value = new Date().toISOString();
-  window.localStorage.setItem(`xavpac:update:${module}`, value);
-  window.dispatchEvent(new CustomEvent(DATA_UPDATE_EVENT));
+  safeSetItem(getBrowserStorage("local"), `xavpac:update:${module}`, value);
+  try { window.dispatchEvent(new CustomEvent(DATA_UPDATE_EVENT)); } catch { /* API indisponible : aucune incidence métier */ }
 }

@@ -14,11 +14,26 @@ import type { AirportIdentity, AirportWeather, EnrichedAircraft, RouteConfidence
 import { readLearnedAircraftIdentity, rememberAircraftIdentities } from "../lib/aviation/identityMemory";
 import { deducedRoute, recordObservations } from "../lib/aviation/observations";
 import { detectRemarkable } from "../lib/aviation/remarkable";
-import { nationalAssetsInsideRadius, type NationalAssetSignal, type NearbyNationalAsset } from "../lib/aviation/nationalAlerts";
+import { nationalAssetsInsideRadius, nationalMarkerCategory, type NationalAssetSignal, type NearbyNationalAsset } from "../lib/aviation/nationalAlerts";
+import { rankWatchNow } from "../lib/aviation/watchNow";
 import { distanceKm } from "../lib/aviation/geometry";
 import { routeCanUseAirportWeather, routeWeatherKey, weatherCondition, weatherVisibility } from "../lib/aviation/routeWeather";
+import { enterFullscreenIfAvailable, exitFullscreenIfActive, isFullscreenActive } from "../lib/fullscreen";
+import {
+  getBrowserStorage,
+  initializeBrowserStorage,
+  isCoordinatePair,
+  normalizeStoredManualObserver,
+  normalizeStringArray,
+  parseStoredJson,
+  safeGetItem,
+  safeRemoveItem,
+  safeWriteJson,
+  XAVPAC_STORAGE_KEYS
+} from "../lib/safeStorage";
 import type { AircraftWithDistance, LiveAircraft } from "../lib/aviation/liveAircraft";
 import type { MapStyle } from "../lib/map/types";
+import type { MapCameraCommand, MapCameraMode } from "./StableMap";
 import {
   aircraftPositionTimestamp,
   analyzeAircraftPassage,
@@ -28,13 +43,15 @@ import {
 
 const StableMap = dynamic(() => import("./StableMap"), { ssr: false });
 const FRANCE_OVERVIEW_CENTER: [number, number] = [46.603354, 1.888334];
-const MANUAL_OBSERVER_KEY = "xavpac:manual-observer";
-const SAVED_HOME_KEY = "xavpac:saved-observer-home-v1";
+const MANUAL_OBSERVER_KEY = XAVPAC_STORAGE_KEYS.manualObserver;
+const SAVED_HOME_KEY = XAVPAC_STORAGE_KEYS.savedHome;
 
 type Radius = 20 | 50 | 100;
+type ObserverReference = "moi" | "home" | "manual";
 
 type FlightRoute = { origin: AirportIdentity; destination: AirportIdentity; originWeather: AirportWeather | null; destinationWeather: AirportWeather | null };
 type AviationNews = { date: string; title: string; summary: string; location: string; source: string; link: string };
+type ProviderHealth = { id: string; name: string; state: "available" | "degraded" | "offline" | "disabled"; lastSuccess: string | null };
 
 const routeQualifiers: Record<RouteConfidence, string> = {
   confirmed: "Route confirmée",
@@ -124,6 +141,16 @@ function formatFreshness(seconds: number | null) {
   return seconds < 1 ? "À l’instant" : `${Math.round(seconds)} s`;
 }
 
+function compactFreshness(timestamp: string | null) {
+  if (!timestamp) return "MAJ inconnue";
+  const parsed = Date.parse(timestamp);
+  if (!Number.isFinite(parsed)) return "MAJ inconnue";
+  const seconds = Math.max(0, Math.round((Date.now() - parsed) / 1000));
+  if (seconds < 60) return `${seconds} s`;
+  const minutes = Math.floor(seconds / 60);
+  return `${minutes} min ${String(seconds % 60).padStart(2, "0")}`;
+}
+
 function formatDistanceEvolution(analysis: PassageAnalysis | null) {
   if (!analysis || analysis.distanceDeltaKm === null) return "En attente";
   if (Math.abs(analysis.distanceDeltaKm) < 0.02) return "Quasi stable";
@@ -151,8 +178,11 @@ function radarCoordinates(home: [number, number], aircraft: AircraftWithDistance
 function aircraftVisual(item: LiveAircraft) {
   const text = `${item.aircraftType ?? ""} ${item.description ?? ""} ${item.category ?? ""} ${item.operator ?? ""}`.toLowerCase();
   if (/(heli|hélic|rotor|h125|h135|h145|ec135|ec145|as[ .-]?350|as50|écureuil|squirrel|condor[a-z]?)/i.test(text)) return { category: "helicopter", color: "#4fa8ff" };
+  if (/(balloon|ballon|montgolfière)/i.test(text)) return { category: "balloon", color: "#f28dff" };
+  if (/(gyro|autogire|gyrocopter)/i.test(text)) return { category: "autogyro", color: "#74e5bd" };
+  if (/(glider|planeur|sailplane)/i.test(text)) return { category: "glider", color: "#75d9ff" };
   if (/(military|armée|air force|fighter|rafale|mirage|trainer)/i.test(text)) return { category: "military", color: "#ff5e78" };
-  if (/(cessna|piper|robin|cirrus|ultralight|ulm|glider|bristell)/i.test(text)) return { category: "light", color: "#bc83ff" };
+  if (/(cessna|piper|robin|cirrus|ultralight|ulm|bristell)/i.test(text)) return { category: "light", color: "#bc83ff" };
   return { category: "commercial", color: "#ffb000" };
 }
 
@@ -173,10 +203,11 @@ function altitudeBand(value: number | null) {
 }
 
 export default function AviationPanel() {
-  const { position, status: positionStatus, accuracy, timestamp: gpsTimestamp, isLive, retryGeolocation, error: gpsError } = useLiveGeolocation();
+  const { position, status: positionStatus, accuracy, timestamp: gpsTimestamp, qualityReason: gpsQualityReason, usableForPreciseCalculations, isLive, retryGeolocation, error: gpsError } = useLiveGeolocation();
   const { enabled: soundsEnabled, setSoundEnabled, unlock: unlockAudio, quietAircraftChange, nationalAssetAlert } = useAviationAudio();
   const [radius, setRadius] = useState<Radius>(50);
   const [manualObserver, setManualObserver] = useState<[number, number] | null>(null);
+  const [observerReference, setObserverReference] = useState<ObserverReference>("moi");
   const [observerCommune, setObserverCommune] = useState("");
   const [observerCoordinates, setObserverCoordinates] = useState("");
   const [observerMessage, setObserverMessage] = useState("");
@@ -184,6 +215,7 @@ export default function AviationPanel() {
   const [aircraft, setAircraft] = useState<AircraftWithDistance[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [manualSelection, setManualSelection] = useState(false);
+  const [selectionDismissed, setSelectionDismissed] = useState(false);
   const [sourceStatus, setSourceStatus] = useState("Connexion Airplanes.live…");
   const [trafficSource, setTrafficSource] = useState("Airplanes.live");
   const [error, setError] = useState("");
@@ -193,15 +225,21 @@ export default function AviationPanel() {
   const [mapStyle, setMapStyle] = useState<MapStyle>("street");
   const [showTrails, setShowTrails] = useState(true);
   const [showCircle, setShowCircle] = useState(true);
-  const [locateSignal, setLocateSignal] = useState(0);
+  const [cameraMode, setCameraMode] = useState<MapCameraMode>("focus");
+  const [cameraCommand, setCameraCommand] = useState<MapCameraCommand | null>(null);
   const [news, setNews] = useState<AviationNews[]>([]);
   const [showFilters, setShowFilters] = useState(false);
   const [flightOnly, setFlightOnly] = useState(true);
   const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
   const [showAircraftView, setShowAircraftView] = useState(false);
   const [nearbyNationalAlert, setNearbyNationalAlert] = useState<NearbyNationalAsset | null>(null);
+  const [nearbyNationalAssets, setNearbyNationalAssets] = useState<NearbyNationalAsset[]>([]);
+  const [providerHealth, setProviderHealth] = useState<ProviderHealth[]>([]);
+  const [trafficUpdatedAt, setTrafficUpdatedAt] = useState<string | null>(null);
   const aircraftViewRef = useRef<HTMLDivElement>(null);
+  const nativeFullscreenRef = useRef(false);
   const previousViewAircraftRef = useRef<string | null>(null);
+  const cameraCommandIdRef = useRef(0);
   const alertedNationalAssetsRef = useRef(new Set<string>());
   const trailsRef = useRef<Record<string, [number, number][]>>({});
   const [trailsVersion, setTrailsVersion] = useState(0);
@@ -211,23 +249,26 @@ export default function AviationPanel() {
   const [passageHistoryVersion, setPassageHistoryVersion] = useState(0);
   const observerPosition = manualObserver ?? position;
   const observerStatus = manualObserver
-    ? `Position corrigée • ${manualObserver[0].toFixed(5)} / ${manualObserver[1].toFixed(5)}`
+    ? `${observerReference === "home" ? "HOME" : "POINT CHOISI"} • ${manualObserver[0].toFixed(5)} / ${manualObserver[1].toFixed(5)}`
     : positionStatus;
   const observerAccuracy = manualObserver ? null : accuracy;
 
   useEffect(() => {
-    try {
-      const stored = window.localStorage.getItem("xavpac-favorites");
-      if (stored) setFavoriteIds(JSON.parse(stored));
-      const storedHome = window.localStorage.getItem(SAVED_HOME_KEY);
-      if (storedHome) {
-        const parsed = JSON.parse(storedHome);
-        if (Array.isArray(parsed) && parsed.length === 2 && parsed.every(Number.isFinite)) setSavedHome(parsed as [number, number]);
-      }
-      // Une ancienne position manuelle ne doit jamais remplacer silencieusement le GPS réel.
-      window.sessionStorage.removeItem(MANUAL_OBSERVER_KEY);
-    } catch {
-      setFavoriteIds([]);
+    initializeBrowserStorage();
+    const local = getBrowserStorage("local");
+    const session = getBrowserStorage("session");
+    setFavoriteIds(normalizeStringArray(parseStoredJson(safeGetItem(local, XAVPAC_STORAGE_KEYS.favorites))));
+    const parsedHome = parseStoredJson(safeGetItem(local, SAVED_HOME_KEY));
+    setSavedHome(isCoordinatePair(parsedHome) ? parsedHome : null);
+    const rawManualObserver = safeGetItem(session, MANUAL_OBSERVER_KEY);
+    const storedManualObserver = normalizeStoredManualObserver(parseStoredJson(rawManualObserver));
+    if (storedManualObserver) {
+      setManualObserver(storedManualObserver.position);
+      setObserverReference(storedManualObserver.reference);
+      setObserverCoordinates(`${storedManualObserver.position[0]}, ${storedManualObserver.position[1]}`);
+      setObserverMessage("Point d’observation conservé pendant votre navigation.");
+    } else if (rawManualObserver !== null) {
+      safeRemoveItem(session, MANUAL_OBSERVER_KEY);
     }
   }, []);
 
@@ -239,14 +280,19 @@ export default function AviationPanel() {
       if (event.key === "Escape") setShowAircraftView(false);
     };
     const closeAfterFullscreen = () => {
-      if (!document.fullscreenElement) setShowAircraftView(false);
+      if (nativeFullscreenRef.current && !isFullscreenActive()) {
+        nativeFullscreenRef.current = false;
+        setShowAircraftView(false);
+      }
     };
     window.addEventListener("keydown", closeOnEscape);
     document.addEventListener("fullscreenchange", closeAfterFullscreen);
+    document.addEventListener("webkitfullscreenchange", closeAfterFullscreen);
     return () => {
       document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", closeOnEscape);
       document.removeEventListener("fullscreenchange", closeAfterFullscreen);
+      document.removeEventListener("webkitfullscreenchange", closeAfterFullscreen);
     };
   }, [showAircraftView]);
 
@@ -285,7 +331,8 @@ export default function AviationPanel() {
         if (sorted.length === 0) {
           setSelectedId(null);
           setManualSelection(false);
-        } else if (!manualSelection || !sorted.some((item) => item.id === selectedId)) {
+          setSelectionDismissed(false);
+        } else if (!selectionDismissed && (!manualSelection || !sorted.some((item) => item.id === selectedId))) {
           setSelectedId(sorted[0].id);
           setManualSelection(false);
         }
@@ -319,6 +366,7 @@ export default function AviationPanel() {
 
         const source = typeof payload.source === "string" ? payload.source : "Airplanes.live";
         setTrafficSource(source);
+        setTrafficUpdatedAt(typeof payload.fetchedAt === "string" ? payload.fetchedAt : new Date().toISOString());
         const withoutPosition = Number(payload.detection?.withoutPosition) || 0;
         setSourceStatus(`${source} • ${sorted.length} appareil${sorted.length > 1 ? "s" : ""}${withoutPosition ? ` • ${withoutPosition} signal${withoutPosition > 1 ? "s" : ""} sans position` : ""}`);
       } catch {
@@ -335,13 +383,29 @@ export default function AviationPanel() {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [observerPosition, manualObserver, radius, manualSelection, selectedId, gpsTimestamp]);
+  }, [observerPosition, manualObserver, radius, manualSelection, selectedId, selectionDismissed, gpsTimestamp]);
 
   useEffect(() => {
     fetch("/api/aviation-news", { cache: "no-store" }).then((response) => response.json()).then((payload) => setNews(Array.isArray(payload.news) ? payload.news : [])).catch(() => setNews([]));
   }, []);
 
-  const selected = useMemo(() => aircraft.find((item) => item.id === selectedId) ?? aircraft[0] ?? null, [aircraft, selectedId]);
+  useEffect(() => {
+    let cancelled = false;
+    async function refreshHealth() {
+      try {
+        const response = await fetch("/api/source-health", { cache: "no-store" });
+        const payload = await response.json();
+        if (!cancelled) setProviderHealth(Array.isArray(payload.sources) ? payload.sources : []);
+      } catch {
+        if (!cancelled) setProviderHealth([]);
+      }
+    }
+    void refreshHealth();
+    const timer = window.setInterval(refreshHealth, 60_000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, []);
+
+  const selected = useMemo(() => selectionDismissed ? null : aircraft.find((item) => item.id === selectedId) ?? aircraft[0] ?? null, [aircraft, selectedId, selectionDismissed]);
   const enrichmentSignature = useMemo(() => aircraft.map(enrichmentInputKey).join("|"), [aircraft]);
 
   useEffect(() => {
@@ -359,6 +423,7 @@ export default function AviationPanel() {
     const alertObserver = observerPosition;
     if (!alertObserver) {
       setNearbyNationalAlert(null);
+      setNearbyNationalAssets([]);
       return;
     }
     const alertCenter: [number, number] = alertObserver;
@@ -373,13 +438,17 @@ export default function AviationPanel() {
         for (const id of alertedNationalAssetsRef.current) {
           if (!currentIds.has(id)) alertedNationalAssetsRef.current.delete(id);
         }
+        setNearbyNationalAssets(inside);
         setNearbyNationalAlert(inside[0] ?? null);
         const newAsset = inside.find((asset) => !alertedNationalAssetsRef.current.has(asset.id));
         if (newAsset && nationalAssetAlert()) {
           for (const asset of inside) alertedNationalAssetsRef.current.add(asset.id);
         }
       } catch {
-        if (!cancelled) setNearbyNationalAlert(null);
+        if (!cancelled) {
+          setNearbyNationalAlert(null);
+          setNearbyNationalAssets([]);
+        }
       }
     }
 
@@ -527,54 +596,74 @@ export default function AviationPanel() {
   }, [aircraft, flightOnly]);
 
   const mapPoints = useMemo(
-    () => [
+    () => {
+      const matchesObserver = (point: [number, number] | null) => Boolean(point && observerPosition
+        && Math.abs(point[0] - observerPosition[0]) < 0.00001
+        && Math.abs(point[1] - observerPosition[1]) < 0.00001);
+      return [
       ...(observerPosition ? [{
-        id: "home",
+        id: `reference-${observerReference}`,
         lat: observerPosition[0],
         lon: observerPosition[1],
-        name: manualObserver ? "Votre position corrigée" : "Votre position GPS",
+        name: observerReference === "home" ? "HOME" : manualObserver ? "Point d’observation choisi" : "MOI — position GPS",
         detail: observerStatus,
         color: "#3aa7ff",
+        category: observerReference === "home" ? "home" : observerReference === "moi" ? "moi" : "location"
+      }] : []),
+      ...(savedHome && observerReference !== "home" && !matchesObserver(savedHome) ? [{
+        id: "reference-home",
+        lat: savedHome[0],
+        lon: savedHome[1],
+        name: "HOME",
+        detail: "Position fixe enregistrée",
         category: "home"
+      }] : []),
+      ...(position && observerReference !== "moi" && !matchesObserver(position) ? [{
+        id: "reference-moi",
+        lat: position[0],
+        lon: position[1],
+        name: "MOI",
+        detail: positionStatus,
+        category: "moi"
       }] : []),
       ...(nearbyNationalAlert && !visibleAircraft.some((item) => item.id === nearbyNationalAlert.id) ? [{
         id: nearbyNationalAlert.id,
         lat: nearbyNationalAlert.latitude,
         lon: nearbyNationalAlert.longitude,
-        name: nearbyNationalAlert.badge,
-        detail: `${nearbyNationalAlert.callsign} • ${nearbyNationalAlert.distanceKm.toFixed(1)} km`,
+        name: nearbyNationalAlert.callsign,
+        detail: `${nearbyNationalAlert.badge} • ${nearbyNationalAlert.distanceKm.toFixed(1)} km`,
         color: "#ff4fd8",
-        category: "remarkable"
+        category: nationalMarkerCategory(nearbyNationalAlert.badge)
       }] : []),
       ...visibleAircraft.slice(0, 100).map((item) => {
         const visual = aircraftVisual(item);
-        const remarkable = detectRemarkable(item, enrichedByModeS[item.id.replace(/^~/, "").toUpperCase()]);
+        const enriched = enrichedByModeS[item.id.replace(/^~/, "").toUpperCase()];
+        const remarkable = detectRemarkable(item, enriched);
         return {
           id: item.id,
           lat: item.latitude,
           lon: item.longitude,
-          name: enrichedByModeS[item.id.replace(/^~/, "").toUpperCase()]?.routeLabel ?? "Trajet non disponible",
-          detail: "",
+          name: enriched?.flightNumberIata ?? enriched?.callsignIcao ?? enriched?.rawCallsign ?? item.callsign ?? item.registration ?? "ADS-B",
+          detail: [enriched?.operator ?? item.operator, enriched?.aircraftType ?? item.aircraftType].filter(Boolean).join(" • "),
           color: remarkable.length ? "#ff4fd8" : item.id === selected?.id ? "#00b7ff" : visual.color,
           category: remarkable.length ? "remarkable" : visual.category,
           heading: item.trueTrack
         };
       })
-    ],
-    [observerPosition, manualObserver, observerStatus, enrichedByModeS, nearbyNationalAlert, selected, visibleAircraft]
+    ];
+    },
+    [observerPosition, manualObserver, observerReference, observerStatus, savedHome, position, positionStatus, enrichedByModeS, nearbyNationalAlert, selected, visibleAircraft]
   );
 
   const mapTrails = useMemo(
-    () => showTrails
-      ? visibleAircraft.slice(0, 40).flatMap((item) => {
-          const positions = trailsRef.current[item.id] ?? [];
-          if (positions.length < 2) return [];
-          const visual = aircraftVisual(item);
-          return [{ id: item.id, positions, color: item.id === selected?.id ? "#00a8ff" : visual.color, selected: item.id === selected?.id }];
-        })
-      : [],
+    () => {
+      if (!showTrails || !selected) return [];
+      const positions = trailsRef.current[selected.id] ?? [];
+      if (positions.length < 2) return [];
+      return [{ id: selected.id, positions, color: "#00a8ff", selected: true }];
+    },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [visibleAircraft, selected, trailsVersion, showTrails]
+    [selected, trailsVersion, showTrails]
   );
 
   const passageById = useMemo(() => {
@@ -587,6 +676,7 @@ export default function AviationPanel() {
         altitudeMeters: item.barometricAltitude,
         groundSpeedMetersPerSecond: item.velocity,
         trackDegrees: item.trueTrack,
+        verticalRateMetersPerSecond: item.verticalRate,
         positionTimestampMs: aircraftPositionTimestamp(item.lastPositionAt)
       },
       history: passageHistoryRef.current.get(item.id),
@@ -597,11 +687,56 @@ export default function AviationPanel() {
   // Le compteur rend les nouveaux échantillons du store visibles sans dupliquer l’historique dans l’état React.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aircraft, observerPosition, observerAccuracy, passageHistoryVersion]);
+  const homePassageById = useMemo(() => {
+    if (!savedHome) return {} as Record<string, PassageAnalysis>;
+    const nowMs = Date.now();
+    return Object.fromEntries(aircraft.map((item) => [item.id, analyzeAircraftPassage({
+      aircraft: {
+        modeS: item.id,
+        latitude: item.latitude,
+        longitude: item.longitude,
+        altitudeMeters: item.barometricAltitude,
+        groundSpeedMetersPerSecond: item.velocity,
+        trackDegrees: item.trueTrack,
+        verticalRateMetersPerSecond: item.verticalRate,
+        positionTimestampMs: aircraftPositionTimestamp(item.lastPositionAt)
+      },
+      history: passageHistoryRef.current.get(item.id),
+      observer: savedHome,
+      nowMs
+    })]));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aircraft, savedHome, passageHistoryVersion]);
   const approach = selected ? passageById[selected.id] ?? null : null;
+  const homeApproach = selected ? homePassageById[selected.id] ?? null : null;
   const bearing = selected && observerPosition ? bearingName(observerPosition, [selected.latitude, selected.longitude]) : null;
   const estimatedElevation = selected && selected.barometricAltitude !== null && selected.distance > 0
     ? Math.max(0, Math.min(90, (Math.atan2(selected.barometricAltitude, selected.distance * 1000) * 180) / Math.PI))
     : null;
+  const selectedHomeDistance = selected && savedHome ? distanceKm(savedHome, [selected.latitude, selected.longitude]) : null;
+  const selectedMoiDistance = selected && position ? distanceKm(position, [selected.latitude, selected.longitude]) : null;
+
+  const watchNow = useMemo(() => {
+    const reference = savedHome ?? observerPosition;
+    if (!reference) return [];
+    const nationalIds = new Set(nearbyNationalAssets.map((asset) => asset.id));
+    return rankWatchNow(aircraft.map((item) => {
+      const visual = aircraftVisual(item);
+      const remarkable = detectRemarkable(item, enrichedByModeS[item.id.replace(/^~/, "").toUpperCase()]);
+      return {
+        id: item.id,
+        callsign: enrichedByModeS[item.id.replace(/^~/, "").toUpperCase()]?.flightNumberIata ?? item.callsign,
+        distanceKm: distanceKm(reference, [item.latitude, item.longitude]),
+        altitudeMeters: item.barometricAltitude,
+        onGround: item.onGround,
+        isNational: nationalIds.has(item.id),
+        isRemarkable: remarkable.length > 0,
+        isMilitary: visual.category === "military",
+        isRare: ["glider", "balloon", "autogyro"].includes(visual.category),
+        estimatedSecondsToHomePassage: savedHome ? homePassageById[item.id]?.estimatedSecondsToClosest ?? null : null
+      };
+    }), 3);
+  }, [aircraft, enrichedByModeS, homePassageById, nearbyNationalAssets, observerPosition, savedHome]);
 
   const altitudeBands = useMemo(() => {
     const counts = [0, 0, 0, 0, 0];
@@ -626,16 +761,41 @@ export default function AviationPanel() {
   const remarkableById = useMemo(() => Object.fromEntries(aircraft.map((item) => [item.id, detectRemarkable(item, enrichmentFor(item))])),
   // eslint-disable-next-line react-hooks/exhaustive-deps
   [aircraft, enrichedByModeS]);
+  const trafficDensity = aircraft.length < 5 ? "faible" : aircraft.length < 15 ? "modéré" : "dense";
+  const remarkableCount = Object.values(remarkableById).filter((items) => items.length > 0).length;
 
   function selectAircraft(id: string) {
     setSelectedId(id);
     setManualSelection(true);
+    setSelectionDismissed(false);
+    const target = aircraft.find((item) => item.id === id);
+    if (target) focusMap([target.latitude, target.longitude], 11);
+  }
+
+  function closeAircraftSelection() {
+    setSelectionDismissed(true);
+    setSelectedId(null);
+    setManualSelection(true);
+    setCameraMode("free");
+  }
+
+  function focusMap(center: [number, number], zoom = 12) {
+    cameraCommandIdRef.current += 1;
+    setCameraMode("focus");
+    setCameraCommand({ id: cameraCommandIdRef.current, center, zoom });
+  }
+
+  function followSelectedAircraft() {
+    if (!selected) return;
+    cameraCommandIdRef.current += 1;
+    setCameraCommand({ id: cameraCommandIdRef.current, center: [selected.latitude, selected.longitude], zoom: 11 });
+    setCameraMode("follow");
   }
 
   function toggleFavorite(id: string) {
     setFavoriteIds((current) => {
       const next = current.includes(id) ? current.filter((value) => value !== id) : [...current, id];
-      try { window.localStorage.setItem("xavpac-favorites", JSON.stringify(next)); } catch {}
+      safeWriteJson(getBrowserStorage("local"), XAVPAC_STORAGE_KEYS.favorites, next);
       return next;
     });
   }
@@ -644,14 +804,15 @@ export default function AviationPanel() {
     if (!selected) return;
     void unlockAudio();
     flushSync(() => setShowAircraftView(true));
-    if (!document.fullscreenElement) {
-      void aircraftViewRef.current?.requestFullscreen?.().catch(() => undefined);
-    }
+    void enterFullscreenIfAvailable(aircraftViewRef.current).then((mode) => {
+      nativeFullscreenRef.current = mode === "native";
+    });
   }
 
   function closeAircraftView() {
     setShowAircraftView(false);
-    if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
+    nativeFullscreenRef.current = false;
+    void exitFullscreenIfActive();
   }
 
   function toggleAircraftViewSounds() {
@@ -662,14 +823,17 @@ export default function AviationPanel() {
     return enrichedByModeS[item.id.replace(/^~/, "").toUpperCase()] ?? null;
   }
 
-  function setObserverPoint(point: [number, number], message: string) {
+  function setObserverPoint(point: [number, number], message: string, reference: ObserverReference = "manual") {
     setManualObserver(point);
+    setObserverReference(reference);
     setObserverCoordinates(`${point[0]}, ${point[1]}`);
     setObserverMessage(message);
+    setSelectionDismissed(false);
     passageHistoryRef.current.clear();
     trailsRef.current = {};
     setPassageHistoryVersion((value) => value + 1);
-    try { window.sessionStorage.setItem(MANUAL_OBSERVER_KEY, JSON.stringify(point)); } catch {}
+    safeWriteJson(getBrowserStorage("session"), MANUAL_OBSERVER_KEY, { position: point, reference });
+    focusMap(point);
   }
 
   function applyObserverCoordinates() {
@@ -701,27 +865,32 @@ export default function AviationPanel() {
 
   function useGpsObserver() {
     setManualObserver(null);
+    setObserverReference("moi");
     setObserverMessage("Nouvelle demande GPS envoyée au navigateur.");
+    setSelectionDismissed(false);
     passageHistoryRef.current.clear();
     trailsRef.current = {};
     setPassageHistoryVersion((value) => value + 1);
-    try { window.sessionStorage.removeItem(MANUAL_OBSERVER_KEY); } catch {}
+    safeRemoveItem(getBrowserStorage("session"), MANUAL_OBSERVER_KEY);
     retryGeolocation();
   }
 
   function saveCurrentHome() {
     if (!observerPosition) return;
-    try {
-      window.localStorage.setItem(SAVED_HOME_KEY, JSON.stringify(observerPosition));
+    if (!manualObserver && !usableForPreciseCalculations) {
+      setObserverMessage(`HOME non enregistré : ${gpsQualityReason}. Attendez une position plus récente/précise ou saisissez l’adresse.`);
+      return;
+    }
+    if (safeWriteJson(getBrowserStorage("local"), SAVED_HOME_KEY, observerPosition)) {
       setSavedHome(observerPosition);
       setObserverMessage("HOME enregistré sur ce Mac. XavPac ne l’utilisera que lorsque vous le demanderez.");
-    } catch {
+    } else {
       setObserverMessage("Impossible d’enregistrer HOME dans ce navigateur.");
     }
   }
 
   function useSavedHome() {
-    if (savedHome) setObserverPoint(savedHome, "Position HOME utilisée volontairement.");
+    if (savedHome) setObserverPoint(savedHome, "Position HOME utilisée volontairement.", "home");
   }
 
   return (
@@ -735,6 +904,7 @@ export default function AviationPanel() {
         route={route}
         routeConfidence={selectedEnriched?.routeConfidence ?? "unavailable"}
         observerPosition={observerPosition}
+        passage={approach}
         nationalAlert={nearbyNationalAlert}
         soundsEnabled={soundsEnabled}
         favorite={favoriteIds.includes(selected.id)}
@@ -745,13 +915,24 @@ export default function AviationPanel() {
       />}
       <div className="flightwall-commandbar panel">
         <div className="flightwall-actions">
-          <button type="button" className={showTrails ? "fw-action active" : "fw-action"} onClick={() => setShowTrails((value) => !value)}>🛩️ Traces</button>
+          <button type="button" className={showTrails ? "fw-action active" : "fw-action"} onClick={() => setShowTrails((value) => !value)}>🛩️ Trajectoire sélectionnée</button>
           <button type="button" className={showCircle ? "fw-action active" : "fw-action"} onClick={() => setShowCircle((value) => !value)}>🎯 Cercles</button>
           <button type="button" className={showFilters ? "fw-action active" : "fw-action"} onClick={() => setShowFilters((value) => !value)}>🔽 Filtres</button>
           <button type="button" className="fw-action">🔔 Remarquables <b>{Object.values(remarkableById).filter((items) => items.length).length}</b></button>
           <button type="button" className="fw-action" disabled={!selected} onClick={openAircraftView}>▣ Vue avion</button>
         </div>
         <div className="fw-live-summary"><span className={isLive || manualObserver ? "live-dot" : "live-dot off"} /> {sourceStatus} • {enrichmentStatus}</div>
+      </div>
+
+      <div className="aviation-source-health panel" aria-label="Santé des sources Aviation">
+        <span className={error ? "offline" : trafficUpdatedAt ? "available" : "degraded"}><b>ADS-B</b><strong>{error ? "INDISPONIBLE" : trafficUpdatedAt ? "LIVE" : "CONNEXION"}</strong><small>{compactFreshness(trafficUpdatedAt)}</small></span>
+        <span className={isLive ? "available" : manualObserver ? "degraded" : "offline"}><b>GPS</b><strong>{isLive ? "LIVE" : manualObserver ? "POINT CHOISI" : "INDISPONIBLE"}</strong><small>{isLive ? gpsQualityReason : observerReference === "home" ? "HOME volontaire" : "Référence manuelle"}</small></span>
+        {providerHealth.filter((source) => ["adsbdb", "planespotters", "opensky"].includes(source.id)).map((source) => <span key={source.id} className={source.state}><b>{source.name}</b><strong>{source.state === "available" ? "DISPONIBLE" : source.state === "degraded" ? "DÉGRADÉ" : source.state === "disabled" ? "DÉSACTIVÉ" : "HORS LIGNE"}</strong><small>{compactFreshness(source.lastSuccess)}</small></span>)}
+      </div>
+      <div className="aviation-compact-summary panel" aria-label="Résumé XavPac Aviation">
+        <strong>{aircraft.length} appareil{aircraft.length > 1 ? "s" : ""} autour {observerReference === "home" ? "de HOME" : "du point d’observation"}.</strong>
+        <span>Trafic {trafficDensity}.{remarkableCount ? ` ${remarkableCount} appareil${remarkableCount > 1 ? "s" : ""} remarquable${remarkableCount > 1 ? "s" : ""}.` : " Aucun appareil remarquable confirmé."}</span>
+        <span>{nearbyNationalAssets.length ? `🔥 ${nearbyNationalAssets.length} moyen${nearbyNationalAssets.length > 1 ? "s" : ""} ${nearbyNationalAssets.length > 1 ? "nationaux" : "national"} détecté${nearbyNationalAssets.length > 1 ? "s" : ""} dans les 100 km.` : "Aucun moyen national détecté dans les 100 km."}</span>
       </div>
 
       {showFilters && (
@@ -766,13 +947,13 @@ export default function AviationPanel() {
       {nearbyNationalAlert && <div className="aviation-warning-v5">🚨 {nearbyNationalAlert.badge} détecté à {nearbyNationalAlert.distanceKm.toFixed(1)} km • {nearbyNationalAlert.identification?.confidence === "confirmed" ? "Confirmé" : "Probable"}</div>}
 
       <div className={`aviation-location-panel panel ${observerPosition ? "ready" : "missing"}`}>
-        <div className="aviation-location-state"><span>POSITION D’OBSERVATION</span><strong>{observerStatus}</strong><small>{observerPosition ? "Les avions, distances et passages sont calculés depuis ce point." : "Aucun trafic local n’est affiché tant que votre position n’est pas fiable."}</small></div>
+        <div className="aviation-location-state"><span>POSITION D’OBSERVATION • {observerReference === "home" ? "HOME" : observerReference === "moi" ? "MOI" : "POINT CHOISI"}</span><strong>{observerStatus}</strong><small>{observerPosition ? `${observerReference === "moi" ? gpsQualityReason : "Coordonnées définies volontairement"} • les distances sont calculées depuis cette référence.` : "Aucun trafic local n’est affiché tant que votre position n’est pas fiable."}</small></div>
         <div className="aviation-location-inputs">
           <label>Adresse ou commune <span><input value={observerCommune} onChange={(event) => setObserverCommune(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void searchObserverCommune(); } }} placeholder="Ex. 12 rue…, 01380 Bâgé-Dommartin" /><button type="button" onClick={() => void searchObserverCommune()}>Me placer</button></span></label>
           <label>Latitude, longitude <span><input value={observerCoordinates} onChange={(event) => setObserverCoordinates(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); applyObserverCoordinates(); } }} placeholder="46.306, 4.831" /><button type="button" onClick={applyObserverCoordinates}>Appliquer</button></span></label>
           <button type="button" className="aviation-gps-retry" onClick={useGpsObserver}>{manualObserver ? "Reprendre le GPS" : "Relancer le GPS"}</button>
           <button type="button" className="aviation-home-save" disabled={!observerPosition} onClick={saveCurrentHome}>🏠 Enregistrer ce HOME</button>
-          {savedHome && <button type="button" className="aviation-home-use" onClick={useSavedHome}>📍 Utiliser mon HOME</button>}
+          {savedHome && <button type="button" className="aviation-home-use" onClick={useSavedHome}>🏠 Aller à HOME</button>}
         </div>
         {observerMessage && <p>{observerMessage}</p>}
       </div>
@@ -790,7 +971,10 @@ export default function AviationPanel() {
                   trails={mapTrails}
                   onSelect={selectAircraft}
                   mapVariant={mapStyle}
-                  focusSignal={locateSignal}
+                  cameraMode={cameraMode}
+                  cameraCommand={cameraCommand}
+                  followTarget={cameraMode === "follow" && selected ? [selected.latitude, selected.longitude] : null}
+                  onCameraModeChange={setCameraMode}
                 />
 
               <div className="fw-map-style">
@@ -811,10 +995,24 @@ export default function AviationPanel() {
                 <div><span>🛬</span><strong>{aircraft.filter((item) => item.onGround).length}</strong><small>Au sol</small></div>
               </div>
 
-              <button type="button" disabled={!observerPosition} className="fw-locate-button" title="Recentrer sur ma position" aria-label="Recentrer sur ma position" onClick={() => setLocateSignal((value) => value + 1)}>📍</button>
+              <div className="fw-camera-controls" aria-label="Contrôles de la carte">
+                <span className={`fw-camera-mode ${cameraMode}`}>{cameraMode === "free" ? "LIBRE" : cameraMode === "follow" ? "SUIVI" : "FOCUS"}</span>
+                <button type="button" disabled={!position} title="Voir ma position GPS" onClick={() => position && focusMap(position)}>Moi</button>
+                <button type="button" disabled={!savedHome} title="Voir HOME" onClick={() => savedHome && focusMap(savedHome)}>Home</button>
+                <button type="button" title="Vue générale de la France" onClick={() => focusMap(FRANCE_OVERVIEW_CENTER, 6)}>France</button>
+                <button type="button" disabled={!selected} className={cameraMode === "follow" ? "active" : ""} title="Suivre l’avion sélectionné" onClick={followSelectedAircraft}>Suivre</button>
+              </div>
 
             </div>
           </div>
+
+          <article className="aviation-watch-now panel">
+            <header><div><span>👀 À REGARDER MAINTENANT</span><strong>{savedHome ? "Priorités autour de HOME" : "Priorités autour du point d’observation"}</strong></div><small>Maximum 3 • classement déterministe</small></header>
+            <div>
+              {watchNow.map((item, index) => <button type="button" key={item.id} onClick={() => selectAircraft(item.id)}><b>{index + 1}</b><strong>{item.callsign}</strong><span>{item.reason}</span><em>{item.distanceKm.toFixed(1)} km</em></button>)}
+              {!watchNow.length && <p>Aucun appareil prioritaire à signaler actuellement.</p>}
+            </div>
+          </article>
 
           <div className="flightwall-bottom-grid">
             <article className="fw-data-card panel fw-radar-card">
@@ -869,7 +1067,7 @@ export default function AviationPanel() {
           {selected ? (
             <>
               <div className="fw-focus-header">
-                <div><span className="fw-kicker">AVION SÉLECTIONNÉ</span><div className="fw-title-line"><h2>{selectedEnriched?.flightNumberIata ?? selectedEnriched?.callsignIcao ?? selected.callsign}</h2><button type="button" className={favoriteIds.includes(selected.id) ? "fw-favorite active" : "fw-favorite"} onClick={() => toggleFavorite(selected.id)} aria-label="Ajouter aux favoris">☆</button></div><OperatorBrand className="fw-airline-brand" name={identifiedOperator} logoUrl={selectedEnriched?.logo} /><p>{selectedEnriched?.aircraftType ?? selected.aircraftType ?? selected.description ?? "Type non disponible"}</p><button type="button" className="fw-aircraft-view-launch" onClick={openAircraftView}>▣ Ouvrir la Vue avion</button></div>
+                <div><span className="fw-kicker">AVION SÉLECTIONNÉ</span><div className="fw-title-line"><h2>{selectedEnriched?.flightNumberIata ?? selectedEnriched?.callsignIcao ?? selected.callsign}</h2><button type="button" className={favoriteIds.includes(selected.id) ? "fw-favorite active" : "fw-favorite"} onClick={() => toggleFavorite(selected.id)} aria-label="Ajouter aux favoris">☆</button><button type="button" className="fw-close-selection" onClick={closeAircraftSelection} aria-label="Fermer la sélection et masquer la trajectoire">×</button></div>{selectedEnriched?.identityStatus === "unknown" && <span className="aviation-unknown-identity">APPAREIL NON IDENTIFIÉ</span>}<OperatorBrand className="fw-airline-brand" name={identifiedOperator} logoUrl={selectedEnriched?.logo} /><p>{selectedEnriched?.aircraftType ?? selected.aircraftType ?? selected.description ?? "Type non disponible"}</p><button type="button" className="fw-aircraft-view-launch" onClick={openAircraftView}>▣ Ouvrir la Vue avion</button></div>
                 <AircraftPhoto className="fw-aircraft-photo" identityKey={selected.id} photoUrl={selectedEnriched?.photo.url} isExact={selectedEnriched?.photo.kind === "exact"} label={selectedEnriched?.photo.label} source={selectedEnriched?.photo.source} photographer={selectedEnriched?.photo.photographer} aircraftType={selectedEnriched?.aircraftType ?? selected.aircraftType} description={selected.description} operator={identifiedOperator} category={selected.category} loading={!selectedEnriched} />
               </div>
 
@@ -877,6 +1075,8 @@ export default function AviationPanel() {
                 <div><span>Immatriculation</span><strong>{selectedEnriched?.registration ?? selected.registration ?? "—"}</strong></div>
                 <div><span>Type</span><strong>{selectedEnriched?.aircraftType ?? selected.aircraftType ?? "—"}</strong></div>
                 <div><span>Mode S</span><strong>{selected.id.toUpperCase()}</strong></div>
+                <div><span>Distance HOME</span><strong>{selectedHomeDistance === null ? "HOME non défini" : `${selectedHomeDistance.toFixed(1)} km`}</strong></div>
+                <div><span>Distance MOI</span><strong>{selectedMoiDistance === null ? "MOI indisponible" : `${selectedMoiDistance.toFixed(1)} km`}</strong></div>
               </div>
 
               <div className={`fw-passage-card passage-${approach?.status ?? "unavailable"}`}>
@@ -892,6 +1092,7 @@ export default function AviationPanel() {
                   <div><span>Distance actuelle</span><strong>{approach?.currentDistanceKm === null || approach?.currentDistanceKm === undefined ? "—" : `${approach.currentDistanceKm.toFixed(1)} km`}</strong></div>
                   <div><span>Évolution</span><strong>{formatDistanceEvolution(approach)}</strong></div>
                   <div><span>Vitesse relative</span><strong>{formatRelativeSpeed(approach)}</strong></div>
+                  <div><span>Altitude estimée au passage</span><strong>{approach?.estimatedAltitudeAtClosestMeters === null || approach?.estimatedAltitudeAtClosestMeters === undefined ? "Non déterminée" : `≈ ${Math.round(approach.estimatedAltitudeAtClosestMeters).toLocaleString("fr-FR")} m`}</strong></div>
                   <div><span>Fraîcheur ADS-B</span><strong>{formatFreshness(approach?.freshnessSeconds ?? null)}</strong></div>
                 </div>
                 <div className={`fw-passage-progress ${approach?.status ?? "unavailable"}`}>
@@ -907,11 +1108,21 @@ export default function AviationPanel() {
                 {approach?.gpsAccuracyLimited && <div className="fw-passage-warning">Estimation limitée par une précision GPS de ± {Math.round(approach.gpsAccuracyMeters ?? 0)} mètres</div>}
               </div>
 
+              {savedHome && <div className={`fw-home-passage-strip passage-${homeApproach?.status ?? "unavailable"}`}>
+                <div><span>🏠 PASSAGE PRÈS DE HOME</span><strong>{passageTitle(homeApproach)}</strong><small>Calcul distinct de MOI • données ADS-B et trajectoire disponibles</small></div>
+                <div><span>Distance actuelle HOME</span><strong>{homeApproach?.currentDistanceKm === null || homeApproach?.currentDistanceKm === undefined ? "—" : `${homeApproach.currentDistanceKm.toFixed(1)} km`}</strong></div>
+                <div><span>Minimum projeté</span><strong>{homeApproach?.estimatedMinimumDistanceKm === null || homeApproach?.estimatedMinimumDistanceKm === undefined ? "Non déterminé" : `≈ ${homeApproach.estimatedMinimumDistanceKm.toFixed(1)} km`}</strong></div>
+                <div><span>ETA estimée</span><strong>{homeApproach?.estimatedSecondsToClosest === null || homeApproach?.estimatedSecondsToClosest === undefined ? "Non déterminée" : `≈ ${formatDuration(homeApproach.estimatedSecondsToClosest)}`}</strong></div>
+              </div>}
+
               <div className="fw-look-grid">
                 <div><span>Où regarder ?</span><strong>{bearing?.label ?? "—"}</strong></div>
+                <div><span>Azimut estimé</span><strong>{bearing ? `≈ ${Math.round(bearing.bearing)}°` : "—"}</strong></div>
                 <div><span>Angle d’élévation estimé</span><strong>{estimatedElevation === null ? "—" : `${Math.round(estimatedElevation)}°`}</strong></div>
                 <div><span>Distance actuelle</span><strong>{observerPosition ? `${selected.distance.toFixed(1)} km` : "Non déterminée"}</strong></div>
+                <div><span>Passage estimé</span><strong>{approach?.estimatedSecondsToClosest === null || approach?.estimatedSecondsToClosest === undefined ? "Non déterminé" : `≈ ${formatDuration(approach.estimatedSecondsToClosest)}`}</strong></div>
                 <div><span>Vitesse sol</span><strong>{formatSpeedKnots(selected.velocity)}</strong></div>
+                <small>Azimut, élévation et temps de passage sont des estimations recalculées à chaque position.</small>
               </div>
 
               <div className={route ? "fw-route-card" : "fw-route-card unavailable"}>
@@ -931,7 +1142,7 @@ export default function AviationPanel() {
               ]} />
 
               <div className="fw-source-grid">
-                <div><span>Source</span><strong>{trafficSource}</strong></div>
+                <div><span>Source position</span><strong>{selected.feedSource ?? trafficSource}</strong></div>
                 <div><span>Suivi</span><strong>ADS-B</strong></div>
                 <div><span>Position ADS-B</span><strong>{formatFreshness(approach?.freshnessSeconds ?? null)}</strong></div>
                 <div><span>Identification du vol</span><strong>{selectedEnriched?.flightNumberIata ? `${selectedEnriched.flightNumberIata} • numéro commercial IATA` : selectedEnriched?.callsignIcao ? `${selectedEnriched.callsignIcao} • callsign ICAO` : `${selected.callsign} • identifiant ADS-B`}</strong></div>
@@ -948,7 +1159,7 @@ export default function AviationPanel() {
               </div>}
             </>
           ) : (
-            <div className="focus-empty"><span>✈</span><h2>Aucun avion détecté</h2><p>Aucun appareil ADS-B reçu dans un rayon de {radius} km.</p><small>{sourceStatus}</small></div>
+            <div className="focus-empty"><span>✈</span><h2>{selectionDismissed ? "Sélection fermée" : "Aucun avion détecté"}</h2><p>{selectionDismissed ? `${aircraft.length} appareil${aircraft.length > 1 ? "s" : ""} reste${aircraft.length > 1 ? "nt" : ""} visible${aircraft.length > 1 ? "s" : ""} sur la carte. Touchez une silhouette pour afficher sa fiche et sa trajectoire.` : `Aucun appareil ADS-B reçu dans un rayon de ${radius} km.`}</p><small>{sourceStatus}</small></div>
           )}
         </aside>
       </div>

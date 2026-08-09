@@ -58,7 +58,7 @@ type AirplanesLiveAircraft = {
   category?: string;
 };
 
-function normalizeAircraft(item: AirplanesLiveAircraft, sourceTimestampMs: number) {
+function normalizeAircraft(item: AirplanesLiveAircraft, sourceTimestampMs: number, feedSource: string) {
   const latitude = numberOrNull(item.lat);
   const longitude = numberOrNull(item.lon);
 
@@ -100,6 +100,7 @@ function normalizeAircraft(item: AirplanesLiveAircraft, sourceTimestampMs: numbe
     operator: item.ownOp?.trim() || null,
     category: item.category?.trim() || null,
     positionSource: item.type?.trim() || "unknown",
+    feedSource,
     lastPositionAt: positionAgeSeconds === null ? null : new Date(sourceTimestampMs - positionAgeSeconds * 1000).toISOString(),
     positionAgeSeconds,
     lastContact:
@@ -135,24 +136,54 @@ export async function GET(request: NextRequest) {
   const radiusNm = clamp(Math.ceil(radiusKm / 1.852), 3, 54);
   try {
     const input = { latitude: Number(latitude.toFixed(5)), longitude: Number(longitude.toFixed(5)), radiusNm, revalidateSeconds: 8 };
-    let source = "Airplanes.live";
-    let payload;
-    try {
-      payload = await fetchAirplanesLive(input);
-    } catch {
-      payload = await fetchAdsbFi(input);
-      source = "adsb.fi";
-    }
-    const sourceAircraft = Array.isArray(payload.ac) ? payload.ac as AirplanesLiveAircraft[] : [];
-    const rawSourceTimestamp = numberOrNull(payload.now);
-    const sourceTimestampMs = rawSourceTimestamp === null
-      ? Date.now()
-      : rawSourceTimestamp > 10_000_000_000 ? rawSourceTimestamp : rawSourceTimestamp * 1000;
+    const results = await Promise.allSettled([
+      fetchAirplanesLive(input).then((payload) => ({ name: "Airplanes.live", payload })),
+      fetchAdsbFi(input).then((payload) => ({ name: "adsb.fi", payload }))
+    ]);
+    const fulfilled = results.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
+    if (!fulfilled.length) throw new Error("Sources ADS-B indisponibles");
 
-    const aircraft = sourceAircraft
-      .map((item: AirplanesLiveAircraft) => normalizeAircraft(item, sourceTimestampMs))
-      .filter((item: ReturnType<typeof normalizeAircraft>) => item !== null);
-    const withoutPosition = sourceAircraft.length - aircraft.length;
+    const positioned = [] as NonNullable<ReturnType<typeof normalizeAircraft>>[];
+    let receivedFromFeed = 0;
+    for (const feed of fulfilled) {
+      const sourceAircraft = Array.isArray(feed.payload.ac) ? feed.payload.ac as AirplanesLiveAircraft[] : [];
+      receivedFromFeed += sourceAircraft.length;
+      const rawSourceTimestamp = numberOrNull(feed.payload.now);
+      const sourceTimestampMs = rawSourceTimestamp === null
+        ? Date.now()
+        : rawSourceTimestamp > 10_000_000_000 ? rawSourceTimestamp : rawSourceTimestamp * 1000;
+      for (const item of sourceAircraft) {
+        const normalized = normalizeAircraft(item, sourceTimestampMs, feed.name);
+        if (normalized) positioned.push(normalized);
+      }
+    }
+
+    const unique = new Map<string, (typeof positioned)[number]>();
+    for (const item of positioned) {
+      const current = unique.get(item.id);
+      if (!current) {
+        unique.set(item.id, item);
+        continue;
+      }
+      const currentAge = current.positionAgeSeconds ?? Number.POSITIVE_INFINITY;
+      const itemAge = item.positionAgeSeconds ?? Number.POSITIVE_INFINITY;
+      const freshest = itemAge < currentAge ? item : current;
+      const other = freshest === item ? current : item;
+      unique.set(item.id, {
+        ...other,
+        ...freshest,
+        registration: freshest.registration ?? other.registration,
+        aircraftType: freshest.aircraftType ?? other.aircraftType,
+        description: freshest.description ?? other.description,
+        operator: freshest.operator ?? other.operator,
+        category: freshest.category ?? other.category,
+        geometricAltitude: freshest.geometricAltitude ?? other.geometricAltitude,
+        feedSource: [...new Set([current.feedSource, item.feedSource].filter(Boolean))].join(" + ")
+      });
+    }
+    const aircraft = [...unique.values()];
+    const withoutPosition = Math.max(0, receivedFromFeed - positioned.length);
+    const source = fulfilled.map((feed) => feed.name).join(" + ");
 
     return NextResponse.json(
       {
@@ -161,7 +192,7 @@ export async function GET(request: NextRequest) {
         center: { latitude, longitude, radiusKm, radiusNm },
         total: aircraft.length,
         detection: {
-          receivedFromFeed: sourceAircraft.length,
+          receivedFromFeed,
           positioned: aircraft.length,
           withoutPosition
         },
@@ -177,7 +208,7 @@ export async function GET(request: NextRequest) {
     const message =
       error instanceof Error && error.name === "TimeoutError"
         ? "La source aérienne a dépassé le délai de réponse."
-        : "Impossible de joindre Airplanes.live.";
+        : "Impossible de joindre les sources ADS-B publiques.";
 
     return NextResponse.json(
       {
