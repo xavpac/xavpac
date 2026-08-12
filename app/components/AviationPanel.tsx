@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { flushSync } from "react-dom";
 import AircraftPhoto from "./aviation/AircraftPhoto";
+import AircraftStandbyView from "./aviation/AircraftStandbyView";
 import AircraftView from "./aviation/AircraftView";
 import FlightMetrics from "./aviation/FlightMetrics";
 import OperatorBrand from "./aviation/OperatorBrand";
@@ -245,8 +246,10 @@ export default function AviationPanel() {
   const [providerHealth, setProviderHealth] = useState<ProviderHealth[]>([]);
   const [trafficUpdatedAt, setTrafficUpdatedAt] = useState<string | null>(null);
   const aircraftViewRef = useRef<HTMLDivElement>(null);
+  const aircraftViewContentRef = useRef<HTMLDivElement>(null);
   const nativeFullscreenRef = useRef(false);
   const previousViewAircraftRef = useRef<string | null>(null);
+  const aircraftViewWaitingRef = useRef(false);
   const cameraCommandIdRef = useRef(0);
   const alertedNationalAssetsRef = useRef(new Set<string>());
   const trailsRef = useRef<Record<string, [number, number][]>>({});
@@ -421,12 +424,19 @@ export default function AviationPanel() {
   const enrichmentSignature = useMemo(() => aircraft.map(enrichmentInputKey).join("|"), [aircraft]);
 
   useEffect(() => {
-    if (!showAircraftView || !selected) {
+    if (!showAircraftView) {
       previousViewAircraftRef.current = null;
+      aircraftViewWaitingRef.current = false;
+      return;
+    }
+    if (!selected) {
+      previousViewAircraftRef.current = null;
+      aircraftViewWaitingRef.current = true;
       return;
     }
     const previous = previousViewAircraftRef.current;
-    if (previous && previous !== selected.id) quietAircraftChange();
+    if ((previous && previous !== selected.id) || aircraftViewWaitingRef.current) quietAircraftChange();
+    aircraftViewWaitingRef.current = false;
     previousViewAircraftRef.current = selected.id;
   }, [quietAircraftChange, selected, showAircraftView]);
 
@@ -859,7 +869,8 @@ export default function AviationPanel() {
   }
 
   function openAircraftView() {
-    if (!selected) return;
+    setSelectionDismissed(false);
+    setManualSelection(false);
     void unlockAudio();
     flushSync(() => setShowAircraftView(true));
     void enterFullscreenIfAvailable(aircraftViewRef.current).then((mode) => {
@@ -899,7 +910,6 @@ export default function AviationPanel() {
   }
 
   function openFunAircraftView() {
-    if (!selected) return;
     tactileFeedback(14);
     openAircraftView();
   }
@@ -977,32 +987,45 @@ export default function AviationPanel() {
 
   return (
     <section className="flightwall-v61">
-      {selected && <AircraftView
-        open={showAircraftView}
-        rootRef={aircraftViewRef}
-        aircraft={selected}
-        enriched={selectedEnriched}
-        operator={identifiedOperator}
-        route={route}
-        routeConfidence={selectedEnriched?.routeConfidence ?? "unavailable"}
-        observerPosition={observerPosition}
-        passage={approach}
-        nationalAlert={nearbyNationalAlert}
-        nationalAlertRadius={radius}
-        soundsEnabled={soundsEnabled}
-        favorite={favoriteIds.includes(selected.id)}
-        onClose={closeAircraftView}
-        onShowMap={closeAircraftView}
-        onToggleSounds={toggleAircraftViewSounds}
-        onToggleFavorite={() => toggleFavorite(selected.id)}
-      />}
+      <div ref={aircraftViewRef} className={`aircraft-view-shell${showAircraftView ? " open" : ""}`} aria-hidden={!showAircraftView}>
+        {!selected && <AircraftStandbyView
+          open={showAircraftView}
+          rootRef={aircraftViewContentRef}
+          observerLabel={observerReference === "home" ? "HOME" : observerReference === "moi" ? "MA POSITION" : "POINT CHOISI"}
+          observerPosition={observerPosition}
+          radiusKm={radius}
+          sourceStatus={sourceStatus}
+          soundsEnabled={soundsEnabled}
+          onClose={closeAircraftView}
+          onToggleSounds={toggleAircraftViewSounds}
+        />}
+        {selected && <AircraftView
+          open={showAircraftView}
+          rootRef={aircraftViewContentRef}
+          aircraft={selected}
+          enriched={selectedEnriched}
+          operator={identifiedOperator}
+          route={route}
+          routeConfidence={selectedEnriched?.routeConfidence ?? "unavailable"}
+          observerPosition={observerPosition}
+          passage={approach}
+          nationalAlert={nearbyNationalAlert}
+          nationalAlertRadius={radius}
+          soundsEnabled={soundsEnabled}
+          favorite={favoriteIds.includes(selected.id)}
+          onClose={closeAircraftView}
+          onShowMap={closeAircraftView}
+          onToggleSounds={toggleAircraftViewSounds}
+          onToggleFavorite={() => toggleFavorite(selected.id)}
+        />}
+      </div>
       <div className="flightwall-commandbar panel">
         <div className="flightwall-actions">
           <button type="button" className={showTrails ? "fw-action active" : "fw-action"} onClick={() => setShowTrails((value) => !value)}>🛩️ Trajectoire sélectionnée</button>
           <button type="button" className={showCircle ? "fw-action active" : "fw-action"} onClick={() => setShowCircle((value) => !value)}>🎯 Cercles</button>
           <button type="button" className={showFilters ? "fw-action active" : "fw-action"} onClick={() => setShowFilters((value) => !value)}>🔽 Filtres</button>
           <button type="button" className="fw-action">🔔 Remarquables <b>{Object.values(remarkableById).filter((items) => items.length).length}</b></button>
-          <button type="button" className="fw-action" disabled={!selected} onClick={openAircraftView}>▣ Vue avion</button>
+          <button type="button" className="fw-action" onClick={openAircraftView}>▣ Mode avion</button>
         </div>
         <div className="fw-live-summary"><span className={isLive || manualObserver ? "live-dot" : "live-dot off"} /> {sourceStatus} • {enrichmentStatus}</div>
       </div>
@@ -1041,7 +1064,7 @@ export default function AviationPanel() {
       <nav className="spotter-touch-dock panel" aria-label="Raccourcis tactiles Spotter">
         <button type="button" disabled={!observerPosition} onClick={showFunRadar}><span>⌖</span><strong>Radar</strong><small>{radius} km</small></button>
         <button type="button" disabled={!funClosest} onClick={selectFunClosest}><span>🎯</span><strong>Plus proche</strong><small>{funClosest ? `${funClosest.distance.toFixed(1)} km` : "—"}</small></button>
-        <button type="button" disabled={!selected} onClick={openFunAircraftView}><span>▣</span><strong>Vue avion</strong><small>Plein écran</small></button>
+        <button type="button" onClick={openFunAircraftView}><span>▣</span><strong>Vue avion</strong><small>{selected ? "Plein écran" : "Mode veille"}</small></button>
         <button type="button" className={soundsEnabled ? "active" : ""} onClick={toggleFunSounds} aria-pressed={soundsEnabled}><span>{soundsEnabled ? "🔊" : "🔇"}</span><strong>Son</strong><small>{soundsEnabled ? soundsReady ? "Prêt" : "À lancer" : "Coupé"}</small></button>
       </nav>
 
