@@ -5,9 +5,10 @@ import { useEffect, useState, type RefObject } from "react";
 import type { AircraftWithDistance } from "../../lib/aviation/liveAircraft";
 import type { AirportIdentity, AirportWeather, EnrichedAircraft, RouteConfidence } from "../../lib/aviation/types";
 import type { NearbyNationalAsset } from "../../lib/aviation/nationalAlerts";
-import { bearingDegrees, distanceKm } from "../../lib/aviation/geometry";
+import { bearingDegrees } from "../../lib/aviation/geometry";
 import { classifyAircraftVisual } from "../../lib/aviation/aircraftVisual";
 import { detectRemarkable } from "../../lib/aviation/remarkable";
+import { estimateRouteTiming } from "../../lib/aviation/routeTiming";
 import type { PassageAnalysis } from "../../lib/aviation/passageTracker";
 import AircraftPhoto from "./AircraftPhoto";
 import OperatorBrand from "./OperatorBrand";
@@ -67,20 +68,13 @@ function shortDuration(seconds: number | null) {
   return `${Math.floor(seconds / 60)} min ${String(Math.round(seconds) % 60).padStart(2, "0")}`;
 }
 
-function calculateRoute(aircraft: AircraftWithDistance, route: AircraftViewRoute | null) {
-  if (!route || !validAirportPosition(route.origin) || !validAirportPosition(route.destination)) {
-    return { progress: null, remainingKm: null, eta: null };
-  }
-  const origin: [number, number] = [route.origin.latitude, route.origin.longitude];
-  const destination: [number, number] = [route.destination.latitude, route.destination.longitude];
-  const current: [number, number] = [aircraft.latitude, aircraft.longitude];
-  const totalKm = distanceKm(origin, destination);
-  const remainingKm = distanceKm(current, destination);
-  const progress = totalKm > 1 ? Math.max(0, Math.min(100, (1 - remainingKm / totalKm) * 100)) : null;
-  const eta = aircraft.velocity !== null && aircraft.velocity > 20
-    ? new Date(Date.now() + (remainingKm * 1000 / aircraft.velocity) * 1000)
-    : null;
-  return { progress, remainingKm, eta };
+function formatEstimatedTime(value: Date | null) {
+  if (!value) return "—";
+  return new Intl.DateTimeFormat("fr-FR", {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Europe/Paris"
+  }).format(value);
 }
 
 function weatherSymbol(code: number | null | undefined) {
@@ -104,6 +98,7 @@ function MetricIcon({ kind }: { kind: "altitude" | "speed" | "direction" }) {
 
 export default function AircraftView({ open, rootRef, aircraft, enriched, operator, route, routeConfidence, observerPosition, passage, nationalAlert, soundsEnabled, favorite, onClose, onShowMap, onToggleSounds, onToggleFavorite }: Props) {
   const [wakeLockStatus, setWakeLockStatus] = useState<"idle" | "active" | "unavailable">("idle");
+  const [routeClockMs, setRouteClockMs] = useState<number | null>(null);
 
   useEffect(() => {
     if (!open) {
@@ -144,7 +139,25 @@ export default function AircraftView({ open, rootRef, aircraft, enriched, operat
     };
   }, [open]);
 
-  const routeCalculation = calculateRoute(aircraft, route);
+  useEffect(() => {
+    if (!open) {
+      setRouteClockMs(null);
+      return;
+    }
+    const refreshClock = () => setRouteClockMs(Date.now());
+    refreshClock();
+    const interval = window.setInterval(refreshClock, 60_000);
+    return () => window.clearInterval(interval);
+  }, [open]);
+
+  const routeCalculation = estimateRouteTiming({
+    origin: route && validAirportPosition(route.origin) ? [route.origin.latitude, route.origin.longitude] : null,
+    destination: route && validAirportPosition(route.destination) ? [route.destination.latitude, route.destination.longitude] : null,
+    current: [aircraft.latitude, aircraft.longitude],
+    velocityMetersPerSecond: aircraft.velocity,
+    onGround: aircraft.onGround,
+    nowMs: routeClockMs
+  });
   const flightLabel = enriched?.flightNumberIata ?? enriched?.callsignIcao ?? enriched?.rawCallsign ?? aircraft.callsign;
   const aircraftType = enriched?.aircraftType ?? aircraft.aircraftType ?? aircraft.description ?? "Type non disponible";
   const status = aircraft.onGround ? "Au sol" : "En vol";
@@ -263,7 +276,10 @@ export default function AircraftView({ open, rootRef, aircraft, enriched, operat
         <div className="aircraft-view-tower-airport origin">
           <span>DÉPART</span>
           <div className="aircraft-view-tower-city"><h3>{airportPlace(route?.origin, "Départ")}</h3><b>{airportCode(route?.origin)}</b></div>
-          <div className="aircraft-view-tower-weather"><span>{weatherSymbol(route?.originWeather?.weather_code)}</span><strong>{route?.originWeather && typeof route.originWeather.temperature_2m === "number" ? `${Math.round(route.originWeather.temperature_2m)}°C` : "Météo —"}</strong>{route?.originWeather && typeof route.originWeather.wind_speed_10m === "number" && <small>Vent {Math.round(route.originWeather.wind_speed_10m)} km/h</small>}</div>
+          <div className="aircraft-view-tower-airport-details">
+            <div className="aircraft-view-tower-weather"><span>{weatherSymbol(route?.originWeather?.weather_code)}</span><strong>{route?.originWeather && typeof route.originWeather.temperature_2m === "number" ? `${Math.round(route.originWeather.temperature_2m)}°C` : "Météo —"}</strong>{route?.originWeather && typeof route.originWeather.wind_speed_10m === "number" && <small>Vent {Math.round(route.originWeather.wind_speed_10m)} km/h</small>}</div>
+            <div className="aircraft-view-tower-time"><span>DÉPART ESTIMÉ</span><strong>{routeCalculation.estimatedDepartureAt ? `≈ ${formatEstimatedTime(routeCalculation.estimatedDepartureAt)}` : "—"}</strong><small>{routeCalculation.estimatedDepartureAt ? "Calcul XavPac" : "Donnée indisponible"}</small></div>
+          </div>
         </div>
 
         <div className="aircraft-view-tower-journey">
@@ -274,7 +290,10 @@ export default function AircraftView({ open, rootRef, aircraft, enriched, operat
         <div className="aircraft-view-tower-airport destination">
           <span>ARRIVÉE</span>
           <div className="aircraft-view-tower-city"><h3>{airportPlace(route?.destination, "Arrivée")}</h3><b>{airportCode(route?.destination)}</b></div>
-          <div className="aircraft-view-tower-weather"><span>{weatherSymbol(route?.destinationWeather?.weather_code)}</span><strong>{route?.destinationWeather && typeof route.destinationWeather.temperature_2m === "number" ? `${Math.round(route.destinationWeather.temperature_2m)}°C` : "Météo —"}</strong>{route?.destinationWeather && typeof route.destinationWeather.wind_speed_10m === "number" && <small>Vent {Math.round(route.destinationWeather.wind_speed_10m)} km/h</small>}</div>
+          <div className="aircraft-view-tower-airport-details">
+            <div className="aircraft-view-tower-weather"><span>{weatherSymbol(route?.destinationWeather?.weather_code)}</span><strong>{route?.destinationWeather && typeof route.destinationWeather.temperature_2m === "number" ? `${Math.round(route.destinationWeather.temperature_2m)}°C` : "Météo —"}</strong>{route?.destinationWeather && typeof route.destinationWeather.wind_speed_10m === "number" && <small>Vent {Math.round(route.destinationWeather.wind_speed_10m)} km/h</small>}</div>
+            <div className="aircraft-view-tower-time"><span>ARRIVÉE ESTIMÉE</span><strong>{routeCalculation.estimatedArrivalAt ? `≈ ${formatEstimatedTime(routeCalculation.estimatedArrivalAt)}` : "—"}</strong><small>{routeCalculation.estimatedArrivalAt ? "Calcul XavPac" : "Donnée indisponible"}</small></div>
+          </div>
         </div>
       </aside>}
 

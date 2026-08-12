@@ -2404,10 +2404,17 @@ a { color: inherit; }
 .aircraft-view-tower-city { min-width:0; display:flex; align-items:center; gap:12px; margin-top:5px; }
 .aircraft-view-tower-city h3 { min-width:0; margin:0; overflow:hidden; color:#fff; font-size:clamp(34px,3.15vw,62px); line-height:.96; text-overflow:ellipsis; white-space:nowrap; text-shadow:0 4px 15px rgba(0,0,0,.58); }
 .aircraft-view-tower-city b { flex:0 0 auto; padding:7px 10px; border-radius:10px; color:#65bdff; background:rgba(21,83,154,.46); font-size:clamp(14px,1.25vw,23px); }
+.aircraft-view-tower-airport-details { min-width:0; display:flex; align-items:stretch; gap:10px; margin-top:10px; }
 .aircraft-view-tower-weather { display:flex; align-items:center; gap:10px; margin-top:10px; }
 .aircraft-view-tower-weather>span { color:#ffd54b; font-size:clamp(28px,2.3vw,43px); line-height:1; }
 .aircraft-view-tower-weather strong { color:#fff; font-size:clamp(22px,2vw,36px); }
 .aircraft-view-tower-weather small { color:#b9d2e7; font-size:clamp(11px,.95vw,16px); white-space:nowrap; }
+.aircraft-view-tower-airport-details .aircraft-view-tower-weather { width:auto; min-width:0; flex:1 1 auto; margin-top:0; }
+.aircraft-view-tower-time { min-width:132px; display:flex; flex:0 0 auto; flex-direction:column; justify-content:center; padding:8px 11px; border:2px solid rgba(50,164,255,.2); border-radius:18px; background:linear-gradient(145deg,rgba(32,153,224,.16),rgba(255,255,255,.04)); }
+.aircraft-view-tower-time span,.aircraft-view-tower-time strong,.aircraft-view-tower-time small { display:block; white-space:nowrap; }
+.aircraft-view-tower-time span { color:#58bfff; font-size:clamp(8px,.62vw,11px); font-weight:950; letter-spacing:.08em; }
+.aircraft-view-tower-time strong { margin-top:2px; color:#fff; font-size:clamp(22px,1.85vw,34px); line-height:1; }
+.aircraft-view-tower-time small { margin-top:4px; color:#9ebbd2; font-size:clamp(8px,.65vw,11px); font-weight:800; }
 .aircraft-view-tower-journey { min-height:82px; display:flex; align-items:center; gap:18px; padding:10px clamp(17px,1.7vw,28px); border-top:1px solid rgba(76,160,222,.22); border-bottom:1px solid rgba(76,160,222,.22); background:rgba(5,31,62,.74); }
 .aircraft-view-tower-line { position:relative; width:26px; height:72px; flex:0 0 auto; }
 .aircraft-view-tower-line::before { content:""; position:absolute; top:0; bottom:0; left:11px; width:4px; border-radius:999px; background:rgba(55,154,255,.38); }
@@ -2722,6 +2729,15 @@ a { color: inherit; }
 }
 .aircraft-view-tower-weather strong { font-size:clamp(28px,2.35vw,42px); }
 .aircraft-view-tower-weather small { font-size:clamp(11px,.9vw,15px); }
+.aircraft-view-tower-time { border-color:rgba(35,151,211,.22); background:linear-gradient(145deg,#e5f7ff,#fff); box-shadow:0 8px 18px rgba(33,121,163,.1); }
+.aircraft-view-tower-time span { color:#0874ad; }
+.aircraft-view-tower-time strong { color:#092c49; }
+.aircraft-view-tower-time small { color:#527087; }
+
+@media(max-width:1500px) {
+  .aircraft-view-tower-airport-details .aircraft-view-tower-weather small { display:none; }
+  .aircraft-view-tower-time { min-width:118px; padding-inline:9px; }
+}
 
 /* Hiérarchie finale : l'avion au centre, la boussole en repère secondaire. */
 .aircraft-view-photo-stage {
@@ -2894,6 +2910,10 @@ a { color: inherit; }
   .aircraft-view-tower-weather>span { font-size:22px; }
   .aircraft-view-tower-weather strong { font-size:18px; }
   .aircraft-view-tower-weather small { width:100%; font-size:8px; }
+  .aircraft-view-tower-airport-details { flex-direction:column; gap:5px; margin-top:5px; }
+  .aircraft-view-tower-time { width:100%; min-width:0; padding:5px 7px; border-radius:10px; }
+  .aircraft-view-tower-time strong { font-size:17px; }
+  .aircraft-view-tower-time small { display:none; }
   .aircraft-view-tower-journey { min-height:64px; gap:8px; padding:5px 9px; }
   .aircraft-view-tower-line { height:54px; }
   .aircraft-view-tower-line span { font-size:23px; }
