@@ -29,9 +29,10 @@ import { getBrowserStorage, parseStoredJson, safeGetItem, safeRemoveItem, safeWr
 import { assessNotamForMission } from "../lib/drone/notamMission";
 import { DRONE_TIME_ZONE, formatMissionLocal, normalizeStoredDroneMission, resolveMissionWindow } from "../lib/drone/mission";
 import { evaluateRtbaMission, type RtbaActivationFeed } from "../lib/drone/rtbaSchedule";
+import { buildDroneReadiness } from "../lib/drone/readiness";
 import LightningMapPanel from "./LightningMapPanel";
 import { XAVPAC_HOME } from "../config/home";
-import { lightningAgeMinutes, summarizeLightning, type LightningFeed } from "../lib/weather/lightning";
+import { summarizeLightning, type LightningFeed } from "../lib/weather/lightning";
 import { summarizeStormForecast, type StormForecastFeed } from "../lib/weather/stormForecast";
 
 const StableMap = dynamic(() => import("./StableMap"), { ssr: false });
@@ -164,14 +165,6 @@ function dronePassageLabel(analysis: PassageAnalysis) {
 
 function freshnessText(seconds: number | null) {
   return seconds === null ? "inconnue" : `${Math.round(seconds)} s`;
-}
-
-function lightningAgeText(occurredAtUtc: string | null) {
-  if (!occurredAtUtc) return "non déterminé";
-  const minutes = Math.floor(lightningAgeMinutes({ occurredAtUtc }));
-  if (minutes < 1) return "à l’instant";
-  if (minutes < 60) return `il y a ${minutes} min`;
-  return `il y a ${Math.floor(minutes / 60)} h`;
 }
 
 export default function DronePanel() {
@@ -556,17 +549,20 @@ export default function DronePanel() {
     { label: "Autorisation", state: "À vérifier", detail: "À confirmer par le télépilote" },
     { label: "Sécurité", state: decision.level === "forbidden" ? "Bloquant" : "À vérifier", detail: alertTraffic.length ? "Trafic proche détecté" : "Surveillance continue nécessaire" }
   ] as const;
-  const attentionCount = checklist.filter((item) => item.state !== "Conforme").length;
-
-  const message = !selectedPosition
-    ? "Position GPS indisponible : recherchez une commune, saisissez des coordonnées ou cliquez sur la carte."
-    : rtbaMissionStatus.severity === "blocking"
-      ? rtbaMissionStatus.detail
-      : rtbaAssessment?.level === "inside-volume"
-      ? "Le point et la hauteur demandée intersectent un volume RTBA publié. Le statut d’activation officiel doit être confirmé."
-      : rtbaAssessment?.level === "below-floor"
-        ? "Le point est dans une emprise RTBA horizontale, mais la hauteur demandée reste sous son plancher publié."
-        : "Analyse géographique effectuée. Les activations, NOTAM et autres restrictions officielles restent à vérifier.";
+  const readiness = useMemo(() => buildDroneReadiness({
+    hasPosition: Boolean(selectedPosition),
+    missionWindowValid: Boolean(missionWindow),
+    heightMeters: requestedHeight,
+    rtbaSeverity: rtbaMissionStatus.severity,
+    rtbaConfirmed: rtbaDataConfirmed,
+    rtbaOutsideLocalCoverage: rtbaMissionStatus.code === "outside-local",
+    notamStatus: officialNotamStatus,
+    directNotamCount: directNotams.length,
+    weatherAvailable: Boolean(metar),
+    weatherBlocking,
+    nearbyAircraftCount: alertTraffic.length,
+    pilotChecksConfirmed: false
+  }), [alertTraffic.length, directNotams.length, metar, missionWindow, officialNotamStatus, requestedHeight, rtbaDataConfirmed, rtbaMissionStatus.code, rtbaMissionStatus.severity, selectedPosition, weatherBlocking]);
 
   const rtbaSummary = !rtbaAssessment
     ? "POSITION REQUISE"
@@ -623,12 +619,12 @@ export default function DronePanel() {
       <section className="hero drone-hero-v4">
         <div>
           <span className="eyebrow">ASSISTANT TÉLÉPILOTE — FRANCE</span>
-          <h1>Analyse opérationnelle nationale</h1>
-          <p>GPS réel ou point manuel, trafic aérien, météo exacte et contrôles réglementaires.</p>
+          <h1>Préparer mon vol drone</h1>
+          <p>1. Définissez la mission · 2. Contrôlez l’espace aérien · 3. Lisez les NOTAM · 4. Vérifiez les conditions.</p>
         </div>
-        <div className={`drone-decision-status ${decision.level}`}>
-          <span>{decision.level === "possible" ? "🟢" : decision.level === "forbidden" ? "🔴" : decision.level === "insufficient" ? "⚪" : "🟠"}</span>
-          <div><strong>{decision.label}</strong><small>Mise à jour {lastUpdated}</small></div>
+        <div className={`drone-decision-status ${readiness.tone}`}>
+          <span>{readiness.tone === "clear" ? "🟢" : readiness.tone === "stop" ? "🔴" : "🟠"}</span>
+          <div><strong>{readiness.headline}</strong><small>{readiness.summary} • MAJ {lastUpdated}</small></div>
         </div>
       </section>
 
@@ -643,41 +639,29 @@ export default function DronePanel() {
           <label>Fin<input type="time" value={missionEndTime} onChange={(event) => { setMissionEndTime(event.target.value); setMissionNowMode(false); }} /></label>
           <label>Hauteur<input type="number" min="0" max="500" value={requestedHeight} onChange={(event) => setRequestedHeight(Math.max(0, Number(event.target.value) || 0))} /><span>m</span></label>
         </div>
-        <div className="drone-mission-reference"><span>🎯</span><div><strong>Point MISSION • {selectedPosition ? missionReference === "home" ? "HOME" : missionReference === "moi" ? "MOI" : "POINT CHOISI" : "NON DÉFINI"}</strong><small>{selectedPosition ? `${selectedPosition[0].toFixed(5)} / ${selectedPosition[1].toFixed(5)}` : "Choisissez MOI, HOME, une commune, des coordonnées ou un point sur la carte."}</small></div></div>
+        <div className="drone-mission-reference"><span>🎯</span><div><strong>Point MISSION • {selectedPosition ? missionReference === "home" ? "HOME" : missionReference === "moi" ? "MOI" : "POINT CHOISI" : "NON DÉFINI"}</strong><small>{selectedPosition ? `${selectedPosition[0].toFixed(5)} / ${selectedPosition[1].toFixed(5)}` : "Choisissez MOI, HOME, une commune, des coordonnées ou un point sur la carte."}</small></div><div className="drone-mission-reference-actions"><button type="button" disabled={!position} onClick={() => { setManualPoint(null); setMissionReference("moi"); }}>📍 MOI</button>{savedHome && <button type="button" onClick={() => { setManualPoint(savedHome); setMissionReference("home"); }}>🏠 HOME</button>}<a href="#carte-drone">Choisir sur la carte ↓</a></div></div>
         {!missionWindow && <p className="drone-mission-error">La fin doit être postérieure au début, avec une durée maximale de 12 heures.</p>}
         <footer>Heure principale : Europe/Paris. Les NOTAM conservent aussi leur heure UTC officielle.</footer>
       </section>
 
-      <section className={`panel drone-decision-panel ${decision.level}`}>
-        <div><span className="eyebrow">AIDE À LA DÉCISION</span><h2>{decision.label}</h2><p>{message}</p></div>
+      <section className={`panel drone-decision-panel drone-clearance-panel ${readiness.tone}`}>
+        <div className="drone-clearance-answer"><span className="eyebrow">RÉPONSE SIMPLE AVANT DÉCOLLAGE</span><h2>{readiness.headline}</h2><p>{readiness.summary}</p><strong>{missionReference === "home" ? "🏠 HOME" : missionReference === "moi" ? "📍 MOI" : "🎯 POINT CHOISI"} • {requestedHeight} m • {missionWindow?.isNow ? "maintenant" : missionWindow ? formatMissionLocal(missionWindow.startMs) : "horaire invalide"}</strong></div>
         <div className="drone-decision-why">
-          <header><strong>{decision.level === "check" ? "Pourquoi des vérifications sont-elles nécessaires ?" : decision.level === "forbidden" ? "Quel élément bloquant a été détecté ?" : decision.level === "insufficient" ? "Quelles données manquent ?" : "Pourquoi aucun obstacle n’a été détecté ?"}</strong><span>{decision.checkReasons.length + decision.blockingReasons.length} point{decision.checkReasons.length + decision.blockingReasons.length === 1 ? "" : "s"} à traiter</span></header>
-          {decision.blockingReasons.map((reason) => <p className="blocking" key={reason}><b>×</b><span>{reason}</span></p>)}
-          {decision.checkReasons.map((reason) => <p className="checking" key={reason}><b>!</b><span>{reason}</span></p>)}
-          {decision.positiveReasons.map((reason) => <p className="positive" key={reason}><b>✓</b><span>{reason}</span></p>)}
+          <header><strong>À faire maintenant</strong><span>{readiness.actions.length} action{readiness.actions.length === 1 ? "" : "s"}</span></header>
+          {readiness.actions.map((action, index) => <p className={action.level === "blocking" ? "blocking" : "checking"} key={action.id}><b>{action.level === "blocking" ? "×" : index + 1}</b><span>{action.label}</span></p>)}
+          {!readiness.actions.length && <p className="positive"><b>✓</b><span>Aucune action complémentaire signalée par les données disponibles.</span></p>}
         </div>
-        <div className="drone-decision-actions">
-          <label>Hauteur demandée <input type="number" min="0" max="500" value={requestedHeight} onChange={(event) => setRequestedHeight(Math.max(0, Number(event.target.value) || 0))} /> m</label>
-          <div className="drone-point-actions">
-            <button type="button" disabled={!position} onClick={() => { setManualPoint(null); setMissionReference("moi"); }}>📍 MISSION = MOI</button>
-            {savedHome && <button type="button" onClick={() => { setManualPoint(savedHome); setMissionReference("home"); }}>🏠 MISSION = HOME</button>}
-            <small>{selectedPosition ? `${missionReference === "home" ? "HOME" : missionReference === "moi" ? "MOI" : "POINT CHOISI"} • ${selectedPosition[0].toFixed(5)} / ${selectedPosition[1].toFixed(5)}` : "Position de mission indisponible"}</small>
-          </div>
-        </div>
+        <div className="drone-clearance-confirmed"><strong>Déjà contrôlé</strong>{readiness.confirmed.slice(0, 5).map((item) => <span key={item}>✓ {item}</span>)}<div><a href={RTBA_ACTIVATION_URL} target="_blank" rel="noreferrer">Ouvrir l’AZBA officiel ↗</a><a href="https://sofia-briefing.aviation-civile.gouv.fr/sofia/pages/notamsearcharea.html" target="_blank" rel="noreferrer">Ouvrir SOFIA ↗</a></div></div>
         <footer>Cette synthèse est une aide opérationnelle. Elle ne remplace pas la vérification réglementaire du télépilote (AZBA, NOTAM, SUP AIP, AIP et restrictions locales).</footer>
       </section>
 
       <section className="panel drone-briefing-v65">
-        <header><div><span className="eyebrow">BRIEFING DRONE</span><h2>{attentionCount} élément{attentionCount === 1 ? "" : "s"} nécessite{attentionCount === 1 ? "" : "nt"} votre attention</h2></div><small>{missionWindow ? `${formatMissionLocal(missionWindow.startMs)} • ${missionWindow.durationMinutes} min` : "Créneau invalide"}</small></header>
+        <header><div><span className="eyebrow">LES 4 RÉPONSES IMPORTANTES</span><h2>Comprendre la situation en un coup d’œil</h2></div><small>{missionWindow ? `${formatMissionLocal(missionWindow.startMs)} • ${missionWindow.durationMinutes} min` : "Créneau invalide"}</small></header>
         <div className="drone-briefing-grid">
-          <article><span>📍 GPS</span><strong>{missionReference === "moi" ? positionStatus : "Coordonnées choisies"}</strong><small>{missionReference === "moi" && accuracy !== null ? `Précision ±${Math.round(accuracy)} m` : "Référence MISSION explicite"}</small></article>
-          <article className={rtbaMissionStatus.severity}><span>📡 RTBA</span><strong>{rtbaMissionStatus.label}</strong><small>{rtbaMissionStatus.detail}</small></article>
-          <article className={directNotams.length ? "blocking" : officialNotamStatus === "success" ? "clear" : "unconfirmed"}><span>📄 NOTAM</span><strong>{directNotams.length ? `${directNotams.length} impact direct` : officialNotamStatus === "success" ? `${officialNotams.length} analysé${officialNotams.length === 1 ? "" : "s"}` : "Données non confirmées"}</strong><small>{officialNotamMessage}</small></article>
-          <article className={alertTraffic.length ? "check" : "clear"}><span>✈ TRAFIC</span><strong>{alertTraffic.length ? `${alertTraffic.length} rapprochement${alertTraffic.length === 1 ? "" : "s"} à surveiller` : "Aucun rapprochement préoccupant identifié"}</strong><small>Réception ADS-B non exhaustive</small></article>
-          <article className={!metar ? "unconfirmed" : weatherBlocking ? "blocking" : "clear"}><span>🌬 MÉTÉO</span><strong>{metar ? `Vent ${metar.wspd ?? "—"} kt • rafales ${metar.wgst ?? "—"} kt` : "Donnée indisponible"}</strong><small>{metarStatus}</small></article>
-          <article className={lightningSummary ? "clear" : "unconfirmed"}><span>⚡ FOUDRE • {missionReference === "home" ? "HOME" : "MISSION"}</span><strong>{lightningSummary ? lightningSummary.nearestKm === null ? "Aucun impact détecté dans les données disponibles" : `Plus proche ${lightningSummary.nearestKm.toFixed(1)} km • ${lightningSummary.count} impact${lightningSummary.count === 1 ? "" : "s"} / 30 min` : "DONNÉES FOUDRE NON DISPONIBLES"}</strong><small>{lightningSummary ? `Dernier : ${lightningAgeText(lightningSummary.latestAt)} • secteur ${lightningSummary.mainSector ?? "indéterminé"} • information opérationnelle uniquement` : "La carte ci-dessous reste indicative et ne constitue pas une autorisation de vol."}</small></article>
-          <article className={stormForecast?.status === "available" ? "clear" : "unconfirmed"}><span>⛈ POTENTIEL ORAGEUX • 6 H</span><strong>{stormForecastSummary.maximumLightningPotentialJkg === null ? "Prévision indisponible" : `Foudre ${Math.round(stormForecastSummary.maximumLightningPotentialJkg)} J/kg • CAPE ${stormForecastSummary.maximumCapeJkg === null ? "—" : Math.round(stormForecastSummary.maximumCapeJkg)} J/kg`}</strong><small>{stormForecast?.status === "available" ? `Rafales max ${stormForecastSummary.maximumWindGustKmh === null ? "—" : `${Math.round(stormForecastSummary.maximumWindGustKmh)} km/h`} • prévision de modèle, pas observation` : stormForecast?.message ?? "Connexion à la prévision…"}</small></article>
-          <article className="unconfirmed"><span>☀ LUMIÈRE</span><strong>Calcul non disponible</strong><small>Ne pas déduire un horaire sans source solaire fiable</small></article>
+          <article className={selectedPosition ? "clear" : "unconfirmed"}><span>1 • 📍 OÙ ?</span><strong>{selectedPosition ? `${missionReference === "home" ? "HOME" : missionReference === "moi" ? "MOI" : "POINT CHOISI"} • ${selectedPosition[0].toFixed(5)} / ${selectedPosition[1].toFixed(5)}` : "Point de mission non défini"}</strong><small>{requestedHeight} m • {missionWindow ? `${missionWindow.durationMinutes} min` : "créneau invalide"}</small></article>
+          <article className={rtbaMissionStatus.severity}><span>2 • 📡 ESPACE AÉRIEN</span><strong>{rtbaSummary}</strong><small>{rtbaMissionStatus.detail}</small></article>
+          <article className={directNotams.length ? "blocking" : officialNotamStatus === "success" ? "clear" : "unconfirmed"}><span>3 • 📄 NOTAM</span><strong>{directNotams.length ? `${directNotams.length} impact direct` : officialNotamStatus === "success" ? `${officialNotams.length} analysé${officialNotams.length === 1 ? "" : "s"}` : officialNotamStatus === "loading" ? "Recherche officielle en cours" : "À vérifier"}</strong><small>{officialNotamMessage}</small></article>
+          <article className={weatherBlocking ? "blocking" : !metar ? "unconfirmed" : alertTraffic.length ? "check" : "clear"}><span>4 • 🌤 CONDITIONS</span><strong>{metar ? `Vent ${metar.wspd ?? "—"} kt • rafales ${metar.wgst ?? "—"} kt` : "Météo en attente"}{alertTraffic.length ? ` • ${alertTraffic.length} trafic à surveiller` : " • aucun rapprochement signalé"}</strong><small>{lightningSummary ? lightningSummary.nearestKm === null ? "Aucun impact foudre détecté dans les données disponibles" : `Foudre la plus proche : ${lightningSummary.nearestKm.toFixed(1)} km` : "Foudre structurée non disponible"} • potentiel 6 h {stormForecastSummary.maximumLightningPotentialJkg === null ? "indisponible" : `${Math.round(stormForecastSummary.maximumLightningPotentialJkg)} J/kg`}</small></article>
         </div>
       </section>
 
@@ -811,7 +795,7 @@ export default function DronePanel() {
 
       {gpsError && <div className="gps-banner-v5">📍 {gpsError}</div>}
 
-      <section className="drone-console-v4">
+      <section className="drone-console-v4" id="carte-drone">
         <article className="panel drone-map-card-v4">
           <div className="panel-title rtba-panel-title-v51">
             <div>
