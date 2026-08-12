@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { flushSync } from "react-dom";
 import AircraftPhoto from "./aviation/AircraftPhoto";
 import AircraftView from "./aviation/AircraftView";
@@ -17,6 +17,7 @@ import { deducedRoute, recordObservations } from "../lib/aviation/observations";
 import { detectRemarkable } from "../lib/aviation/remarkable";
 import { nationalAssetsInsideRadius, nationalAssetToAircraft, nationalMarkerCategory, type NationalAssetSignal, type NearbyNationalAsset } from "../lib/aviation/nationalAlerts";
 import { AVIATION_RADIUS_OPTIONS, normalizeAviationRadius, type AviationRadius } from "../lib/aviation/alertSettings";
+import { buildSpotterSkyMood, spotterChallengeScore } from "../lib/aviation/spotterFun";
 import { appendObservedPosition, buildSelectedTrail } from "../lib/aviation/selectedTrail";
 import { rankWatchNow } from "../lib/aviation/watchNow";
 import { distanceKm } from "../lib/aviation/geometry";
@@ -202,6 +203,11 @@ function altitudeBand(value: number | null) {
   if (fl >= 200) return 2;
   if (fl >= 100) return 1;
   return 0;
+}
+
+function tactileFeedback(pattern: number | number[] = 10) {
+  if (typeof navigator === "undefined" || typeof navigator.vibrate !== "function") return;
+  navigator.vibrate(pattern);
 }
 
 export default function AviationPanel() {
@@ -784,6 +790,27 @@ export default function AviationPanel() {
   [aircraft, enrichedByModeS]);
   const trafficDensity = aircraft.length < 5 ? "faible" : aircraft.length < 15 ? "modéré" : "dense";
   const remarkableCount = Object.values(remarkableById).filter((items) => items.length > 0).length;
+  const funClosest = useMemo(() => {
+    const regular = aircraft[0] ?? null;
+    const national = nearbyNationalAssets[0] ?? null;
+    if (!national) return regular;
+    if (!regular || national.distanceKm < regular.distance) return nationalAssetToAircraft(national);
+    return regular;
+  }, [aircraft, nearbyNationalAssets]);
+  const funClosestEnriched = funClosest ? enrichedByModeS[funClosest.id.replace(/^~/, "").toUpperCase()] ?? null : null;
+  const funClosestLabel = funClosestEnriched?.flightNumberIata ?? funClosestEnriched?.callsignIcao ?? funClosest?.callsign ?? "Prochaine cible";
+  const funClosestBearing = funClosest && observerPosition ? bearingName(observerPosition, [funClosest.latitude, funClosest.longitude]) : null;
+  const skyMoodInput = {
+    aircraftCount: aircraft.length,
+    closestDistanceKm: funClosest?.distance ?? null,
+    remarkableCount,
+    nationalCount: nearbyNationalAssets.length
+  };
+  const skyMood = buildSpotterSkyMood(skyMoodInput);
+  const funScore = spotterChallengeScore(skyMoodInput);
+  const funRouteReady = Boolean(route);
+  const funClosePassage = Boolean(funClosest && funClosest.distance <= 10);
+  const funSpecialSeen = remarkableCount > 0 || nearbyNationalAssets.length > 0;
 
   function selectAircraft(id: string) {
     setSelectedId(id);
@@ -857,6 +884,29 @@ export default function AviationPanel() {
   function changeAlertRadius(next: AviationRadius) {
     setRadius(next);
     safeSetItem(getBrowserStorage("local"), XAVPAC_STORAGE_KEYS.aviationRadius, String(next));
+  }
+
+  function showFunRadar() {
+    if (!observerPosition) return;
+    tactileFeedback();
+    focusMap(observerPosition, radius === 100 ? 8 : radius === 50 ? 9 : radius === 20 ? 10 : 11);
+  }
+
+  function selectFunClosest() {
+    if (!funClosest) return;
+    tactileFeedback([8, 35, 8]);
+    selectAircraft(funClosest.id);
+  }
+
+  function openFunAircraftView() {
+    if (!selected) return;
+    tactileFeedback(14);
+    openAircraftView();
+  }
+
+  function toggleFunSounds() {
+    tactileFeedback();
+    toggleSpotterSounds();
   }
 
   function enrichmentFor(item: LiveAircraft) {
@@ -977,6 +1027,23 @@ export default function AviationPanel() {
         </div>
         <div className="aviation-alert-radius"><span>LE SON NATIONAL SE DÉCLENCHE UNIQUEMENT DANS</span><div>{AVIATION_RADIUS_OPTIONS.map((value) => <button type="button" key={value} className={radius === value ? "active" : ""} onClick={() => changeAlertRadius(value)}>{value} km</button>)}</div><small>Ce choix règle aussi le rayon de la carte et reste mémorisé sur ce Mac.</small></div>
       </div>
+
+      <section className={`spotter-fun-panel panel ${skyMood.level}`} aria-label="Cockpit fun Spotter">
+        <header><div><span>COCKPIT FUN</span><h2>Votre ciel, comme un petit jeu d’observation</h2></div><div className="spotter-fun-score"><small>SCORE LIVE</small><strong>{funScore}</strong><span>/ 99</span></div></header>
+        <div className="spotter-fun-grid">
+          <article className="spotter-sky-mood"><div className="spotter-radar-toy"><i /><span>{skyMood.icon}</span></div><div><small>AMBIANCE DU CIEL</small><strong>{skyMood.label}</strong><p>{skyMood.message}</p></div></article>
+          <button type="button" className="spotter-fun-target" disabled={!funClosest} onClick={selectFunClosest}><small>🎯 CIBLE LA PLUS PROCHE</small><strong>{funClosestLabel}</strong><span>{funClosest ? `${funClosest.distance.toFixed(1)} km • ${funClosestBearing?.label ?? "direction en attente"}` : "Aucun avion pour le moment"}</span><em>{funClosest ? "Afficher sur la carte →" : "Le radar continue de chercher"}</em></button>
+          <article className="spotter-fun-bingo"><small>🏆 MINI-MISSION</small><strong>Le bingo du ciel</strong><div><span className={funClosePassage ? "done" : ""}>✓ Avion à moins de 10 km</span><span className={funRouteReady ? "done" : ""}>✓ Trajet identifié</span><span className={funSpecialSeen ? "done" : ""}>✓ Appareil spécial</span></div></article>
+          <article className="spotter-fun-compass"><small>🧭 OÙ REGARDER ?</small><strong>{funClosestBearing?.label ?? "Patientez…"}</strong><div className="spotter-compass-dial" style={{ "--spotter-bearing": `${funClosestBearing?.bearing ?? 0}deg` } as CSSProperties}><i>➤</i></div><span>{funClosestBearing ? `${Math.round(funClosestBearing.bearing)}° depuis ${observerReference === "home" ? "HOME" : "votre position"}` : "Direction disponible dès le prochain signal"}</span></article>
+        </div>
+      </section>
+
+      <nav className="spotter-touch-dock panel" aria-label="Raccourcis tactiles Spotter">
+        <button type="button" disabled={!observerPosition} onClick={showFunRadar}><span>⌖</span><strong>Radar</strong><small>{radius} km</small></button>
+        <button type="button" disabled={!funClosest} onClick={selectFunClosest}><span>🎯</span><strong>Plus proche</strong><small>{funClosest ? `${funClosest.distance.toFixed(1)} km` : "—"}</small></button>
+        <button type="button" disabled={!selected} onClick={openFunAircraftView}><span>▣</span><strong>Vue avion</strong><small>Plein écran</small></button>
+        <button type="button" className={soundsEnabled ? "active" : ""} onClick={toggleFunSounds} aria-pressed={soundsEnabled}><span>{soundsEnabled ? "🔊" : "🔇"}</span><strong>Son</strong><small>{soundsEnabled ? soundsReady ? "Prêt" : "À lancer" : "Coupé"}</small></button>
+      </nav>
 
       {showFilters && (
         <div className="fw-filterbar panel">
