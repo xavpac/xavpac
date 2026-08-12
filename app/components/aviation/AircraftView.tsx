@@ -33,6 +33,7 @@ type Props = {
   observerPosition: [number, number] | null;
   passage: PassageAnalysis | null;
   nationalAlert: NearbyNationalAsset | null;
+  nationalAlertRadius: number;
   soundsEnabled: boolean;
   favorite: boolean;
   onClose: () => void;
@@ -96,7 +97,7 @@ function MetricIcon({ kind }: { kind: "altitude" | "speed" | "direction" }) {
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d={paths[kind]} /></svg>;
 }
 
-export default function AircraftView({ open, rootRef, aircraft, enriched, operator, route, routeConfidence, observerPosition, passage, nationalAlert, soundsEnabled, favorite, onClose, onShowMap, onToggleSounds, onToggleFavorite }: Props) {
+export default function AircraftView({ open, rootRef, aircraft, enriched, operator, route, routeConfidence, observerPosition, passage, nationalAlert, nationalAlertRadius, soundsEnabled, favorite, onClose, onShowMap, onToggleSounds, onToggleFavorite }: Props) {
   const [wakeLockStatus, setWakeLockStatus] = useState<"idle" | "active" | "unavailable">("idle");
   const [routeClockMs, setRouteClockMs] = useState<number | null>(null);
 
@@ -241,7 +242,7 @@ export default function AircraftView({ open, rootRef, aircraft, enriched, operat
         <strong>{wakeLockStatus === "active" ? "Écran maintenu allumé" : "Maintien de l’écran indisponible"}</strong>
       </div>}
 
-      {nationalAlert && <div className="aircraft-view-national-alert"><span>ALERTE MOYEN NATIONAL</span><strong>{nationalAlert.badge} • {nationalAlert.callsign}</strong><b>{Math.round(nationalAlert.distanceKm)} km de votre position</b></div>}
+      {nationalAlert && <div className="aircraft-view-national-alert"><span>ALERTE MOYEN NATIONAL • ZONE {nationalAlertRadius} KM</span><strong>{nationalAlert.badge} • {nationalAlert.callsign}</strong><b>{Math.round(nationalAlert.distanceKm)} km de votre position</b></div>}
 
       <div className="aircraft-view-photo-stage">
         <AircraftPhoto

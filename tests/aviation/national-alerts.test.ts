@@ -34,3 +34,12 @@ test("convertit un moyen national en appareil sélectionnable sans perdre son ca
   assert.equal(converted.distance, 72);
   assert.equal(converted.aircraftType, "DH8D");
 });
+
+test("respecte exactement le rayon d’alerte sélectionné", () => {
+  const assets = [
+    { id: "near", callsign: "DRAGON 01", latitude: 46.39, longitude: 4.8, onGround: false },
+    { id: "outside", callsign: "PELICAN 12", latitude: 46.8, longitude: 4.8, onGround: false }
+  ];
+  assert.deepEqual(nationalAssetsInsideRadius(assets, [46.3, 4.8], 20).map((asset) => asset.id), ["near"]);
+  assert.deepEqual(nationalAssetsInsideRadius(assets, [46.3, 4.8], 100).map((asset) => asset.id), ["near", "outside"]);
+});

@@ -10,6 +10,7 @@ export const XAVPAC_STORAGE_KEYS = {
   droneMission: "xavpac:drone-mission-v1",
   mapStyle: "xavpac:aviation-map-style",
   soundPreference: "xavpac:aviation-sounds",
+  aviationRadius: "xavpac:aviation-radius",
   observations: "xavpac-spotting-observations-v1",
   aircraftIdentities: "xavpac-aircraft-identities-v2",
   lightningLastView: "xavpac:lightning-last-view-v1"
@@ -164,6 +165,7 @@ export function resetModulePreferences(module: string) {
     safeRemoveItem(local, XAVPAC_STORAGE_KEYS.favorites);
     safeRemoveItem(local, XAVPAC_STORAGE_KEYS.mapStyle);
     safeRemoveItem(local, XAVPAC_STORAGE_KEYS.soundPreference);
+    safeRemoveItem(local, XAVPAC_STORAGE_KEYS.aviationRadius);
     safeRemoveItem(session, XAVPAC_STORAGE_KEYS.manualObserver);
   }
   if (module === "drone") safeRemoveItem(session, XAVPAC_STORAGE_KEYS.droneMission);

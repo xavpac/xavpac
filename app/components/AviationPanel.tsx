@@ -16,6 +16,7 @@ import { readLearnedAircraftIdentity, rememberAircraftIdentities } from "../lib/
 import { deducedRoute, recordObservations } from "../lib/aviation/observations";
 import { detectRemarkable } from "../lib/aviation/remarkable";
 import { nationalAssetsInsideRadius, nationalAssetToAircraft, nationalMarkerCategory, type NationalAssetSignal, type NearbyNationalAsset } from "../lib/aviation/nationalAlerts";
+import { AVIATION_RADIUS_OPTIONS, normalizeAviationRadius, type AviationRadius } from "../lib/aviation/alertSettings";
 import { appendObservedPosition, buildSelectedTrail } from "../lib/aviation/selectedTrail";
 import { rankWatchNow } from "../lib/aviation/watchNow";
 import { distanceKm } from "../lib/aviation/geometry";
@@ -28,6 +29,7 @@ import {
   parseStoredJson,
   safeGetItem,
   safeRemoveItem,
+  safeSetItem,
   safeWriteCoordinatePair,
   safeWriteJson,
   XAVPAC_STORAGE_KEYS
@@ -47,7 +49,6 @@ const FRANCE_OVERVIEW_CENTER: [number, number] = [46.603354, 1.888334];
 const MANUAL_OBSERVER_KEY = XAVPAC_STORAGE_KEYS.manualObserver;
 const SAVED_HOME_KEY = XAVPAC_STORAGE_KEYS.savedHome;
 
-type Radius = 20 | 50 | 100;
 type ObserverReference = "moi" | "home" | "manual";
 
 type FlightRoute = { origin: AirportIdentity; destination: AirportIdentity; originWeather: AirportWeather | null; destinationWeather: AirportWeather | null };
@@ -205,8 +206,8 @@ function altitudeBand(value: number | null) {
 
 export default function AviationPanel() {
   const { position, status: positionStatus, accuracy, timestamp: gpsTimestamp, qualityReason: gpsQualityReason, usableForPreciseCalculations, isLive, retryGeolocation, error: gpsError } = useLiveGeolocation();
-  const { enabled: soundsEnabled, setSoundEnabled, unlock: unlockAudio, quietAircraftChange, nationalAssetAlert } = useAviationAudio();
-  const [radius, setRadius] = useState<Radius>(50);
+  const { enabled: soundsEnabled, ready: soundsReady, setSoundEnabled, unlock: unlockAudio, quietAircraftChange, nationalAssetAlert, previewAircraftChange, previewNationalAsset } = useAviationAudio();
+  const [radius, setRadius] = useState<AviationRadius>(50);
   const [manualObserver, setManualObserver] = useState<[number, number] | null>(XAVPAC_HOME.position);
   const [observerReference, setObserverReference] = useState<ObserverReference>("home");
   const [observerCommune, setObserverCommune] = useState("");
@@ -259,6 +260,7 @@ export default function AviationPanel() {
     const local = getBrowserStorage("local");
     const session = getBrowserStorage("session");
     setFavoriteIds(normalizeStringArray(parseStoredJson(safeGetItem(local, XAVPAC_STORAGE_KEYS.favorites))));
+    setRadius(normalizeAviationRadius(safeGetItem(local, XAVPAC_STORAGE_KEYS.aviationRadius)));
     safeWriteCoordinatePair(local, SAVED_HOME_KEY, XAVPAC_HOME.position);
     safeRemoveItem(session, MANUAL_OBSERVER_KEY);
     setSavedHome(XAVPAC_HOME.position);
@@ -437,7 +439,7 @@ export default function AviationPanel() {
         const response = await fetch("/api/national-assets", { cache: "no-store" });
         const payload = await response.json();
         if (cancelled) return;
-        const inside = nationalAssetsInsideRadius(Array.isArray(payload.assets) ? payload.assets as NationalAssetSignal[] : [], alertCenter, 100);
+        const inside = nationalAssetsInsideRadius(Array.isArray(payload.assets) ? payload.assets as NationalAssetSignal[] : [], alertCenter, radius);
         let trailChanged = false;
         for (const asset of inside) {
           const current = trailsRef.current[asset.id] ?? [];
@@ -472,7 +474,7 @@ export default function AviationPanel() {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [nationalAssetAlert, observerPosition]);
+  }, [nationalAssetAlert, observerPosition, radius]);
 
   useEffect(() => {
     let cancelled = false;
@@ -796,7 +798,6 @@ export default function AviationPanel() {
         trailsRef.current[id] = next;
         setTrailsVersion((value) => value + 1);
       }
-      if (radius < 100) setRadius(100);
     }
     const focusTarget = target ?? nationalTarget;
     if (focusTarget) focusMap([focusTarget.latitude, focusTarget.longitude], 11);
@@ -847,6 +848,15 @@ export default function AviationPanel() {
 
   function toggleAircraftViewSounds() {
     void setSoundEnabled(!soundsEnabled);
+  }
+
+  function toggleSpotterSounds() {
+    void setSoundEnabled(soundsEnabled && soundsReady ? false : true);
+  }
+
+  function changeAlertRadius(next: AviationRadius) {
+    setRadius(next);
+    safeSetItem(getBrowserStorage("local"), XAVPAC_STORAGE_KEYS.aviationRadius, String(next));
   }
 
   function enrichmentFor(item: LiveAircraft) {
@@ -928,6 +938,7 @@ export default function AviationPanel() {
         observerPosition={observerPosition}
         passage={approach}
         nationalAlert={nearbyNationalAlert}
+        nationalAlertRadius={radius}
         soundsEnabled={soundsEnabled}
         favorite={favoriteIds.includes(selected.id)}
         onClose={closeAircraftView}
@@ -954,7 +965,17 @@ export default function AviationPanel() {
       <div className="aviation-compact-summary panel" aria-label="Résumé XavPac Aviation">
         <strong>{aircraft.length} appareil{aircraft.length > 1 ? "s" : ""} autour {observerReference === "home" ? "de HOME" : "du point d’observation"}.</strong>
         <span>Trafic {trafficDensity}.{remarkableCount ? ` ${remarkableCount} appareil${remarkableCount > 1 ? "s" : ""} remarquable${remarkableCount > 1 ? "s" : ""}.` : " Aucun appareil remarquable confirmé."}</span>
-        <span>{nearbyNationalAssets.length ? `🔥 ${nearbyNationalAssets.length} moyen${nearbyNationalAssets.length > 1 ? "s" : ""} ${nearbyNationalAssets.length > 1 ? "nationaux" : "national"} détecté${nearbyNationalAssets.length > 1 ? "s" : ""} dans les 100 km.` : "Aucun moyen national détecté dans les 100 km."}</span>
+        <span>{nearbyNationalAssets.length ? `🛟 ${nearbyNationalAssets.length} moyen${nearbyNationalAssets.length > 1 ? "s" : ""} ${nearbyNationalAssets.length > 1 ? "nationaux" : "national"} détecté${nearbyNationalAssets.length > 1 ? "s" : ""} dans la zone de ${radius} km.` : `Aucun moyen national détecté dans la zone de ${radius} km.`}</span>
+      </div>
+
+      <div className={`aviation-sound-console panel${soundsEnabled ? " enabled" : " disabled"}`} aria-label="Réglages des alertes sonores">
+        <div className="aviation-sound-copy"><span>ALERTES SONORES</span><strong>{!soundsEnabled ? "SONS COUPÉS" : soundsReady ? "SONS PRÊTS" : "À INITIALISER"}</strong><small>Deux notes discrètes pour un changement d’avion • accord doux pour un moyen national.</small></div>
+        <div className="aviation-sound-tests">
+          <button type="button" className="sound-master" onClick={toggleSpotterSounds}>{!soundsEnabled ? "Activer les sons" : soundsReady ? "Couper les sons" : "Initialiser les sons"}</button>
+          <button type="button" disabled={!soundsEnabled} onClick={() => void previewAircraftChange()}>Tester avion</button>
+          <button type="button" disabled={!soundsEnabled} onClick={() => void previewNationalAsset()}>Tester moyen national</button>
+        </div>
+        <div className="aviation-alert-radius"><span>LE SON NATIONAL SE DÉCLENCHE UNIQUEMENT DANS</span><div>{AVIATION_RADIUS_OPTIONS.map((value) => <button type="button" key={value} className={radius === value ? "active" : ""} onClick={() => changeAlertRadius(value)}>{value} km</button>)}</div><small>Ce choix règle aussi le rayon de la carte et reste mémorisé sur ce Mac.</small></div>
       </div>
 
       {showFilters && (
@@ -968,7 +989,7 @@ export default function AviationPanel() {
       {((!manualObserver && gpsError) || error) && <div className="aviation-warning-v5">{(!manualObserver && gpsError) || error}</div>}
       {nearbyNationalAssets.length > 0 && <div className="aviation-national-alerts" aria-label="Moyens nationaux détectés">
         {nearbyNationalAssets.slice(0, 4).map((asset) => <button type="button" key={asset.id} onClick={() => selectAircraft(asset.id)} className={asset.id === selected?.id ? "selected" : ""}>
-          <span>🚨 <b>{asset.badge}</b> • {asset.callsign} • {asset.distanceKm.toFixed(1)} km • {asset.identification?.confidence === "confirmed" ? "Confirmé" : "Probable"}</span>
+          <span>🛟 <b>{asset.badge}</b> • {asset.callsign} • {asset.distanceKm.toFixed(1)} km • dans votre zone de {radius} km • {asset.identification?.confidence === "confirmed" ? "Confirmé" : "Probable"}</span>
           <strong>{asset.id === selected?.id ? "Tracé affiché" : "Voir le tracé →"}</strong>
         </button>)}
       </div>}
@@ -1011,8 +1032,9 @@ export default function AviationPanel() {
               </div>
 
               <div className="fw-radius-selector">
-                {[20, 50, 100].map((value) => (
-                  <button type="button" key={value} className={radius === value ? "active" : ""} onClick={() => setRadius(value as Radius)}>{value} km</button>
+                <span>CARTE + ALERTE</span>
+                {AVIATION_RADIUS_OPTIONS.map((value) => (
+                  <button type="button" key={value} className={radius === value ? "active" : ""} onClick={() => changeAlertRadius(value)}>{value} km</button>
                 ))}
               </div>
 

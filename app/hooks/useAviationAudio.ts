@@ -2,6 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getBrowserStorage, safeGetItem, safeSetItem, XAVPAC_STORAGE_KEYS } from "../lib/safeStorage";
+import {
+  AIRCRAFT_CHANGE_SIGNATURE,
+  NATIONAL_ASSET_SIGNATURE,
+  type AviationSoundTone
+} from "../lib/aviation/audioSignatures";
 
 const SOUND_PREFERENCE_KEY = XAVPAC_STORAGE_KEYS.soundPreference;
 
@@ -26,9 +31,28 @@ function playConfirmation(context: AudioContext) {
   oscillator.stop(now + .19);
 }
 
+function playSignature(context: AudioContext, signature: readonly AviationSoundTone[]) {
+  const now = context.currentTime + .01;
+  for (const tone of signature) {
+    const start = now + tone.offsetSeconds;
+    const end = start + tone.durationSeconds;
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    oscillator.type = tone.wave;
+    oscillator.frequency.setValueAtTime(tone.frequencyHz, start);
+    gain.gain.setValueAtTime(.0001, start);
+    gain.gain.exponentialRampToValueAtTime(tone.peakGain, start + .025);
+    gain.gain.exponentialRampToValueAtTime(.0001, end);
+    oscillator.connect(gain).connect(context.destination);
+    oscillator.start(start);
+    oscillator.stop(end + .02);
+  }
+}
+
 export function useAviationAudio() {
   const contextRef = useRef<AudioContext | null>(null);
   const [enabled, setEnabled] = useState(true);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     const stored = safeGetItem(getBrowserStorage("local"), SOUND_PREFERENCE_KEY);
@@ -44,11 +68,14 @@ export function useAviationAudio() {
     if (contextRef.current.state === "suspended") {
       try { await contextRef.current.resume(); } catch { return false; }
     }
-    return contextRef.current.state === "running";
+    const running = contextRef.current.state === "running";
+    setReady(running);
+    return running;
   }, [enabled]);
 
   const setSoundEnabled = useCallback(async (next: boolean) => {
     setEnabled(next);
+    if (!next) setReady(false);
     safeSetItem(getBrowserStorage("local"), SOUND_PREFERENCE_KEY, next ? "on" : "off");
     if (next && await unlock(true) && contextRef.current) playConfirmation(contextRef.current);
   }, [unlock]);
@@ -56,41 +83,32 @@ export function useAviationAudio() {
   const quietAircraftChange = useCallback(() => {
     const context = contextRef.current;
     if (!enabled || !context || context.state !== "running") return false;
-    const now = context.currentTime;
-    [0, .095].forEach((offset, index) => {
-      const oscillator = context.createOscillator();
-      const gain = context.createGain();
-      oscillator.type = "sine";
-      oscillator.frequency.setValueAtTime(index === 0 ? 620 : 820, now + offset);
-      gain.gain.setValueAtTime(.0001, now + offset);
-      gain.gain.exponentialRampToValueAtTime(.045, now + offset + .018);
-      gain.gain.exponentialRampToValueAtTime(.0001, now + offset + .16);
-      oscillator.connect(gain).connect(context.destination);
-      oscillator.start(now + offset);
-      oscillator.stop(now + offset + .17);
-    });
+    playSignature(context, AIRCRAFT_CHANGE_SIGNATURE);
     return true;
   }, [enabled]);
 
   const nationalAssetAlert = useCallback(() => {
     const context = contextRef.current;
     if (!enabled || !context || context.state !== "running") return false;
-    const now = context.currentTime;
-    [0, .28, .56].forEach((offset, index) => {
-      const oscillator = context.createOscillator();
-      const gain = context.createGain();
-      oscillator.type = "square";
-      oscillator.frequency.setValueAtTime(index % 2 === 0 ? 880 : 690, now + offset);
-      gain.gain.setValueAtTime(.0001, now + offset);
-      gain.gain.exponentialRampToValueAtTime(.11, now + offset + .025);
-      gain.gain.setValueAtTime(.11, now + offset + .13);
-      gain.gain.exponentialRampToValueAtTime(.0001, now + offset + .23);
-      oscillator.connect(gain).connect(context.destination);
-      oscillator.start(now + offset);
-      oscillator.stop(now + offset + .24);
-    });
+    playSignature(context, NATIONAL_ASSET_SIGNATURE);
     return true;
   }, [enabled]);
 
-  return { enabled, setSoundEnabled, unlock, quietAircraftChange, nationalAssetAlert };
+  const previewAircraftChange = useCallback(async () => {
+    if (!enabled || !await unlock()) return false;
+    const context = contextRef.current;
+    if (!context) return false;
+    playSignature(context, AIRCRAFT_CHANGE_SIGNATURE);
+    return true;
+  }, [enabled, unlock]);
+
+  const previewNationalAsset = useCallback(async () => {
+    if (!enabled || !await unlock()) return false;
+    const context = contextRef.current;
+    if (!context) return false;
+    playSignature(context, NATIONAL_ASSET_SIGNATURE);
+    return true;
+  }, [enabled, unlock]);
+
+  return { enabled, ready, setSoundEnabled, unlock, quietAircraftChange, nationalAssetAlert, previewAircraftChange, previewNationalAsset };
 }
