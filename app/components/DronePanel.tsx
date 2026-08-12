@@ -25,10 +25,13 @@ import {
   PassageHistoryStore,
   type PassageAnalysis
 } from "../lib/aviation/passageTracker";
-import { getBrowserStorage, isCoordinatePair, parseStoredJson, safeGetItem, safeRemoveItem, safeWriteJson, XAVPAC_STORAGE_KEYS } from "../lib/safeStorage";
+import { getBrowserStorage, parseStoredJson, safeGetItem, safeRemoveItem, safeWriteJson, XAVPAC_STORAGE_KEYS } from "../lib/safeStorage";
 import { assessNotamForMission } from "../lib/drone/notamMission";
 import { DRONE_TIME_ZONE, formatMissionLocal, normalizeStoredDroneMission, resolveMissionWindow } from "../lib/drone/mission";
 import { evaluateRtbaMission, type RtbaActivationFeed } from "../lib/drone/rtbaSchedule";
+import LightningMapPanel from "./LightningMapPanel";
+import { XAVPAC_HOME } from "../config/home";
+import { lightningAgeMinutes, summarizeLightning, type LightningFeed } from "../lib/weather/lightning";
 
 const StableMap = dynamic(() => import("./StableMap"), { ssr: false });
 
@@ -162,6 +165,14 @@ function freshnessText(seconds: number | null) {
   return seconds === null ? "inconnue" : `${Math.round(seconds)} s`;
 }
 
+function lightningAgeText(occurredAtUtc: string | null) {
+  if (!occurredAtUtc) return "non déterminé";
+  const minutes = Math.floor(lightningAgeMinutes({ occurredAtUtc }));
+  if (minutes < 1) return "à l’instant";
+  if (minutes < 60) return `il y a ${minutes} min`;
+  return `il y a ${Math.floor(minutes / 60)} h`;
+}
+
 export default function DronePanel() {
   const [mapMode, setMapMode] = useState<"official" | "map">("map");
   const { position, status: positionStatus, accuracy, altitude, timestamp, isLive, trackingEnabled, setTrackingEnabled, retryGeolocation, error: gpsError } = useLiveGeolocation();
@@ -171,7 +182,7 @@ export default function DronePanel() {
   const [lastUpdated, setLastUpdated] = useState("—");
   const [manualPoint, setManualPoint] = useState<[number, number] | null>(null);
   const [missionReference, setMissionReference] = useState<MissionReference>("moi");
-  const [savedHome, setSavedHome] = useState<[number, number] | null>(null);
+  const [savedHome, setSavedHome] = useState<[number, number] | null>(XAVPAC_HOME.position);
   const [requestedHeight, setRequestedHeight] = useState(60);
   const [missionNowMode, setMissionNowMode] = useState(true);
   const [missionDate, setMissionDate] = useState("");
@@ -187,6 +198,7 @@ export default function DronePanel() {
   const [officialNotamStatus, setOfficialNotamStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [officialNotamMessage, setOfficialNotamMessage] = useState("Position requise pour interroger SOFIA.");
   const [officialNotamUpdatedAt, setOfficialNotamUpdatedAt] = useState<string | null>(null);
+  const [lightningFeed, setLightningFeed] = useState<LightningFeed | null>(null);
   const [notamRefreshVersion, setNotamRefreshVersion] = useState(0);
   const [missionStorageReady, setMissionStorageReady] = useState(false);
   const passageHistoryRef = useRef(new PassageHistoryStore());
@@ -212,8 +224,8 @@ export default function DronePanel() {
   }, [missionNowMode]);
 
   useEffect(() => {
-    const parsed = parseStoredJson(safeGetItem(getBrowserStorage("local"), XAVPAC_STORAGE_KEYS.savedHome));
-    setSavedHome(isCoordinatePair(parsed) ? parsed : null);
+    safeWriteJson(getBrowserStorage("local"), XAVPAC_STORAGE_KEYS.savedHome, XAVPAC_HOME.position);
+    setSavedHome(XAVPAC_HOME.position);
     const session = getBrowserStorage("session");
     const rawMission = safeGetItem(session, XAVPAC_STORAGE_KEYS.droneMission);
     const storedMission = normalizeStoredDroneMission(parseStoredJson(rawMission));
@@ -228,6 +240,9 @@ export default function DronePanel() {
       if (storedMission.reference !== "moi") setLocationMessage("MISSION conservée pendant votre navigation.");
     } else {
       if (rawMission !== null) safeRemoveItem(session, XAVPAC_STORAGE_KEYS.droneMission);
+      setMissionReference("home");
+      setManualPoint(XAVPAC_HOME.position);
+      setLocationMessage(`MISSION = HOME • ${XAVPAC_HOME.address}`);
       const defaults = initialMissionForm();
       setMissionDate(defaults.date);
       setMissionStartTime(defaults.startTime);
@@ -287,6 +302,32 @@ export default function DronePanel() {
       cancelled = true;
       window.clearInterval(timer);
     };
+  }, [selectedPosition]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!selectedPosition) {
+      setLightningFeed(null);
+      return;
+    }
+    async function loadLightning() {
+      const parameters = new URLSearchParams({
+        lat: String(selectedPosition?.[0]),
+        lon: String(selectedPosition?.[1]),
+        radiusKm: "50",
+        from: new Date(Date.now() - 60 * 60_000).toISOString()
+      });
+      try {
+        const response = await fetch(`/api/lightning?${parameters}`, { cache: "no-store" });
+        const payload = await response.json() as LightningFeed;
+        if (!cancelled) setLightningFeed(payload);
+      } catch {
+        if (!cancelled) setLightningFeed({ status: "unavailable", source: null, retrievedAt: new Date().toISOString(), availableSince: null, impacts: [], message: "DONNÉES FOUDRE NON DISPONIBLES" });
+      }
+    }
+    loadLightning();
+    const timer = window.setInterval(loadLightning, 60_000);
+    return () => { cancelled = true; window.clearInterval(timer); };
   }, [selectedPosition]);
 
   useEffect(() => {
@@ -473,11 +514,15 @@ export default function DronePanel() {
   const nearestAerodrome = nearbyPlaces.find((place) => place.kind === "aerodrome") ?? null;
   const nearestHeliport = nearbyPlaces.find((place) => place.kind === "heliport") ?? null;
   const weatherBlocking = (metar?.wgst ?? metar?.wspd ?? 0) >= 35 || (typeof metar?.visib === "number" && metar.visib * 1.60934 < 1.5);
+  const lightningSummary = selectedPosition && lightningFeed?.status === "available"
+    ? summarizeLightning(lightningFeed.impacts, selectedPosition, 30)
+    : null;
   const checklist = [
     { label: "Position", state: selectedPosition ? "Conforme" : "À vérifier", detail: selectedPosition ? "Point d’analyse défini" : "GPS ou point manuel requis" },
     { label: "RTBA / espaces", state: rtbaMissionStatus.severity === "blocking" ? "Bloquant" : rtbaMissionStatus.severity === "clear" ? "Conforme" : "À vérifier", detail: rtbaMissionStatus.label },
     { label: "NOTAM", state: directNotams.length ? "Bloquant" : officialNotamStatus === "success" ? "Conforme" : "À vérifier", detail: officialNotamStatus === "loading" ? "Recherche SOFIA en cours" : officialNotamStatus === "success" ? directNotams.length ? `${directNotams.length} impact direct mission` : `${officialNotams.length} NOTAM analysé${officialNotams.length === 1 ? "" : "s"}` : officialNotamStatus === "error" ? "SOFIA temporairement indisponible" : notamReading ? "Lecture française disponible — original prioritaire" : "Position requise" },
     { label: "Météo", state: !metar ? "À vérifier" : weatherBlocking ? "Bloquant" : "Conforme", detail: metar ? "Prévision au point reçue" : "Donnée absente" },
+    { label: "Foudre", state: lightningFeed?.status === "available" ? "Conforme" : "À vérifier", detail: lightningFeed?.status === "available" ? "Impacts structurés reçus" : "Données structurées indisponibles" },
     { label: "Hauteur", state: requestedHeight > 120 ? "Bloquant" : "Conforme", detail: requestedHeight > 120 ? "Hauteur supérieure à 120 m" : "Hauteur demandée ≤ 120 m" },
     { label: "Autorisation", state: "À vérifier", detail: "À confirmer par le télépilote" },
     { label: "Sécurité", state: decision.level === "forbidden" ? "Bloquant" : "À vérifier", detail: alertTraffic.length ? "Trafic proche détecté" : "Surveillance continue nécessaire" }
@@ -601,10 +646,12 @@ export default function DronePanel() {
           <article className={directNotams.length ? "blocking" : officialNotamStatus === "success" ? "clear" : "unconfirmed"}><span>📄 NOTAM</span><strong>{directNotams.length ? `${directNotams.length} impact direct` : officialNotamStatus === "success" ? `${officialNotams.length} analysé${officialNotams.length === 1 ? "" : "s"}` : "Données non confirmées"}</strong><small>{officialNotamMessage}</small></article>
           <article className={alertTraffic.length ? "check" : "clear"}><span>✈ TRAFIC</span><strong>{alertTraffic.length ? `${alertTraffic.length} rapprochement${alertTraffic.length === 1 ? "" : "s"} à surveiller` : "Aucun rapprochement préoccupant identifié"}</strong><small>Réception ADS-B non exhaustive</small></article>
           <article className={!metar ? "unconfirmed" : weatherBlocking ? "blocking" : "clear"}><span>🌬 MÉTÉO</span><strong>{metar ? `Vent ${metar.wspd ?? "—"} kt • rafales ${metar.wgst ?? "—"} kt` : "Donnée indisponible"}</strong><small>{metarStatus}</small></article>
-          <article className="unconfirmed"><span>⚡ FOUDRE</span><strong>Données non disponibles</strong><small>Connexion autorisée prévue en phase Météo</small></article>
+          <article className={lightningSummary ? "clear" : "unconfirmed"}><span>⚡ FOUDRE • {missionReference === "home" ? "HOME" : "MISSION"}</span><strong>{lightningSummary ? lightningSummary.nearestKm === null ? "Aucun impact détecté dans les données disponibles" : `Plus proche ${lightningSummary.nearestKm.toFixed(1)} km • ${lightningSummary.count} impact${lightningSummary.count === 1 ? "" : "s"} / 30 min` : "DONNÉES FOUDRE NON DISPONIBLES"}</strong><small>{lightningSummary ? `Dernier : ${lightningAgeText(lightningSummary.latestAt)} • secteur ${lightningSummary.mainSector ?? "indéterminé"} • information opérationnelle uniquement` : "La carte ci-dessous reste indicative et ne constitue pas une autorisation de vol."}</small></article>
           <article className="unconfirmed"><span>☀ LUMIÈRE</span><strong>Calcul non disponible</strong><small>Ne pas déduire un horaire sans source solaire fiable</small></article>
         </div>
       </section>
+
+      <LightningMapPanel position={selectedPosition} compact />
 
       <section className="drone-airspace-brief">
         <article className={`panel rtba-answer-card ${rtbaAssessment?.level ?? "no-position"}`}>

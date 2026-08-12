@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useLiveGeolocation } from "../hooks/useLiveGeolocation";
+import { XAVPAC_HOME } from "../config/home";
 import { reportDataUpdate } from "../lib/buildInfo";
+import LightningMapPanel from "./LightningMapPanel";
 
 type CurrentWeather = {
   temperature_2m: number;
@@ -72,16 +73,14 @@ function formatHour(value: string) {
 }
 
 export default function WeatherPanel() {
-  const { position, status: positionStatus, isLive, error: gpsError } = useLiveGeolocation();
   const [weather, setWeather] = useState<WeatherResponse | null>(null);
   const [error, setError] = useState("");
   const [updatedAt, setUpdatedAt] = useState("");
 
   const url = useMemo(() => {
-    if (!position) return null;
     const params = new URLSearchParams({
-      latitude: String(position[0]),
-      longitude: String(position[1]),
+      latitude: String(XAVPAC_HOME.position[0]),
+      longitude: String(XAVPAC_HOME.position[1]),
       timezone: "Europe/Paris",
       forecast_days: "7",
       current: [
@@ -107,7 +106,7 @@ export default function WeatherPanel() {
       ].join(",")
     });
     return `https://api.open-meteo.com/v1/forecast?${params.toString()}`;
-  }, [position]);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -142,32 +141,38 @@ export default function WeatherPanel() {
 
   if (error) {
     return (
-      <section className="hero">
-        <div>
-          <span className="eyebrow">MÉTÉO LOCALE</span>
-          <h1>Données indisponibles</h1>
-          <p>{error}</p>
-        </div>
-      </section>
+      <>
+        <section className="hero">
+          <div>
+            <span className="eyebrow">MÉTÉO LOCALE</span>
+            <h1>Données indisponibles</h1>
+            <p>{error}</p>
+          </div>
+        </section>
+        <LightningMapPanel position={XAVPAC_HOME.position} />
+      </>
     );
   }
 
   if (!weather) {
     return (
-      <section className="hero">
-        <div>
-          <span className="eyebrow">MÉTÉO LOCALE</span>
-          <h1>Chargement des conditions autour de vous…</h1>
-          <p>{positionStatus}</p>
-        </div>
-      </section>
+      <>
+        <section className="hero">
+          <div>
+            <span className="eyebrow">MÉTÉO LOCALE</span>
+            <h1>Conditions HOME en attente</h1>
+            <p>{XAVPAC_HOME.address}</p>
+          </div>
+        </section>
+        <LightningMapPanel position={XAVPAC_HOME.position} />
+      </>
     );
   }
 
   const current = weather.current;
   const todaySunrise = weather.daily.sunrise[0];
   const todaySunset = weather.daily.sunset[0];
-  const locationTitle = "Votre position GPS";
+  const locationTitle = "HOME — Bâgé-Dommartin";
 
   return (
     <>
@@ -175,7 +180,7 @@ export default function WeatherPanel() {
         <div>
           <span className="eyebrow">MÉTÉO EN DIRECT</span>
           <h1>{locationTitle}</h1>
-          <p>Conditions et prévisions recalculées selon la position suivie en continu.</p>
+          <p>Conditions et prévisions au point HOME fixe : {XAVPAC_HOME.address}.</p>
         </div>
 
         <div className="weather-now">
@@ -186,8 +191,6 @@ export default function WeatherPanel() {
           </div>
         </div>
       </section>
-
-      {gpsError && <div className="gps-banner-v5">📍 {gpsError}</div>}
 
       <section className="weather-layout">
         <div className="weather-main">
@@ -221,6 +224,8 @@ export default function WeatherPanel() {
             <article className="panel"><span>🌡️ Ressenti</span><strong>{Math.round(current.apparent_temperature)} °C</strong></article>
           </section>
 
+          <LightningMapPanel position={XAVPAC_HOME.position} />
+
           <article className="panel">
             <div className="panel-title">
               <div><span className="eyebrow">PRÉVISIONS</span><h3>Les sept prochains jours</h3></div>
@@ -253,10 +258,10 @@ export default function WeatherPanel() {
           <article className="panel">
             <span className="eyebrow">LOCALISATION</span>
             <div className="info-list">
-              <div><span>Source</span><strong>{isLive ? "GPS continu" : "GPS en attente"}</strong></div>
-              <div><span>État</span><strong>{positionStatus}</strong></div>
-              <div><span>Latitude</span><strong>{position ? `${position[0].toFixed(5)}°` : "—"}</strong></div>
-              <div><span>Longitude</span><strong>{position ? `${position[1].toFixed(5)}°` : "—"}</strong></div>
+              <div><span>Référence</span><strong>HOME fixe</strong></div>
+              <div><span>Adresse</span><strong>{XAVPAC_HOME.address}</strong></div>
+              <div><span>Latitude</span><strong>{XAVPAC_HOME.position[0].toFixed(5)}°</strong></div>
+              <div><span>Longitude</span><strong>{XAVPAC_HOME.position[1].toFixed(5)}°</strong></div>
             </div>
           </article>
 

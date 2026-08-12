@@ -277,6 +277,60 @@ a { color: inherit; }
 .weather-now small { color: var(--muted); }
 .weather-layout { display: grid; grid-template-columns: minmax(0,1fr) 330px; gap: 12px; }
 .weather-main, .weather-side { display: grid; gap: 12px; align-content: start; }
+.lightning-live-panel { padding:14px; overflow:hidden; }
+.lightning-live-panel>header { display:flex; align-items:flex-start; justify-content:space-between; gap:14px; }
+.lightning-live-panel>header h3 { margin:5px 0 4px; }
+.lightning-live-panel>header p { margin:0; color:var(--muted); font-size:9px; }
+.lightning-live-panel>header>a { flex:0 0 auto; padding:8px 10px; border:1px solid rgba(255,205,74,.35); border-radius:8px; color:#ffe187; background:rgba(160,112,14,.12); font-size:8px; font-weight:900; text-decoration:none; }
+.lightning-live-frame { height:clamp(390px,52vh,590px); margin-top:11px; overflow:hidden; border:1px solid rgba(255,205,74,.28); border-radius:11px; background:#120d16; }
+.lightning-live-panel.compact .lightning-live-frame { height:clamp(360px,46vh,520px); }
+.lightning-live-frame iframe { width:100%; height:100%; border:0; background:#120d16; }
+.lightning-live-panel>footer { margin-top:9px; display:flex; align-items:flex-start; justify-content:space-between; gap:12px; color:#9eb0bf; font-size:7px; line-height:1.45; }
+.lightning-live-panel>footer strong { max-width:560px; color:#ffd176; text-align:right; }
+.lightning-module { display:grid; gap:16px; }
+.lightning-now { position:relative; overflow:hidden; display:grid; grid-template-columns:minmax(280px,1fr) minmax(430px,1.25fr); gap:24px; padding:26px; border:1px solid rgba(107,189,255,.2); border-radius:22px; background:radial-gradient(circle at 78% 15%,rgba(118,91,208,.26),transparent 38%),linear-gradient(135deg,#071321,#0a1c31 60%,#11172c); box-shadow:0 20px 55px rgba(0,0,0,.32); }
+.lightning-now::after { content:"⚡"; position:absolute; right:-20px; top:-54px; color:rgba(255,225,129,.055); font-size:220px; line-height:1; transform:rotate(8deg); pointer-events:none; }
+.lightning-now.unavailable { border-color:rgba(246,196,83,.28); }
+.lightning-now-title { align-self:center; position:relative; z-index:1; }
+.lightning-now-title h1 { margin:7px 0 9px; max-width:660px; font-size:clamp(24px,3vw,43px); line-height:1.02; letter-spacing:-.035em; }
+.lightning-now-title p { margin:0; max-width:650px; color:#a8bac9; font-size:12px; line-height:1.55; }
+.lightning-now-grid { position:relative; z-index:1; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+.lightning-now-grid>div { min-height:78px; display:grid; align-content:center; gap:5px; padding:13px 15px; border:1px solid rgba(137,196,234,.13); border-radius:13px; background:rgba(2,12,23,.57); }
+.lightning-now-grid>div:last-child { grid-column:1/-1; }
+.lightning-now-grid span,.lightning-now-grid small { color:#7f9ab0; font-size:9px; }
+.lightning-now-grid strong { color:#f5f9fc; font-size:16px; }
+.lightning-reference-card { display:flex; align-items:center; justify-content:space-between; gap:22px; padding:18px 22px; }
+.lightning-reference-card h2 { margin:4px 0; font-size:24px; }
+.lightning-reference-card p { margin:0; color:#b2c4d2; }
+.lightning-reference-meta { display:grid; justify-items:end; gap:4px; text-align:right; }
+.lightning-reference-meta strong { color:#6bc9ff; }
+.lightning-reference-meta span,.lightning-reference-meta small { color:#778fa3; font-size:9px; }
+.lightning-time-filters { display:flex; gap:7px; padding:4px 0 8px; overflow-x:auto; scrollbar-width:none; }
+.lightning-time-filters::-webkit-scrollbar { display:none; }
+.lightning-time-filters button { flex:0 0 auto; min-width:66px; padding:9px 13px; border:1px solid rgba(120,173,209,.18); border-radius:999px; color:#8fa8ba; background:rgba(8,20,33,.78); cursor:pointer; }
+.lightning-time-filters button.active { border-color:rgba(255,211,105,.5); color:#fff3bd; background:rgba(180,128,29,.2); box-shadow:inset 0 0 0 1px rgba(255,255,255,.04); }
+.lightning-local-map-card { overflow:hidden; padding:15px; }
+.lightning-local-map-card .panel-title button { padding:8px 12px; border:1px solid rgba(88,174,228,.28); border-radius:10px; color:#a6c7dc; background:rgba(20,75,110,.16); cursor:pointer; }
+.lightning-local-map-card .panel-title button.active { color:#fff; background:rgba(35,128,183,.25); }
+.lightning-local-map { height:min(58vh,590px); min-height:390px; overflow:hidden; border:1px solid rgba(120,181,222,.18); border-radius:15px; }
+.lightning-local-map .leaflet-map { height:100%; }
+.xavpac-lightning-marker { position:relative; width:34px; height:34px; display:grid; place-items:center; border:2px solid rgba(255,255,255,.8); border-radius:50% 50% 50% 10%; color:#0a1421; background:var(--lightning-color); box-shadow:0 0 0 4px color-mix(in srgb,var(--lightning-color) 24%,transparent),0 6px 18px rgba(0,0,0,.46); transform:rotate(-45deg); }
+.xavpac-lightning-marker span { font-size:18px; transform:rotate(45deg); }
+.xavpac-lightning-marker strong { position:absolute; left:29px; top:23px; width:max-content; max-width:120px; overflow:hidden; color:#fff; font-size:8px; text-overflow:ellipsis; text-shadow:0 2px 5px #000; transform:rotate(45deg); white-space:nowrap; }
+.xavpac-lightning-marker.lightning-15-30 { opacity:.72; }.xavpac-lightning-marker.lightning-30-60 { opacity:.5; }.xavpac-lightning-marker.lightning-older { opacity:.32; }
+.lightning-age-legend { display:flex; flex-wrap:wrap; gap:14px; padding:12px 4px 2px; color:#8199aa; font-size:9px; }
+.lightning-age-legend span { display:inline-flex; align-items:center; gap:6px; }.lightning-age-legend i { width:9px; height:9px; border-radius:50%; background:#fff4b8; }
+.lightning-age-legend .age-5-15 { background:#f4cb63; }.lightning-age-legend .age-15-30 { background:#c996da; }.lightning-age-legend .age-30-60 { background:#7e76b8; }.lightning-age-legend .age-older { background:#59627a; }
+.lightning-data-warning { margin-top:12px; display:flex; gap:9px 18px; padding:12px 14px; border:1px solid rgba(245,193,72,.22); border-radius:11px; color:#a4b5c2; background:rgba(133,92,17,.11); font-size:10px; }.lightning-data-warning strong { color:#f0cc75; }
+.lightning-selected-impact { margin-top:12px; padding:14px 16px; border-left:3px solid #f4cb63; border-radius:9px; background:rgba(16,29,44,.82); }.lightning-selected-impact>span { color:#f1c95d; font-size:9px; font-weight:800; }.lightning-selected-impact>strong { display:block; margin:5px 0; font-size:16px; }.lightning-selected-impact p { margin:3px 0; color:#8fa5b6; font-size:10px; }
+.lightning-period-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }.lightning-period-grid article { min-height:145px; display:grid; align-content:center; gap:7px; }.lightning-period-grid article>strong { color:#f4d273; font-size:22px; }.lightning-period-grid p { margin:0; color:#8197a8; font-size:10px; }
+.lightning-analysis-card { display:grid; grid-template-columns:1fr auto; align-items:center; gap:24px; }.lightning-analysis-card h2 { margin:5px 0; }.lightning-analysis-card p { margin:0; color:#8ca2b2; }.lightning-analysis-card>div:last-child { min-width:190px; display:grid; gap:4px; padding:13px; border-radius:11px; background:rgba(20,53,76,.34); }.lightning-analysis-card>div:last-child span,.lightning-analysis-card>div:last-child small { color:#7893a7; font-size:9px; }.lightning-analysis-card>div:last-child strong { text-transform:uppercase; }
+.lightning-closest-list { display:grid; grid-template-columns:repeat(5,1fr); gap:8px; }.lightning-closest-list button { min-height:150px; display:grid; align-content:start; gap:5px; padding:12px; border:1px solid rgba(127,184,220,.15); border-radius:12px; color:#91a7b8; background:rgba(7,20,33,.65); text-align:left; cursor:pointer; }.lightning-closest-list button:hover { border-color:rgba(245,201,88,.4); }.lightning-closest-list b { width:24px; height:24px; display:grid; place-items:center; border-radius:50%; color:#101927; background:#f3ca63; }.lightning-closest-list strong { color:#fff; font-size:16px; }.lightning-closest-list span { font-size:9px; }.lightning-closest-list small { align-self:end; color:#5dbff3; }
+.lightning-empty { padding:20px; border-radius:12px; color:#8299aa; background:rgba(7,20,33,.52); text-align:center; }
+.lightning-history-grid { display:grid; grid-template-columns:1.25fr 1fr 1fr; gap:12px; }.lightning-history-grid h3 { margin:7px 0; }.lightning-history-grid p { color:#849aaa; font-size:10px; line-height:1.5; }.lightning-no-invention { color:#efc85f; font-size:10px; }
+.lightning-stats-table { margin-top:13px; display:grid; grid-template-columns:1.4fr repeat(4,1fr); border:1px solid rgba(126,180,215,.13); border-radius:10px; overflow:hidden; }.lightning-stats-table>* { padding:9px 7px; border-right:1px solid rgba(126,180,215,.1); border-bottom:1px solid rgba(126,180,215,.1); text-align:center; }.lightning-stats-table>*:nth-child(5n+1) { text-align:left; }.lightning-stats-table span,.lightning-stats-table b { color:#7892a6; font-size:8px; }.lightning-stats-table strong { color:#eef6fb; }
+@media(max-width:900px){.lightning-now{grid-template-columns:1fr;padding:19px}.lightning-period-grid,.lightning-history-grid{grid-template-columns:1fr}.lightning-closest-list{grid-template-columns:repeat(2,1fr)}.lightning-local-map{height:52vh;min-height:360px}}
+@media(max-width:600px){.lightning-module{gap:11px}.lightning-now{gap:15px;padding:17px 14px;border-radius:16px}.lightning-now-title h1{font-size:25px}.lightning-now-grid{grid-template-columns:1fr 1fr}.lightning-now-grid>div{min-height:68px;padding:10px}.lightning-now-grid strong{font-size:13px}.lightning-reference-card{align-items:flex-start;flex-direction:column}.lightning-reference-meta{justify-items:start;text-align:left}.lightning-local-map-card{padding:9px}.lightning-local-map-card .panel-title{align-items:flex-start;flex-direction:column}.lightning-local-map{min-height:410px;height:56vh}.lightning-data-warning{flex-direction:column}.lightning-analysis-card{grid-template-columns:1fr}.lightning-closest-list{grid-template-columns:1fr}.lightning-closest-list button{min-height:122px}.lightning-stats-table{font-size:8px}.lightning-stats-table>*{padding:7px 3px}}
 .weather-summary { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
 .weather-temperature { display: flex; align-items: center; gap: 16px; }
 .weather-big-icon { font-size: 60px; }
@@ -1325,6 +1379,7 @@ a { color: inherit; }
 .aviation-location-panel.missing .aviation-location-state span { color:#ffc76d; }
 .aviation-location-state strong { margin-top:4px; color:#f4f9fc; font-size:11px; }
 .aviation-location-state small { margin-top:4px; color:#90a9bc; font-size:7px; line-height:1.45; }
+.aviation-location-state em { width:max-content; max-width:100%; margin-top:7px; padding:4px 7px; display:block; border:1px solid rgba(67,218,151,.35); border-radius:6px; color:#78e8b1; background:rgba(44,166,111,.1); font-size:7px; font-style:normal; font-weight:900; }
 .aviation-location-inputs { display:grid; grid-template-columns:minmax(170px,1fr) minmax(210px,1fr) auto; gap:7px; align-items:end; }
 .aviation-location-inputs label { color:#8eabc0; font-size:7px; font-weight:850; text-transform:uppercase; }
 .aviation-location-inputs label>span { display:flex; margin-top:4px; }
@@ -2904,6 +2959,11 @@ a { color: inherit; }
 .xavpac-reference-marker.moi { animation:xavpac-reference-pulse 2.2s ease-in-out infinite; }
 .xavpac-reference-marker.mission { background:#8d4ce8; box-shadow:0 0 0 5px rgba(141,76,232,.2),0 5px 11px rgba(0,0,0,.42); }
 .xavpac-reference-marker.mission>strong { background:#59259b; }
+.xavpac-geolocation-pin { position:relative; width:44px; height:54px; animation:xavpac-geolocation-pulse 2.2s ease-in-out infinite; }
+.xavpac-geolocation-pin svg { width:44px; height:54px; overflow:visible; filter:drop-shadow(0 5px 7px rgba(0,0,0,.5)); }
+.xavpac-geolocation-pin>strong { position:absolute; left:48px; top:18px; min-width:max-content; padding:4px 7px; border:1px solid rgba(255,255,255,.85); border-radius:6px; color:#fff; background:rgba(4,29,48,.94); box-shadow:0 4px 10px rgba(0,0,0,.3); font-size:8px; }
+.xavpac-geolocation-pin.location>strong { background:rgba(74,31,129,.94); }
+@keyframes xavpac-geolocation-pulse { 50% { transform:translateY(-2px); filter:drop-shadow(0 0 8px rgba(35,162,255,.55)); } }
 @keyframes xavpac-reference-pulse { 50% { box-shadow:0 0 0 9px rgba(21,132,221,.10),0 5px 11px rgba(0,0,0,.42); } }
 .xavpac-silhouette-svg { position:relative; z-index:2; width:28px; height:28px; filter:drop-shadow(0 1px 1px rgba(255,255,255,.95)) drop-shadow(0 4px 5px rgba(0,0,0,.62)); }
 .xavpac-silhouette-svg svg { display:block; width:100%; height:100%; overflow:visible; transform-origin:center; }
@@ -2923,7 +2983,15 @@ a { color: inherit; }
 .fw-camera-mode { padding:5px 7px; border-radius:999px; color:#9fb4c7; background:rgba(255,255,255,.06); font-size:7px; font-weight:950; letter-spacing:.08em; }
 .fw-camera-mode.follow { color:#8ff0be; background:rgba(46,207,133,.14); }
 .fw-camera-mode.focus { color:#8edcff; background:rgba(39,183,255,.14); }
-@media(max-width:680px){.fw-camera-controls{right:8px;bottom:8px;max-width:calc(100% - 16px)}.fw-camera-controls button{min-width:42px;padding:6px}.fw-camera-mode{display:none}}
+.fw-trail-status { position:absolute; z-index:820; left:50%; bottom:12px; min-width:210px; padding:7px 11px; border:1px solid rgba(0,229,255,.42); border-radius:9px; color:#fff; background:rgba(3,18,31,.93); box-shadow:0 8px 22px rgba(0,0,0,.26); text-align:center; transform:translateX(-50%); pointer-events:none; backdrop-filter:blur(7px); }
+.fw-trail-status strong,.fw-trail-status small { display:block; }
+.fw-trail-status strong { color:#65e8ff; font-size:7px; font-weight:950; letter-spacing:.1em; }
+.fw-trail-status small { margin-top:3px; color:#b9cfdd; font-size:7px; }
+.fw-trail-status.observed { border-color:rgba(82,190,255,.56); }
+.fw-trail-status.observed strong { color:#fff; }
+.fw-trail-status.waiting { border-color:rgba(255,189,89,.42); }
+.fw-trail-status.waiting strong { color:#ffd176; }
+@media(max-width:680px){.fw-camera-controls{right:8px;bottom:8px;max-width:calc(100% - 16px)}.fw-camera-controls button{min-width:42px;padding:6px}.fw-camera-mode{display:none}.fw-trail-status{left:8px;right:auto;bottom:61px;min-width:0;max-width:calc(100% - 16px);text-align:left;transform:none}}
 
 /* XavPac 6.5 — Phase Aviation */
 .aviation-source-health { display:flex; gap:7px; padding:8px; overflow-x:auto; }
@@ -2935,6 +3003,12 @@ a { color: inherit; }
 .aviation-source-health .degraded strong { color:#ffd176; }
 .aviation-source-health .offline strong { color:#ff7587; }
 .aviation-source-health .disabled strong { color:#8495a5; }
+.aviation-national-alerts { display:grid; gap:5px; }
+.aviation-national-alerts button { width:100%; min-height:40px; padding:8px 11px; display:flex; align-items:center; justify-content:space-between; gap:12px; border:1px solid rgba(255,111,93,.4); border-radius:9px; color:#ffd9d2; background:rgba(125,33,30,.24); text-align:left; cursor:pointer; }
+.aviation-national-alerts button:hover,.aviation-national-alerts button.selected { border-color:#ff8b78; background:rgba(174,47,39,.32); }
+.aviation-national-alerts button span { min-width:0; font-size:8px; }
+.aviation-national-alerts button b { color:#fff; }
+.aviation-national-alerts button strong { flex:0 0 auto; color:#fff; font-size:8px; }
 .aviation-compact-summary { padding:8px 11px; display:flex; align-items:center; gap:10px 18px; color:#a9bdcc; font-size:8px; }
 .aviation-compact-summary strong { color:#eaf7ff; }
 .aviation-compact-summary span:last-child { margin-left:auto; }
@@ -2960,4 +3034,4 @@ a { color: inherit; }
 .fw-home-passage-strip strong { margin-top:4px; font-size:9px; }
 .fw-home-passage-strip small { margin-top:3px; color:#8fa4b7; font-size:6px; }
 .fw-look-grid>small { grid-column:1/-1; color:#8fa4b7; font-size:6px; }
-@media(max-width:680px){.aviation-watch-now>div{display:flex;overflow-x:auto}.aviation-watch-now button{min-width:245px}.aviation-watch-now>header small{display:none}.fw-home-passage-strip{grid-template-columns:1fr 1fr}.fw-home-passage-strip>div:first-child{grid-column:1/-1}.aviation-source-health>span{min-width:112px}.aviation-compact-summary{display:grid;gap:4px}.aviation-compact-summary span:last-child{margin-left:0}}
+@media(max-width:680px){.aviation-watch-now>div{display:flex;overflow-x:auto}.aviation-watch-now button{min-width:245px}.aviation-watch-now>header small{display:none}.fw-home-passage-strip{grid-template-columns:1fr 1fr}.fw-home-passage-strip>div:first-child{grid-column:1/-1}.aviation-source-health>span{min-width:112px}.aviation-compact-summary{display:grid;gap:4px}.aviation-compact-summary span:last-child{margin-left:0}.aviation-national-alerts button{align-items:flex-start;flex-direction:column;gap:4px}.aviation-national-alerts button strong{align-self:flex-end}}

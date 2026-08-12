@@ -35,6 +35,7 @@ export type MapTrail = {
   positions: [number, number][];
   color?: string;
   selected?: boolean;
+  kind?: "observed" | "heading";
 };
 
 export type MapZone = {
@@ -230,8 +231,18 @@ function aircraftSvg(color: string, heading: number, category = "aircraft") {
 }
 
 function referenceIcon(point: MapPoint) {
-  const kind = point.category === "moi" ? "moi" : point.category === "mission" || point.category === "location" ? "mission" : "home";
-  const symbol = kind === "moi" ? "•" : kind === "mission" ? "+" : "H";
+  const kind = point.category === "moi" ? "moi" : point.category === "location" ? "location" : point.category === "mission" ? "mission" : "home";
+  if (kind === "moi" || kind === "location") {
+    const pinColor = kind === "moi" ? "#1687ee" : "#8d4ce8";
+    return L.divIcon({
+      className: "xavpac-map-icon-root",
+      html: `<div class="xavpac-geolocation-pin ${kind}"><svg viewBox="0 0 44 54" aria-hidden="true"><path d="M22 2C10.95 2 2 10.95 2 22c0 15.7 20 30 20 30s20-14.3 20-30C42 10.95 33.05 2 22 2Z" fill="${pinColor}" stroke="#fff" stroke-width="3"/><circle cx="22" cy="22" r="7" fill="#fff"/><circle cx="22" cy="22" r="3" fill="${pinColor}"/></svg><strong>${escapeHtml(point.name)}</strong></div>`,
+      iconSize: [44, 54],
+      iconAnchor: [22, 52],
+      popupAnchor: [0, -50]
+    });
+  }
+  const symbol = kind === "mission" ? "+" : "H";
   return L.divIcon({
     className: "xavpac-map-icon-root",
     html: `<div class="xavpac-reference-marker ${kind}"><span aria-hidden="true">${symbol}</span><strong>${escapeHtml(point.name)}</strong></div>`,
@@ -273,6 +284,16 @@ function operationalIcon(point: MapPoint, selected: boolean, faded: boolean, lab
 
 function pointIcon(point: MapPoint, selected: boolean, faded: boolean, labelMode: "none" | "callsign" | "detail") {
   if (["home", "moi", "mission", "location"].includes(String(point.category))) return referenceIcon(point);
+  if (String(point.category).startsWith("lightning")) {
+    const color = point.color ?? "#f6c453";
+    return L.divIcon({
+      className: "xavpac-map-icon-root",
+      html: `<div class="xavpac-lightning-marker ${escapeHtml(String(point.category))}" style="--lightning-color:${escapeHtml(color)}"><span aria-hidden="true">⚡</span><strong>${escapeHtml(point.name)}</strong></div>`,
+      iconSize: [34, 34],
+      iconAnchor: [17, 17],
+      popupAnchor: [0, -18]
+    });
+  }
   if (point.category === "route-airport") return L.divIcon({ className: "xavpac-map-icon-root", html: `<div class="xavpac-route-airport-marker"><span>●</span><strong>${escapeHtml(point.name)}</strong></div>`, iconSize: [126, 48], iconAnchor: [63, 24], popupAnchor: [0, -25] });
   if (point.category === "aerodrome") return L.divIcon({ className: "xavpac-map-icon-root", html: `<div class="xavpac-aerodrome-marker"><span>+</span><strong>${escapeHtml(point.name)}</strong></div>`, iconSize: [74, 42], iconAnchor: [37, 21] });
   if (point.category === "weather") return weatherIcon(point);
@@ -376,6 +397,7 @@ export default function StableMap({
   zones = [],
   radiusKm,
   showRadius = false,
+  distanceRingsKm = [],
   onSelect,
   fixedBounds,
   maxBounds,
@@ -398,6 +420,7 @@ export default function StableMap({
   zones?: MapZone[];
   radiusKm?: number;
   showRadius?: boolean;
+  distanceRingsKm?: number[];
   onSelect?: (id: string) => void;
   fixedBounds?: Bounds;
   maxBounds?: Bounds;
@@ -449,6 +472,24 @@ export default function StableMap({
         </Circle>
       )}
 
+      {distanceRingsKm.filter((radius) => Number.isFinite(radius) && radius > 0).map((radius, index) => (
+        <Circle
+          key={`distance-ring-${radius}`}
+          center={center}
+          radius={radius * 1000}
+          interactive={false}
+          pathOptions={{
+            color: "#49b7ff",
+            weight: radius <= 10 ? 2.2 : 1.4,
+            opacity: Math.max(.28, .88 - index * .1),
+            fillOpacity: 0,
+            dashArray: radius <= 10 ? "7 7" : "3 9"
+          }}
+        >
+          <Tooltip permanent direction="right" className="radius-label">{radius} km</Tooltip>
+        </Circle>
+      ))}
+
       {[...zones].sort((first, second) => zoneDisplayPriority(first.status) - zoneDisplayPriority(second.status)).map((zone) => (
         <Polygon key={zone.id} positions={zone.positions} pathOptions={zoneStyle(zone.status)} eventHandlers={{ click: (event) => onMapClick?.([event.latlng.lat, event.latlng.lng]) }}>
           {showZoneLabels && <Tooltip permanent direction="center" className={`zone-label-v5 ${zone.status}`}>{zone.name}</Tooltip>}
@@ -465,14 +506,14 @@ export default function StableMap({
 
       {trails.map((trail) => (
         <Fragment key={trail.id}>
-          {trail.selected && <Polyline positions={trail.positions} pathOptions={{ color: "#ffffff", weight: 14, opacity: .9, lineCap: "round", lineJoin: "round" }} />}
+          {trail.selected && trail.kind !== "heading" && <Polyline positions={trail.positions} pathOptions={{ color: "#ffffff", weight: 14, opacity: .9, lineCap: "round", lineJoin: "round" }} />}
           <Polyline
             positions={trail.positions}
             pathOptions={{
-              color: trail.color ?? "#008fd3",
-              weight: trail.selected ? 7 : 3,
+              color: trail.kind === "heading" ? "#00e5ff" : trail.color ?? "#008fd3",
+              weight: trail.kind === "heading" ? 5 : trail.selected ? 7 : 3,
               opacity: trail.selected ? 1 : 0.5,
-              dashArray: trail.selected ? undefined : "7 8",
+              dashArray: trail.kind === "heading" ? "6 9" : trail.selected ? undefined : "7 8",
               lineCap: "round",
               lineJoin: "round"
             }}

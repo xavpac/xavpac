@@ -1,6 +1,20 @@
-# XavPac 6.4.1
+# XavPac 6.5.0
 
 Tableau de bord Aviation, Drone SDIS 71, Moyens nationaux, CODIS, Astronomie et Météo.
+
+## Nouveautés 6.5.0 — Orage / Foudre et HOME fixe
+
+- HOME est fixé à `124 impasse des Fiolières, 01380 Bâgé-Dommartin`, géocodé par la Base Adresse Nationale IGN aux coordonnées `46.345497 / 4.976824`.
+- L’observation Aviation et la météo démarrent automatiquement sur HOME, sans dépendre de la géolocalisation du Mac.
+- Nouvelle page Orage responsive : résumé immédiat, filtres temporels, carte locale et cercles cumulatifs 2/3/5/10 km.
+- Préparation des rayons d’observation 20/50 km, impacts sélectionnables, cinq impacts les plus proches, statistiques et historique réel.
+- Calculs déterministes de distance, azimut, secteur, ancienneté, intensité et tendance sur trois fenêtres temporelles.
+- Résumé foudre propre au point MISSION dans le module Drone.
+- Aucune statistique n’est calculée depuis la carte publique indicative : sans flux structuré autorisé, l’état affiché est `DONNÉES FOUDRE NON DISPONIBLES`.
+
+### Source structurée foudre
+
+Le serveur accepte un fournisseur autorisé configuré par `LIGHTNING_PROVIDER_URL`, `LIGHTNING_PROVIDER_TOKEN` et `LIGHTNING_PROVIDER_NAME`. La réponse JSON doit contenir `impacts` (ou `strikes`) avec au minimum `latitude`, `longitude` et `occurredAtUtc`/`timestamp`. Les champs type, polarité, courant de crête, précision et qualité restent optionnels et ne sont jamais inventés.
 
 ## Nouveautés 6.4.1 — suivi réel des passages ADS-B
 

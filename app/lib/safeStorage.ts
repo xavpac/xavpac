@@ -1,5 +1,7 @@
+import { XAVPAC_HOME } from "../config/home.ts";
+
 export const XAVPAC_STORAGE_VERSION_KEY = "xavpac-storage-version";
-export const XAVPAC_STORAGE_VERSION = 1;
+export const XAVPAC_STORAGE_VERSION = 2;
 
 export const XAVPAC_STORAGE_KEYS = {
   favorites: "xavpac-favorites",
@@ -9,7 +11,8 @@ export const XAVPAC_STORAGE_KEYS = {
   mapStyle: "xavpac:aviation-map-style",
   soundPreference: "xavpac:aviation-sounds",
   observations: "xavpac-spotting-observations-v1",
-  aircraftIdentities: "xavpac-aircraft-identities-v2"
+  aircraftIdentities: "xavpac-aircraft-identities-v2",
+  lightningLastView: "xavpac:lightning-last-view-v1"
 } as const;
 
 export type StorageLike = Pick<Storage, "getItem" | "setItem" | "removeItem">;
@@ -110,6 +113,12 @@ export function safeWriteJson(storage: StorageLike | null, key: string, value: u
   }
 }
 
+export function safeWriteCoordinatePair(storage: StorageLike | null, key: string, value: [number, number]): boolean {
+  if (!isCoordinatePair(value) || !safeWriteJson(storage, key, value)) return false;
+  const stored = parseStoredJson(safeGetItem(storage, key));
+  return isCoordinatePair(stored) && stored[0] === value[0] && stored[1] === value[1];
+}
+
 function migrateFavorites(storage: StorageLike) {
   const raw = safeGetItem(storage, XAVPAC_STORAGE_KEYS.favorites);
   if (raw === null) return;
@@ -119,12 +128,8 @@ function migrateFavorites(storage: StorageLike) {
   else safeRemoveItem(storage, XAVPAC_STORAGE_KEYS.favorites);
 }
 
-function validateStoredHome(storage: StorageLike) {
-  const raw = safeGetItem(storage, XAVPAC_STORAGE_KEYS.savedHome);
-  if (raw === null) return;
-  const home = parseStoredJson(raw);
-  if (isCoordinatePair(home)) safeWriteJson(storage, XAVPAC_STORAGE_KEYS.savedHome, home);
-  else safeRemoveItem(storage, XAVPAC_STORAGE_KEYS.savedHome);
+function enforceFixedHome(storage: StorageLike) {
+  safeWriteJson(storage, XAVPAC_STORAGE_KEYS.savedHome, XAVPAC_HOME.position);
 }
 
 function validateMapStyle(storage: StorageLike) {
@@ -137,11 +142,11 @@ function validateMapStyle(storage: StorageLike) {
 export function migrateXavPacStorage(localStorage: StorageLike | null, sessionStorage: StorageLike | null = null) {
   if (!localStorage) return { migrated: false, version: null } as const;
   const storedVersion = Number.parseInt(safeGetItem(localStorage, XAVPAC_STORAGE_VERSION_KEY) ?? "0", 10);
+  enforceFixedHome(localStorage);
   if (storedVersion === XAVPAC_STORAGE_VERSION) return { migrated: false, version: storedVersion } as const;
   if (storedVersion > XAVPAC_STORAGE_VERSION) return { migrated: false, version: storedVersion } as const;
 
   migrateFavorites(localStorage);
-  validateStoredHome(localStorage);
   validateMapStyle(localStorage);
   safeRemoveItem(sessionStorage, XAVPAC_STORAGE_KEYS.manualObserver);
   safeSetItem(localStorage, XAVPAC_STORAGE_VERSION_KEY, String(XAVPAC_STORAGE_VERSION));

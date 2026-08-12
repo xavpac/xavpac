@@ -8,6 +8,7 @@ import {
   parseStoredJson,
   safeGetItem,
   safeSetItem,
+  safeWriteCoordinatePair,
   XAVPAC_STORAGE_KEYS,
   XAVPAC_STORAGE_VERSION,
   XAVPAC_STORAGE_VERSION_KEY,
@@ -15,6 +16,7 @@ import {
 } from "../../app/lib/safeStorage.ts";
 import { normalizeObservation } from "../../app/lib/aviation/observations.ts";
 import { enterFullscreenIfAvailable, exitFullscreenIfActive, isFullscreenActive } from "../../app/lib/fullscreen.ts";
+import { XAVPAC_HOME } from "../../app/config/home.ts";
 
 class MemoryStorage implements StorageLike {
   values = new Map<string, string>();
@@ -40,16 +42,17 @@ test("migre un ancien objet de favoris vers une liste saine", () => {
   assert.equal(local.getItem(XAVPAC_STORAGE_VERSION_KEY), String(XAVPAC_STORAGE_VERSION));
 });
 
-test("supprime un HOME malformé et conserve un HOME exact", () => {
+test("remplace toujours HOME par l’adresse fixe géocodée", () => {
   const invalid = new MemoryStorage();
   invalid.setItem(XAVPAC_STORAGE_KEYS.savedHome, JSON.stringify([46.2, "4.8"]));
   migrateXavPacStorage(invalid);
-  assert.equal(invalid.getItem(XAVPAC_STORAGE_KEYS.savedHome), null);
+  assert.deepEqual(JSON.parse(invalid.getItem(XAVPAC_STORAGE_KEYS.savedHome) ?? "null"), XAVPAC_HOME.position);
 
   const valid = new MemoryStorage();
   valid.setItem(XAVPAC_STORAGE_KEYS.savedHome, JSON.stringify([46.346, 4.977]));
   migrateXavPacStorage(valid);
   assert.equal(isCoordinatePair(JSON.parse(valid.getItem(XAVPAC_STORAGE_KEYS.savedHome) ?? "null")), true);
+  assert.deepEqual(JSON.parse(valid.getItem(XAVPAC_STORAGE_KEYS.savedHome) ?? "null"), XAVPAC_HOME.position);
 });
 
 test("conserve un point d’observation volontaire pendant la navigation", () => {
@@ -73,7 +76,21 @@ test("un stockage Safari indisponible ne fait jamais planter XavPac", () => {
   };
   assert.equal(safeGetItem(blocked, "clé"), null);
   assert.equal(safeSetItem(blocked, "clé", "valeur"), false);
+  assert.equal(safeWriteCoordinatePair(blocked, XAVPAC_STORAGE_KEYS.savedHome, [46.3, 4.8]), false);
   assert.doesNotThrow(() => migrateXavPacStorage(blocked));
+});
+
+test("confirme HOME seulement après relecture exacte dans le stockage du Mac", () => {
+  const storage = new MemoryStorage();
+  assert.equal(safeWriteCoordinatePair(storage, XAVPAC_STORAGE_KEYS.savedHome, [46.306, 4.831]), true);
+  assert.deepEqual(JSON.parse(storage.getItem(XAVPAC_STORAGE_KEYS.savedHome) ?? "null"), [46.306, 4.831]);
+
+  const silentlyBlocked: StorageLike = {
+    getItem() { return null; },
+    setItem() {},
+    removeItem() {}
+  };
+  assert.equal(safeWriteCoordinatePair(silentlyBlocked, XAVPAC_STORAGE_KEYS.savedHome, [46.306, 4.831]), false);
 });
 
 test("filtre une ancienne observation corrompue et complète les champs optionnels", () => {

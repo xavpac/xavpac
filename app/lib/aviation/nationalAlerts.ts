@@ -1,4 +1,5 @@
 import { distanceKm } from "./geometry.ts";
+import type { AircraftWithDistance } from "./liveAircraft.ts";
 
 export type NationalAssetSignal = {
   id: string;
@@ -6,6 +7,14 @@ export type NationalAssetSignal = {
   latitude: number;
   longitude: number;
   onGround: boolean;
+  altitude?: number | null;
+  speed?: number | null;
+  track?: number | null;
+  registration?: string | null;
+  aircraftType?: string | null;
+  description?: string | null;
+  operator?: string | null;
+  lastSeenSeconds?: number | null;
   identification?: { badge?: string; confidence?: "confirmed" | "probable" | "to-confirm" };
 };
 
@@ -39,4 +48,28 @@ export function nationalAssetsInsideRadius(assets: NationalAssetSignal[], observ
     }))
     .filter((asset) => asset.distanceKm <= radiusKm)
     .sort((left, right) => left.distanceKm - right.distanceKm);
+}
+
+export function nationalAssetToAircraft(asset: NearbyNationalAsset): AircraftWithDistance {
+  return {
+    id: asset.id,
+    callsign: asset.callsign,
+    country: "France",
+    longitude: asset.longitude,
+    latitude: asset.latitude,
+    barometricAltitude: asset.altitude ?? null,
+    velocity: typeof asset.speed === "number" ? asset.speed / 3.6 : null,
+    trueTrack: asset.track ?? null,
+    onGround: asset.onGround,
+    registration: asset.registration ?? null,
+    aircraftType: asset.aircraftType ?? null,
+    description: asset.description ?? null,
+    operator: asset.operator ?? null,
+    category: asset.badge,
+    positionSource: "national-assets",
+    feedSource: "Détection nationale ADS-B",
+    lastPositionAt: null,
+    positionAgeSeconds: asset.lastSeenSeconds ?? null,
+    distance: asset.distanceKm
+  };
 }
