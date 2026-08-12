@@ -16,6 +16,7 @@ import {
   type LightningFeed,
   type LightningStrike
 } from "../lib/weather/lightning";
+import { summarizeStormForecast, type StormForecastFeed } from "../lib/weather/stormForecast";
 import type { MapPoint } from "./StableMap";
 import LightningMapPanel from "./LightningMapPanel";
 
@@ -62,6 +63,15 @@ function formatLocal(utc: string) {
   }).format(new Date(utc));
 }
 
+function formatForecastHour(utc: string | null) {
+  if (!utc) return "—";
+  return new Intl.DateTimeFormat("fr-FR", {
+    timeZone: "Europe/Paris",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(new Date(utc));
+}
+
 function periodStart(minutes: number, nowMs: number) {
   if (minutes === 525_600) {
     const now = new Date(nowMs);
@@ -81,6 +91,8 @@ export default function LightningPanel() {
   const { position, isLive } = useLiveGeolocation();
   const [periodMinutes, setPeriodMinutes] = useState(60);
   const [feed, setFeed] = useState<LightningFeed | null>(null);
+  const [stormForecast, setStormForecast] = useState<StormForecastFeed | null>(null);
+  const [stormForecastLoading, setStormForecastLoading] = useState(true);
   const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [observationRings, setObservationRings] = useState(false);
@@ -128,6 +140,37 @@ export default function LightningPanel() {
     };
   }, [periodMinutes]);
 
+  useEffect(() => {
+    let cancelled = false;
+    async function loadStormForecast() {
+      setStormForecastLoading(true);
+      const parameters = new URLSearchParams({
+        lat: String(XAVPAC_HOME.position[0]),
+        lon: String(XAVPAC_HOME.position[1]),
+        hours: "6"
+      });
+      try {
+        const response = await fetch(`/api/storm-forecast?${parameters}`, { cache: "no-store" });
+        const payload = await response.json() as StormForecastFeed;
+        if (!cancelled) setStormForecast(payload);
+      } catch {
+        if (!cancelled) setStormForecast({
+          status: "unavailable",
+          source: null,
+          retrievedAt: new Date().toISOString(),
+          horizonHours: 6,
+          points: [],
+          message: "Prévision convective momentanément indisponible."
+        });
+      } finally {
+        if (!cancelled) setStormForecastLoading(false);
+      }
+    }
+    loadStormForecast();
+    const refresh = window.setInterval(loadStormForecast, 5 * 60_000);
+    return () => { cancelled = true; window.clearInterval(refresh); };
+  }, []);
+
   const impacts = useMemo(() => feed?.status === "available"
     ? feed.impacts.filter((impact) => lightningAgeMinutes(impact, nowMs) <= periodMinutes)
     : [], [feed, nowMs, periodMinutes]);
@@ -139,6 +182,8 @@ export default function LightningPanel() {
   const nearest = useMemo(() => closestImpacts(impacts), [impacts]);
   const selected = impacts.find((impact) => impact.id === selectedId) ?? null;
   const dataAvailable = feed?.status === "available";
+  const stormForecastAvailable = stormForecast?.status === "available";
+  const stormForecastSummary = useMemo(() => summarizeStormForecast(stormForecastAvailable ? stormForecast.points : []), [stormForecast, stormForecastAvailable]);
 
   const mapPoints = useMemo<MapPoint[]>(() => [
     {
@@ -203,6 +248,19 @@ export default function LightningPanel() {
     </section>
 
     <LightningMapPanel position={XAVPAC_HOME.position} />
+
+    <section className={`panel storm-forecast-card ${stormForecastAvailable ? "available" : "unavailable"}`}>
+      <header><div><span className="eyebrow">NOUVEAU • PRÉVISION CONVECTIVE</span><h2>Les 6 prochaines heures autour de HOME</h2></div><small>{stormForecastLoading ? "Actualisation…" : stormForecast?.source ?? "Source indisponible"}</small></header>
+      {stormForecastAvailable ? <>
+        <div className="storm-forecast-grid">
+          <article><span>⚡ Potentiel foudre maximal</span><strong>{stormForecastSummary.maximumLightningPotentialJkg === null ? "—" : `${Math.round(stormForecastSummary.maximumLightningPotentialJkg)} J/kg`}</strong><small>{stormForecastSummary.maximumLightningPotentialAtUtc ? `vers ${formatForecastHour(stormForecastSummary.maximumLightningPotentialAtUtc)}` : "Échéance indéterminée"}</small></article>
+          <article><span>⛈ CAPE maximale</span><strong>{stormForecastSummary.maximumCapeJkg === null ? "—" : `${Math.round(stormForecastSummary.maximumCapeJkg)} J/kg`}</strong><small>Énergie convective prévue</small></article>
+          <article><span>🌧 Pluie maximale / 15 min</span><strong>{stormForecastSummary.maximumPrecipitationMm === null ? "—" : `${stormForecastSummary.maximumPrecipitationMm.toFixed(1)} mm`}</strong><small>Valeur de modèle</small></article>
+          <article><span>💨 Rafales maximales</span><strong>{stormForecastSummary.maximumWindGustKmh === null ? "—" : `${Math.round(stormForecastSummary.maximumWindGustKmh)} km/h`}</strong><small>À 10 mètres</small></article>
+        </div>
+        <p><strong>Prévision, pas observation.</strong> Ces indices décrivent le potentiel convectif du modèle ; seuls les marqueurs de la carte live correspondent à des détections de foudre.</p>
+      </> : <p><strong>Prévision convective indisponible.</strong> {stormForecast?.message ?? "Connexion en cours…"}</p>}
+    </section>
 
     {!dataAvailable && <div className="lightning-data-warning lightning-data-warning-primary">
       <strong>La carte des impacts en direct est disponible ci-dessus.</strong>

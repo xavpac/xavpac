@@ -32,6 +32,7 @@ import { evaluateRtbaMission, type RtbaActivationFeed } from "../lib/drone/rtbaS
 import LightningMapPanel from "./LightningMapPanel";
 import { XAVPAC_HOME } from "../config/home";
 import { lightningAgeMinutes, summarizeLightning, type LightningFeed } from "../lib/weather/lightning";
+import { summarizeStormForecast, type StormForecastFeed } from "../lib/weather/stormForecast";
 
 const StableMap = dynamic(() => import("./StableMap"), { ssr: false });
 
@@ -199,6 +200,7 @@ export default function DronePanel() {
   const [officialNotamMessage, setOfficialNotamMessage] = useState("Position requise pour interroger SOFIA.");
   const [officialNotamUpdatedAt, setOfficialNotamUpdatedAt] = useState<string | null>(null);
   const [lightningFeed, setLightningFeed] = useState<LightningFeed | null>(null);
+  const [stormForecast, setStormForecast] = useState<StormForecastFeed | null>(null);
   const [notamRefreshVersion, setNotamRefreshVersion] = useState(0);
   const [missionStorageReady, setMissionStorageReady] = useState(false);
   const passageHistoryRef = useRef(new PassageHistoryStore());
@@ -230,14 +232,17 @@ export default function DronePanel() {
     const rawMission = safeGetItem(session, XAVPAC_STORAGE_KEYS.droneMission);
     const storedMission = normalizeStoredDroneMission(parseStoredJson(rawMission));
     if (storedMission) {
-      setMissionReference(storedMission.reference);
-      setManualPoint(storedMission.reference === "moi" ? null : storedMission.point);
+      const restoredReference = storedMission.reference === "moi" ? "home" : storedMission.reference;
+      setMissionReference(restoredReference);
+      setManualPoint(restoredReference === "home" ? XAVPAC_HOME.position : storedMission.point);
       setRequestedHeight(storedMission.heightMeters);
       setMissionNowMode(storedMission.nowMode);
       setMissionDate(storedMission.date);
       setMissionStartTime(storedMission.startTime);
       setMissionEndTime(storedMission.endTime);
-      if (storedMission.reference !== "moi") setLocationMessage("MISSION conservée pendant votre navigation.");
+      setLocationMessage(storedMission.reference === "moi"
+        ? `MISSION replacée sur HOME • ${XAVPAC_HOME.address}`
+        : "MISSION conservée pendant votre navigation.");
     } else {
       if (rawMission !== null) safeRemoveItem(session, XAVPAC_STORAGE_KEYS.droneMission);
       setMissionReference("home");
@@ -308,6 +313,7 @@ export default function DronePanel() {
     let cancelled = false;
     if (!selectedPosition) {
       setLightningFeed(null);
+      setStormForecast(null);
       return;
     }
     async function loadLightning() {
@@ -327,6 +333,28 @@ export default function DronePanel() {
     }
     loadLightning();
     const timer = window.setInterval(loadLightning, 60_000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [selectedPosition]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!selectedPosition) { setStormForecast(null); return; }
+    async function loadStormForecast() {
+      const parameters = new URLSearchParams({
+        lat: String(selectedPosition?.[0]),
+        lon: String(selectedPosition?.[1]),
+        hours: "6"
+      });
+      try {
+        const response = await fetch(`/api/storm-forecast?${parameters}`, { cache: "no-store" });
+        const payload = await response.json() as StormForecastFeed;
+        if (!cancelled) setStormForecast(payload);
+      } catch {
+        if (!cancelled) setStormForecast({ status: "unavailable", source: null, retrievedAt: new Date().toISOString(), horizonHours: 6, points: [], message: "Prévision convective indisponible." });
+      }
+    }
+    loadStormForecast();
+    const timer = window.setInterval(loadStormForecast, 5 * 60_000);
     return () => { cancelled = true; window.clearInterval(timer); };
   }, [selectedPosition]);
 
@@ -517,6 +545,7 @@ export default function DronePanel() {
   const lightningSummary = selectedPosition && lightningFeed?.status === "available"
     ? summarizeLightning(lightningFeed.impacts, selectedPosition, 30)
     : null;
+  const stormForecastSummary = summarizeStormForecast(stormForecast?.status === "available" ? stormForecast.points : []);
   const checklist = [
     { label: "Position", state: selectedPosition ? "Conforme" : "À vérifier", detail: selectedPosition ? "Point d’analyse défini" : "GPS ou point manuel requis" },
     { label: "RTBA / espaces", state: rtbaMissionStatus.severity === "blocking" ? "Bloquant" : rtbaMissionStatus.severity === "clear" ? "Conforme" : "À vérifier", detail: rtbaMissionStatus.label },
@@ -647,6 +676,7 @@ export default function DronePanel() {
           <article className={alertTraffic.length ? "check" : "clear"}><span>✈ TRAFIC</span><strong>{alertTraffic.length ? `${alertTraffic.length} rapprochement${alertTraffic.length === 1 ? "" : "s"} à surveiller` : "Aucun rapprochement préoccupant identifié"}</strong><small>Réception ADS-B non exhaustive</small></article>
           <article className={!metar ? "unconfirmed" : weatherBlocking ? "blocking" : "clear"}><span>🌬 MÉTÉO</span><strong>{metar ? `Vent ${metar.wspd ?? "—"} kt • rafales ${metar.wgst ?? "—"} kt` : "Donnée indisponible"}</strong><small>{metarStatus}</small></article>
           <article className={lightningSummary ? "clear" : "unconfirmed"}><span>⚡ FOUDRE • {missionReference === "home" ? "HOME" : "MISSION"}</span><strong>{lightningSummary ? lightningSummary.nearestKm === null ? "Aucun impact détecté dans les données disponibles" : `Plus proche ${lightningSummary.nearestKm.toFixed(1)} km • ${lightningSummary.count} impact${lightningSummary.count === 1 ? "" : "s"} / 30 min` : "DONNÉES FOUDRE NON DISPONIBLES"}</strong><small>{lightningSummary ? `Dernier : ${lightningAgeText(lightningSummary.latestAt)} • secteur ${lightningSummary.mainSector ?? "indéterminé"} • information opérationnelle uniquement` : "La carte ci-dessous reste indicative et ne constitue pas une autorisation de vol."}</small></article>
+          <article className={stormForecast?.status === "available" ? "clear" : "unconfirmed"}><span>⛈ POTENTIEL ORAGEUX • 6 H</span><strong>{stormForecastSummary.maximumLightningPotentialJkg === null ? "Prévision indisponible" : `Foudre ${Math.round(stormForecastSummary.maximumLightningPotentialJkg)} J/kg • CAPE ${stormForecastSummary.maximumCapeJkg === null ? "—" : Math.round(stormForecastSummary.maximumCapeJkg)} J/kg`}</strong><small>{stormForecast?.status === "available" ? `Rafales max ${stormForecastSummary.maximumWindGustKmh === null ? "—" : `${Math.round(stormForecastSummary.maximumWindGustKmh)} km/h`} • prévision de modèle, pas observation` : stormForecast?.message ?? "Connexion à la prévision…"}</small></article>
           <article className="unconfirmed"><span>☀ LUMIÈRE</span><strong>Calcul non disponible</strong><small>Ne pas déduire un horaire sans source solaire fiable</small></article>
         </div>
       </section>
