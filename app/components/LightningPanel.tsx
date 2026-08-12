@@ -202,6 +202,13 @@ export default function LightningPanel() {
       <div className="lightning-reference-meta"><strong>{XAVPAC_HOME.position[0].toFixed(6)} / {XAVPAC_HOME.position[1].toFixed(6)}</strong><span>Géocodé par {XAVPAC_HOME.geocoding.source}</span>{isLive && <small>MOI est aussi affiché sur la carte, sans remplacer HOME.</small>}</div>
     </section>
 
+    <LightningMapPanel position={XAVPAC_HOME.position} />
+
+    {!dataAvailable && <div className="lightning-data-warning lightning-data-warning-primary">
+      <strong>La carte des impacts en direct est disponible ci-dessus.</strong>
+      <span>Les compteurs, distances et statistiques locales restent indisponibles tant qu’aucun flux structuré autorisé n’est configuré.</span>
+    </div>}
+
     <nav className="lightning-time-filters" aria-label="Période des impacts">
       {FILTERS.map((filter) => <button type="button" key={filter.label} className={periodMinutes === filter.minutes ? "active" : ""} onClick={() => setPeriodMinutes(filter.minutes)}>{filter.label}</button>)}
     </nav>
@@ -247,7 +254,5 @@ export default function LightningPanel() {
       <article className="panel"><span className="eyebrow">HISTORIQUE ET RECORDS</span><h3>{feed?.availableSince ? `Disponible depuis le ${formatLocal(feed.availableSince)}` : "Collecte structurée non démarrée"}</h3><p>Les records, épisodes orageux et comparaisons Netatmo seront calculés uniquement à partir de la période réellement conservée.</p><strong className="lightning-no-invention">Aucun historique annuel fictif</strong></article>
       <article className="panel"><span className="eyebrow">DEPUIS VOTRE DERNIÈRE CONSULTATION</span><h3>{dataAvailable ? "Analyse prête" : "Comparaison indisponible"}</h3><p>{dataAvailable ? "La prochaine consultation pourra comparer les compteurs issus de cette même source." : "Une première acquisition valide est nécessaire avant toute comparaison."}</p></article>
     </section>
-
-    <LightningMapPanel position={XAVPAC_HOME.position} />
   </div>;
 }
