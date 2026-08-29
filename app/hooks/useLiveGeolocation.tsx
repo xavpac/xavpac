@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { assessGpsQuality, formatPositionAge, gpsQualityLabel, type GpsQuality } from "../lib/geolocationQuality";
 
-const MAX_USABLE_ACCURACY_METERS = 500;
+const MAX_USABLE_ACCURACY_METERS = 100;
 
 export type LiveGeolocation = {
   position: [number, number] | null;

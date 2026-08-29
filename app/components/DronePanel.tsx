@@ -34,6 +34,7 @@ import LightningMapPanel from "./LightningMapPanel";
 import { XAVPAC_HOME } from "../config/home";
 import { summarizeLightning, type LightningFeed } from "../lib/weather/lightning";
 import { summarizeStormForecast, type StormForecastFeed } from "../lib/weather/stormForecast";
+import { detectReferenceDevice, resolveReference, type ReferenceDevice, type ReferenceGpsFix } from "../lib/referenceResolver";
 
 const StableMap = dynamic(() => import("./StableMap"), { ssr: false });
 
@@ -169,13 +170,14 @@ function freshnessText(seconds: number | null) {
 
 export default function DronePanel() {
   const [mapMode, setMapMode] = useState<"official" | "map">("map");
-  const { position, status: positionStatus, accuracy, altitude, timestamp, isLive, trackingEnabled, setTrackingEnabled, retryGeolocation, error: gpsError } = useLiveGeolocation();
+  const { position, status: positionStatus, accuracy, altitude, timestamp, quality: gpsQuality, usableForPreciseCalculations, isLive, trackingEnabled, setTrackingEnabled, retryGeolocation, error: gpsError } = useLiveGeolocation();
   const [metar, setMetar] = useState<MetarReport | null>(null);
   const [metarStatus, setMetarStatus] = useState("Chargement de la météo locale…");
   const [traffic, setTraffic] = useState<LiveAircraft[]>([]);
   const [lastUpdated, setLastUpdated] = useState("—");
   const [manualPoint, setManualPoint] = useState<[number, number] | null>(null);
-  const [missionReference, setMissionReference] = useState<MissionReference>("moi");
+  const [missionPreference, setMissionReference] = useState<MissionReference>("moi");
+  const [referenceDevice, setReferenceDevice] = useState<ReferenceDevice>("desktop");
   const [savedHome, setSavedHome] = useState<[number, number] | null>(XAVPAC_HOME.position);
   const [requestedHeight, setRequestedHeight] = useState(60);
   const [missionNowMode, setMissionNowMode] = useState(true);
@@ -199,8 +201,29 @@ export default function DronePanel() {
   const passageHistoryRef = useRef(new PassageHistoryStore());
   const passageReferenceRef = useRef("gps");
   const [passageHistoryVersion, setPassageHistoryVersion] = useState(0);
-
-  const selectedPosition = missionReference === "moi" ? position : manualPoint;
+  const lastValidGpsRef = useRef<ReferenceGpsFix | null>(null);
+  const gpsFix: ReferenceGpsFix | null = position ? {
+    position,
+    accuracyMeters: accuracy,
+    timestampMs: timestamp,
+    quality: gpsQuality,
+    usable: usableForPreciseCalculations
+  } : null;
+  if (gpsFix?.usable) lastValidGpsRef.current = gpsFix;
+  const resolvedMissionReference = resolveReference({
+    device: referenceDevice,
+    preference: missionPreference,
+    explicitPosition: manualPoint,
+    home: savedHome,
+    gps: gpsFix,
+    lastValidGps: lastValidGpsRef.current
+  });
+  const missionReference: MissionReference = resolvedMissionReference.kind === "home"
+    ? "home"
+    : resolvedMissionReference.kind === "moi"
+      ? "moi"
+      : "manual";
+  const selectedPosition = resolvedMissionReference.position;
   const mapCenter = selectedPosition ?? FRANCE_OVERVIEW_CENTER;
   const notamLocationKey = selectedPosition ? `${selectedPosition[0].toFixed(3)}:${selectedPosition[1].toFixed(3)}` : "";
   const missionWindow = useMemo(() => missionStorageReady ? resolveMissionWindow({
@@ -219,28 +242,34 @@ export default function DronePanel() {
   }, [missionNowMode]);
 
   useEffect(() => {
+    const detectedDevice = detectReferenceDevice({
+      userAgent: navigator.userAgent,
+      maxTouchPoints: navigator.maxTouchPoints,
+      coarsePointer: window.matchMedia?.("(pointer: coarse)").matches ?? false
+    });
+    setReferenceDevice(detectedDevice);
     safeWriteJson(getBrowserStorage("local"), XAVPAC_STORAGE_KEYS.savedHome, XAVPAC_HOME.position);
     setSavedHome(XAVPAC_HOME.position);
     const session = getBrowserStorage("session");
     const rawMission = safeGetItem(session, XAVPAC_STORAGE_KEYS.droneMission);
     const storedMission = normalizeStoredDroneMission(parseStoredJson(rawMission));
     if (storedMission) {
-      const restoredReference = storedMission.reference === "moi" ? "home" : storedMission.reference;
-      setMissionReference(restoredReference);
-      setManualPoint(restoredReference === "home" ? XAVPAC_HOME.position : storedMission.point);
+      setMissionReference(storedMission.reference);
+      setManualPoint(storedMission.reference === "home" ? XAVPAC_HOME.position : storedMission.point);
       setRequestedHeight(storedMission.heightMeters);
       setMissionNowMode(storedMission.nowMode);
       setMissionDate(storedMission.date);
       setMissionStartTime(storedMission.startTime);
       setMissionEndTime(storedMission.endTime);
-      setLocationMessage(storedMission.reference === "moi"
-        ? `MISSION replacée sur HOME • ${XAVPAC_HOME.address}`
-        : "MISSION conservée pendant votre navigation.");
+      setLocationMessage("MISSION conservée pendant votre navigation.");
     } else {
       if (rawMission !== null) safeRemoveItem(session, XAVPAC_STORAGE_KEYS.droneMission);
-      setMissionReference("home");
-      setManualPoint(XAVPAC_HOME.position);
-      setLocationMessage(`MISSION = HOME • ${XAVPAC_HOME.address}`);
+      const defaultReference: MissionReference = detectedDevice === "mobile" ? "moi" : "home";
+      setMissionReference(defaultReference);
+      setManualPoint(defaultReference === "home" ? XAVPAC_HOME.position : null);
+      setLocationMessage(defaultReference === "home"
+        ? `MISSION = HOME • ${XAVPAC_HOME.address}`
+        : "MISSION = MOI • position GPS du smartphone");
       const defaults = initialMissionForm();
       setMissionDate(defaults.date);
       setMissionStartTime(defaults.startTime);
@@ -253,15 +282,15 @@ export default function DronePanel() {
   useEffect(() => {
     if (!missionStorageReady) return;
     safeWriteJson(getBrowserStorage("session"), XAVPAC_STORAGE_KEYS.droneMission, {
-      reference: missionReference,
-      point: missionReference === "moi" ? null : manualPoint,
+      reference: missionPreference,
+      point: missionPreference === "moi" ? null : manualPoint,
       heightMeters: requestedHeight,
       nowMode: missionNowMode,
       date: missionDate,
       startTime: missionStartTime,
       endTime: missionEndTime
     });
-  }, [manualPoint, missionDate, missionEndTime, missionNowMode, missionReference, missionStartTime, missionStorageReady, requestedHeight]);
+  }, [manualPoint, missionDate, missionEndTime, missionNowMode, missionPreference, missionStartTime, missionStorageReady, requestedHeight]);
 
   useEffect(() => {
     const reference = selectedPosition ? `${missionReference}:${selectedPosition[0].toFixed(5)}:${selectedPosition[1].toFixed(5)}` : missionReference;
