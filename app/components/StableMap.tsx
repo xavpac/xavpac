@@ -216,6 +216,10 @@ function aircraftSvg(color: string, heading: number, category = "aircraft") {
     return `<svg viewBox="0 0 64 64" style="transform:rotate(${heading}deg)"><path d="M32 5c13 0 22 10 22 23 0 12-9 19-16 24H26C19 47 10 40 10 28 10 15 19 5 32 5Z" fill="${color}" stroke="#06111f" stroke-width="2.8"/><path d="M25 52h14l-3 8h-8z" fill="${color}" stroke="#06111f" stroke-width="2.4"/></svg>`;
   }
 
+  if (category === "airship") {
+    return `<svg viewBox="0 0 64 64" style="transform:rotate(${heading}deg)"><path d="M5 31c0-12 12-21 29-21 15 0 25 7 25 17 0 11-12 20-29 20C15 47 5 41 5 31Z" fill="${color}" stroke="#06111f" stroke-width="2.8"/><path d="m31 47 10 8H25zM14 24l-7-7m7 21-7 7" fill="${color}" stroke="#06111f" stroke-width="2.4" stroke-linejoin="round"/></svg>`;
+  }
+
   if (category === "autogyro") {
     return `<svg viewBox="0 0 64 64" style="transform:rotate(${heading}deg)"><path d="M7 18h50v4H7zM30 20h4v13h-4zM16 36h28l8 10H22c-5 0-8-4-6-10Z" fill="${color}" stroke="#06111f" stroke-width="2.5"/><path d="M41 37l12-8 2 3-9 10z" fill="${color}" stroke="#06111f" stroke-width="2"/></svg>`;
   }

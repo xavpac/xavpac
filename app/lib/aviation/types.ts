@@ -7,6 +7,8 @@ export type AircraftCategory =
   | "turboprop"
   | "light"
   | "helicopter"
+  | "airship"
+  | "balloon"
   | "military"
   | "drone"
   | "specialized"
@@ -69,8 +71,8 @@ export type AirportWeather = {
 
 export type EnrichedPhoto = {
   url: string;
-  kind: "exact" | "same-model-operator" | "same-model" | "generic";
-  label: "Photo exacte" | "Photo du même modèle/opérateur" | "Photo du même modèle" | "Illustration générique";
+  kind: "exact" | "same-model-operator" | "same-model" | "type-illustration" | "generic";
+  label: "Photo exacte" | "Photo du même modèle/opérateur" | "Photo du même modèle" | "Illustration de la catégorie" | "Illustration générique";
   source: string;
   photographer: string | null;
 };
@@ -97,7 +99,7 @@ export type EnrichedAircraft = {
   departureAirport: AirportIdentity | null;
   arrivalAirport: AirportIdentity | null;
   routeLabel: string | null;
-  routeSource: "ADSBDB" | "OpenSky" | "Observations XavPac" | null;
+  routeSource: string | null;
   routeConfidence: RouteConfidence;
   routeProvenance: DataProvenance;
   identityProvenance: DataProvenance;

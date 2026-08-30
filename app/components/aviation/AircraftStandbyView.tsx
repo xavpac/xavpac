@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type RefObject } from "react";
+import { useEffect, type RefObject } from "react";
 
 type Props = {
   open: boolean;
@@ -15,31 +15,25 @@ type Props = {
 };
 
 export default function AircraftStandbyView({ open, rootRef, observerLabel, observerPosition, radiusKm, sourceStatus, soundsEnabled, onClose, onToggleSounds }: Props) {
-  const [wakeLockStatus, setWakeLockStatus] = useState<"idle" | "active" | "unavailable">("idle");
-
   useEffect(() => {
-    if (!open) {
-      setWakeLockStatus("idle");
-      return;
-    }
+    if (!open) return;
 
     let cancelled = false;
     let sentinel: WakeLockSentinel | null = null;
 
     async function requestWakeLock() {
-      if (!("wakeLock" in navigator) || document.visibilityState !== "visible") {
-        if (!cancelled) setWakeLockStatus("unavailable");
-        return;
-      }
+      if (!("wakeLock" in navigator) || document.visibilityState !== "visible") return;
       try {
         sentinel = await navigator.wakeLock.request("screen");
-        if (!cancelled) setWakeLockStatus("active");
+        if (cancelled) {
+          void sentinel.release();
+          sentinel = null;
+          return;
+        }
         sentinel.addEventListener("release", () => {
-          if (!cancelled) setWakeLockStatus("unavailable");
+          sentinel = null;
         }, { once: true });
-      } catch {
-        if (!cancelled) setWakeLockStatus("unavailable");
-      }
+      } catch { /* Le maintien d'écran est un confort silencieux et optionnel. */ }
     }
 
     function handleVisibilityChange() {
@@ -87,7 +81,6 @@ export default function AircraftStandbyView({ open, rootRef, observerLabel, obse
         </div>
       </main>
 
-      <div className={`aircraft-standby-awake ${wakeLockStatus}`}><span>●</span> {wakeLockStatus === "active" ? "ÉCRAN MAINTENU ALLUMÉ" : "VEILLE ÉCRAN SELON L’APPAREIL"}</div>
     </div>
 
     <footer className="aircraft-standby-footer">

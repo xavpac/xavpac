@@ -97,6 +97,15 @@ export function readObservations(): SpottingObservation[] {
   return value.map(normalizeObservation).filter((item): item is SpottingObservation => item !== null).slice(0, MAX_OBSERVATIONS);
 }
 
+export function countRecordedPassages(modeS: string, site?: SpottingObservation["observationSite"]) {
+  const normalized = modeS.replace(/^~/, "").trim().toUpperCase();
+  if (!normalized) return 0;
+  return readObservations().filter((item) =>
+    item.modeS.replace(/^~/, "").trim().toUpperCase() === normalized
+    && (!site || item.observationSite === site)
+  ).length;
+}
+
 export function recordObservations(values: SpottingObservation[]) {
   if (typeof window === "undefined" || !values.length) return;
   const current = readObservations();

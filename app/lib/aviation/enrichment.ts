@@ -8,6 +8,7 @@ import type { AircraftCategory, AircraftEnrichmentInput, AirportIdentity, DataMe
 import { lookupAdsbDb, type AdsbDbAirport } from "./providers/adsbdb.ts";
 import { lookupOpenSkyFlight } from "./providers/opensky.ts";
 import { lookupExactPhoto } from "./providers/planespotters.ts";
+import { resolveAircraftRoute, type RouteCandidate } from "./routeResolver.ts";
 
 function airport(value?: AdsbDbAirport | null): AirportIdentity | null {
   if (!value) return null;
@@ -35,9 +36,19 @@ function label(origin: AirportIdentity | null, destination: AirportIdentity | nu
   return from && to ? `${from} → ${to}` : null;
 }
 
-function fallbackPhoto(aircraftType: string | null, airlineId?: string): EnrichedPhoto {
+function fallbackPhoto(aircraftType: string | null, airlineId?: string, ...context: Array<string | null | undefined>): EnrichedPhoto {
   if (airlineId?.startsWith("easyjet") && /A32[01]/i.test(aircraftType ?? "")) {
     return { url: "/aircraft/easyjet-a320.jpg", kind: "same-model-operator", label: "Photo du même modèle/opérateur", source: "Photothèque locale XavPac", photographer: null };
+  }
+  const visual = classifyAircraftVisual(aircraftType, ...context);
+  if (visual.kind === "medical") {
+    return { url: "/aircraft/emergency-helicopter.svg", kind: "type-illustration", label: "Illustration de la catégorie", source: "Illustration XavPac", photographer: null };
+  }
+  if (visual.kind === "civil-security" || visual.kind === "water-bomber") {
+    return { url: "/aircraft/civil-security-aircraft.svg", kind: "type-illustration", label: "Illustration de la catégorie", source: "Illustration XavPac", photographer: null };
+  }
+  if (visual.kind === "airship") {
+    return { url: "/aircraft/airship.svg", kind: "type-illustration", label: "Illustration de la catégorie", source: "Illustration XavPac", photographer: null };
   }
   return { url: "/aircraft/generic-aircraft.jpg", kind: "generic", label: "Illustration générique", source: "Photothèque locale XavPac", photographer: null };
 }
@@ -46,6 +57,8 @@ function identityCategory(...values: Array<string | null | undefined>): Aircraft
   if (!values.some((value) => value?.trim())) return "unknown";
   const kind = classifyAircraftVisual(...values).kind;
   if (kind === "helicopter" || kind === "medical") return "helicopter";
+  if (kind === "airship") return "airship";
+  if (kind === "balloon") return "balloon";
   if (kind === "airliner") return "airliner";
   if (kind === "turboprop") return "turboprop";
   if (kind === "light") return "light";
@@ -151,20 +164,38 @@ export async function enrichAircraft(input: AircraftEnrichmentInput): Promise<En
     callsign: callsignIcao ?? rawCallsign
   });
 
-  let departureAirport = airport(route?.origin);
-  let arrivalAirport = airport(route?.destination);
-  let routeSource: EnrichedAircraft["routeSource"] = departureAirport && arrivalAirport ? "ADSBDB" : null;
-  let routeConfidence: EnrichedAircraft["routeConfidence"] = routeSource ? "probable" : "unavailable";
+  const routeCandidates: RouteCandidate[] = [];
+  const adsbDbOrigin = airport(route?.origin);
+  const adsbDbDestination = airport(route?.destination);
+  if (adsbDbOrigin || adsbDbDestination) routeCandidates.push({
+    source: "ADSBDB",
+    origin: adsbDbOrigin,
+    destination: adsbDbDestination,
+    confidence: adsbDbOrigin && adsbDbDestination ? "probable" : "unavailable",
+    method: "community",
+    retrievedAt,
+    priority: 90
+  });
 
-  if (!departureAirport || !arrivalAirport) {
+  if (!adsbDbOrigin || !adsbDbDestination) {
     const opensky = await lookupOpenSkyFlight(modeS, rawCallsign);
     if (opensky?.estDepartureAirport && opensky?.estArrivalAirport) {
-      departureAirport = openskyAirport(opensky.estDepartureAirport);
-      arrivalAirport = openskyAirport(opensky.estArrivalAirport);
-      routeSource = "OpenSky";
-      routeConfidence = "inferred";
+      routeCandidates.push({
+        source: "OpenSky",
+        origin: openskyAirport(opensky.estDepartureAirport),
+        destination: openskyAirport(opensky.estArrivalAirport),
+        confidence: "inferred",
+        method: "historical",
+        retrievedAt,
+        priority: 60
+      });
     }
   }
+  const routeResolution = resolveAircraftRoute(routeCandidates);
+  const departureAirport = routeResolution.selected?.origin ?? null;
+  const arrivalAirport = routeResolution.selected?.destination ?? null;
+  const routeSource = routeResolution.selected?.source ?? null;
+  const routeConfidence = routeResolution.selected?.confidence ?? "unavailable";
 
   const exactPhoto = await lookupExactPhoto({ modeS, registration });
   const aircraftType = identity.aircraftModel || identity.icaoTypeCode || input.aircraftType?.trim() || input.description?.trim() || null;
@@ -172,7 +203,7 @@ export async function enrichAircraft(input: AircraftEnrichmentInput): Promise<En
     ? { url: exactPhoto.url, kind: "exact", label: "Photo exacte", source: "PlaneSpotters", photographer: exactPhoto.photographer }
     : aircraft?.url_photo || aircraft?.url_photo_thumbnail
       ? { url: aircraft.url_photo || aircraft.url_photo_thumbnail || "/aircraft/generic-aircraft.jpg", kind: "exact", label: "Photo exacte", source: "ADSBDB", photographer: null }
-      : fallbackPhoto(aircraftType, airline?.id);
+      : fallbackPhoto(aircraftType, airline?.id, identity.operator, input.operator, input.description, input.category, rawCallsign);
 
   return {
     modeS,
@@ -202,7 +233,7 @@ export async function enrichAircraft(input: AircraftEnrichmentInput): Promise<En
       source: routeSource ?? "Aucune source",
       retrievedAt,
       confidence: routeConfidence,
-      method: routeSource === "ADSBDB" ? "community" : routeSource === "OpenSky" ? "historical" : "calculated",
+      method: routeResolution.selected?.method ?? "calculated",
       freshnessSeconds: 0
     },
     identityProvenance: {

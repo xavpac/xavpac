@@ -24,7 +24,8 @@ export default function AircraftPhoto(props: Props) {
 
   useEffect(() => setFailedKey(null), [mediaKey]);
 
-  const showPhoto = Boolean(props.isExact && props.photoUrl && failedKey !== mediaKey);
+  const categoryIllustration = Boolean(props.photoUrl && /^\/aircraft\/(?:emergency-helicopter|civil-security-aircraft|airship)\.svg$/i.test(props.photoUrl));
+  const showPhoto = Boolean((props.isExact || categoryIllustration) && props.photoUrl && failedKey !== mediaKey);
   return <div className={`aircraft-photo-frame ${props.className ?? ""}${props.loading ? " loading" : ""}`} aria-busy={props.loading || undefined}>
     {showPhoto ? <>
       {/* eslint-disable-next-line @next/next/no-img-element */}

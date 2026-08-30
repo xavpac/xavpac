@@ -4,7 +4,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { getBrowserStorage, safeGetItem, safeSetItem, XAVPAC_STORAGE_KEYS } from "../lib/safeStorage";
 import {
   AIRCRAFT_CHANGE_SIGNATURE,
+  aircraftChangeSignature,
   NATIONAL_ASSET_SIGNATURE,
+  type AviationSoundNature,
   type AviationSoundTone
 } from "../lib/aviation/audioSignatures";
 
@@ -80,10 +82,10 @@ export function useAviationAudio() {
     if (next && await unlock(true) && contextRef.current) playConfirmation(contextRef.current);
   }, [unlock]);
 
-  const quietAircraftChange = useCallback(() => {
+  const quietAircraftChange = useCallback((nature: AviationSoundNature = "generic") => {
     const context = contextRef.current;
     if (!enabled || !context || context.state !== "running") return false;
-    playSignature(context, AIRCRAFT_CHANGE_SIGNATURE);
+    playSignature(context, aircraftChangeSignature(nature));
     return true;
   }, [enabled]);
 

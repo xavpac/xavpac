@@ -14,7 +14,7 @@ import { useLiveGeolocation } from "../hooks/useLiveGeolocation";
 import { reportDataUpdate } from "../lib/buildInfo";
 import type { AirportIdentity, AirportWeather, EnrichedAircraft, RouteConfidence } from "../lib/aviation/types";
 import { readLearnedAircraftIdentity, rememberAircraftIdentities } from "../lib/aviation/identityMemory";
-import { deducedRoute, recordObservations } from "../lib/aviation/observations";
+import { countRecordedPassages, deducedRoute, recordObservations } from "../lib/aviation/observations";
 import { detectRemarkable } from "../lib/aviation/remarkable";
 import { nationalAssetsInsideRadius, nationalAssetToAircraft, nationalMarkerCategory, type NationalAssetSignal, type NearbyNationalAsset } from "../lib/aviation/nationalAlerts";
 import { AVIATION_RADIUS_OPTIONS, normalizeAviationRadius, type AviationRadius } from "../lib/aviation/alertSettings";
@@ -23,6 +23,8 @@ import { appendObservedPosition, buildSelectedTrail } from "../lib/aviation/sele
 import { rankWatchNow } from "../lib/aviation/watchNow";
 import { distanceKm } from "../lib/aviation/geometry";
 import { routeCanUseAirportWeather, routeWeatherKey, weatherCondition, weatherVisibility } from "../lib/aviation/routeWeather";
+import { resolvePreferredAircraftId } from "../lib/aviation/selection";
+import { aircraftSoundNature } from "../lib/aviation/audioSignatures";
 import { enterFullscreenIfAvailable, exitFullscreenIfActive, isFullscreenActive } from "../lib/fullscreen";
 import {
   getBrowserStorage,
@@ -184,6 +186,7 @@ function radarCoordinates(home: [number, number], aircraft: AircraftWithDistance
 function aircraftVisual(item: LiveAircraft) {
   const text = `${item.aircraftType ?? ""} ${item.description ?? ""} ${item.category ?? ""} ${item.operator ?? ""}`.toLowerCase();
   if (/(heli|hélic|rotor|h125|h135|h145|ec135|ec145|as[ .-]?350|as50|écureuil|squirrel|condor[a-z]?)/i.test(text)) return { category: "helicopter", color: "#4fa8ff" };
+  if (/(airship|dirigeable|zeppelin|\bzep\b|\blta\b)/i.test(text)) return { category: "airship", color: "#ff9fe5" };
   if (/(balloon|ballon|montgolfière)/i.test(text)) return { category: "balloon", color: "#f28dff" };
   if (/(gyro|autogire|gyrocopter)/i.test(text)) return { category: "autogyro", color: "#74e5bd" };
   if (/(glider|planeur|sailplane)/i.test(text)) return { category: "glider", color: "#75d9ff" };
@@ -378,16 +381,6 @@ export default function AviationPanel() {
         setAircraft(sorted);
         reportDataUpdate("aviation");
 
-        const selectedIsNational = Boolean(selectedId && nearbyNationalAssets.some((item) => item.id === selectedId));
-        if (sorted.length === 0 && !selectedIsNational) {
-          setSelectedId(null);
-          setManualSelection(false);
-          setSelectionDismissed(false);
-        } else if (sorted.length > 0 && !selectedIsNational && !selectionDismissed && (!manualSelection || !sorted.some((item) => item.id === selectedId))) {
-          setSelectedId(sorted[0].id);
-          setManualSelection(false);
-        }
-
         for (const item of sorted.slice(0, 80)) {
           const current = trailsRef.current[item.id] ?? [];
           const nextPoint: [number, number] = [item.latitude, item.longitude];
@@ -462,9 +455,29 @@ export default function AviationPanel() {
       const nationalAsset = nearbyNationalAssets.find((item) => item.id === selectedId);
       return nationalAsset ? nationalAssetToAircraft(nationalAsset) : null;
     }
-    return aircraft[0] ?? (nearbyNationalAssets[0] ? nationalAssetToAircraft(nearbyNationalAssets[0]) : null);
+    return nearbyNationalAssets[0] ? nationalAssetToAircraft(nearbyNationalAssets[0]) : aircraft[0] ?? null;
   }, [aircraft, nearbyNationalAssets, selectedId, selectionDismissed]);
-  const enrichmentSignature = useMemo(() => aircraft.map(enrichmentInputKey).join("|"), [aircraft]);
+  const selectedEnriched = selected ? enrichedByModeS[selected.id.replace(/^~/, "").toUpperCase()] ?? null : null;
+
+  useEffect(() => {
+    const nextId = resolvePreferredAircraftId({
+      aircraftIds: aircraft.map((item) => item.id),
+      nationalAssetIds: nearbyNationalAssets.map((item) => item.id),
+      selectedId,
+      manualSelection,
+      selectionDismissed
+    });
+    if (nextId !== selectedId) setSelectedId(nextId);
+    if (manualSelection && selectedId && nextId !== selectedId) setManualSelection(false);
+  }, [aircraft, manualSelection, nearbyNationalAssets, selectedId, selectionDismissed]);
+  const enrichableAircraft = useMemo(() => {
+    const byId = new Map(aircraft.map((item) => [item.id, item]));
+    for (const asset of nearbyNationalAssets) {
+      if (!byId.has(asset.id)) byId.set(asset.id, nationalAssetToAircraft(asset));
+    }
+    return [...byId.values()];
+  }, [aircraft, nearbyNationalAssets]);
+  const enrichmentSignature = useMemo(() => enrichableAircraft.map(enrichmentInputKey).join("|"), [enrichableAircraft]);
 
   useEffect(() => {
     if (!showAircraftView) {
@@ -478,10 +491,19 @@ export default function AviationPanel() {
       return;
     }
     const previous = previousViewAircraftRef.current;
-    if ((previous && previous !== selected.id) || aircraftViewWaitingRef.current) quietAircraftChange();
+    if ((previous && previous !== selected.id) || aircraftViewWaitingRef.current) quietAircraftChange(aircraftSoundNature(
+      selected.callsign,
+      selected.registration,
+      selected.aircraftType,
+      selected.description,
+      selected.operator,
+      selected.category,
+      selectedEnriched?.aircraftType,
+      selectedEnriched?.operator
+    ));
     aircraftViewWaitingRef.current = false;
     previousViewAircraftRef.current = selected.id;
-  }, [quietAircraftChange, selected, showAircraftView]);
+  }, [quietAircraftChange, selected, selectedEnriched, showAircraftView]);
 
   useEffect(() => {
     let cancelled = false;
@@ -537,8 +559,8 @@ export default function AviationPanel() {
 
   useEffect(() => {
     let cancelled = false;
-    if (!aircraft.length) return;
-    const prioritized = [...aircraft].sort((a, b) => {
+    if (!enrichableAircraft.length) return;
+    const prioritized = [...enrichableAircraft].sort((a, b) => {
       const aSelected = a.id === selected?.id ? 0 : 1;
       const bSelected = b.id === selected?.id ? 0 : 1;
       return aSelected - bSelected || a.distance - b.distance;
@@ -546,7 +568,7 @@ export default function AviationPanel() {
     const pending = prioritized.filter((item) => enrichedInputSignaturesRef.current.get(item.id) !== enrichmentInputKey(item));
 
     function updateStatus() {
-      const statuses = aircraft.map((item) => identityStatusByModeSRef.current.get(item.id.replace(/^~/, "").toUpperCase()) ?? "unknown");
+      const statuses = enrichableAircraft.map((item) => identityStatusByModeSRef.current.get(item.id.replace(/^~/, "").toUpperCase()) ?? "unknown");
       const complete = statuses.filter((status) => status === "complete").length;
       const partial = statuses.filter((status) => status === "partial").length;
       const unknown = statuses.length - complete - partial;
@@ -560,7 +582,7 @@ export default function AviationPanel() {
 
     async function refreshEnrichment() {
       setEnrichmentStatus(`Identification de ${pending.length} appareil${pending.length > 1 ? "s" : ""}…`);
-      const aircraftById = new Map(aircraft.map((item) => [item.id.replace(/^~/, "").toUpperCase(), item]));
+      const aircraftById = new Map(enrichableAircraft.map((item) => [item.id.replace(/^~/, "").toUpperCase(), item]));
       for (let offset = 0; offset < pending.length; offset += 25) {
         const batch = pending.slice(offset, offset + 25);
         const payload = batch.map((item) => ({
@@ -623,7 +645,6 @@ export default function AviationPanel() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enrichmentSignature, selected?.id]);
 
-  const selectedEnriched = selected ? enrichedByModeS[selected.id.replace(/^~/, "").toUpperCase()] ?? null : null;
   const identifiedOperator = selectedEnriched?.operator ?? selected?.operator ?? null;
   const weatherEligible = Boolean(selectedEnriched && routeCanUseAirportWeather(selectedEnriched.routeConfidence, selectedEnriched.departureAirport, selectedEnriched.arrivalAirport));
   const weatherRequestKey = weatherEligible && selectedEnriched?.departureAirport && selectedEnriched.arrivalAirport
@@ -795,6 +816,7 @@ export default function AviationPanel() {
     : null;
   const selectedHomeDistance = selected && savedHome ? distanceKm(savedHome, [selected.latitude, selected.longitude]) : null;
   const selectedMoiDistance = selected && position ? distanceKm(position, [selected.latitude, selected.longitude]) : null;
+  const selectedPassageCount = selected ? countRecordedPassages(selected.id) : 0;
 
   const watchNow = useMemo(() => {
     const reference = savedHome ?? observerPosition;
@@ -812,7 +834,7 @@ export default function AviationPanel() {
         isNational: nationalIds.has(item.id),
         isRemarkable: remarkable.length > 0,
         isMilitary: visual.category === "military",
-        isRare: ["glider", "balloon", "autogyro"].includes(visual.category),
+        isRare: ["glider", "airship", "balloon", "autogyro"].includes(visual.category),
         estimatedSecondsToHomePassage: savedHome ? homePassageById[item.id]?.estimatedSecondsToClosest ?? null : null
       };
     }), 3);
@@ -1052,6 +1074,8 @@ export default function AviationPanel() {
           routeConfidence={selectedEnriched?.routeConfidence ?? "unavailable"}
           observerPosition={observerPosition}
           passage={approach}
+          trail={mapTrails[0] ?? null}
+          passageCount={selectedPassageCount}
           nationalAlert={nearbyNationalAlert}
           nationalAlertRadius={radius}
           soundsEnabled={soundsEnabled}
@@ -1264,6 +1288,7 @@ export default function AviationPanel() {
                 <div><span>Mode S</span><strong>{selected.id.toUpperCase()}</strong></div>
                 <div><span>Distance HOME</span><strong>{selectedHomeDistance === null ? "HOME non défini" : `${selectedHomeDistance.toFixed(1)} km`}</strong></div>
                 <div><span>Distance MOI</span><strong>{selectedMoiDistance === null ? "MOI indisponible" : `${selectedMoiDistance.toFixed(1)} km`}</strong></div>
+                <div><span>Passages enregistrés</span><strong>{selectedPassageCount}</strong></div>
               </div>
 
               <div className={`fw-passage-card passage-${approach?.status ?? "unavailable"}`}>

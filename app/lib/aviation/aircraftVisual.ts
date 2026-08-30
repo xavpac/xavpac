@@ -3,6 +3,8 @@ export type AircraftVisualKind =
   | "turboprop"
   | "light"
   | "helicopter"
+  | "airship"
+  | "balloon"
   | "water-bomber"
   | "medical"
   | "military"
@@ -15,6 +17,8 @@ export type AircraftVisual = { kind: AircraftVisualKind; label: string };
 
 export function classifyAircraftVisual(...values: Array<string | null | undefined>): AircraftVisual {
   const text = values.filter(Boolean).join(" ").toLowerCase();
+  if (/(airship|dirigeable|zeppelin|\bzep\b|\blta\b)/i.test(text)) return { kind: "airship", label: "Dirigeable" };
+  if (/(hot.?air.?balloon|montgolfi[eè]re|\bballoon\b|\bballon\b)/i.test(text)) return { kind: "balloon", label: "Montgolfière" };
   if (/(canadair|cl-?215|cl-?415|fire boss|at-?802|at8t|bombardier d.eau|water bomber|aerial firefighting)/i.test(text)) return { kind: "water-bomber", label: "Avion bombardier d’eau" };
   if (/(samu|smur|medical|médical)/i.test(text)) return { kind: "medical", label: "Hélicoptère médical" };
   if (/(dragon|condor[a-z]?|gendarmerie|helic|hélic|rotor|h125|h145|ec145|h135|ec135|as[ .-]?350|as50|écureuil|squirrel)/i.test(text)) return { kind: "helicopter", label: "Hélicoptère" };

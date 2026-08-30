@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675" role="img" aria-labelledby="title desc">
+  <title id="title">Illustration d’un hélicoptère médical</title>
+  <desc id="desc">Silhouette blanche et rouge d’un hélicoptère de secours sur fond bleu.</desc>
+  <defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#092b4a"/><stop offset="1" stop-color="#126e9a"/></linearGradient></defs>
+  <rect width="1200" height="675" fill="url(#bg)"/>
+  <circle cx="970" cy="130" r="84" fill="#ffffff" opacity=".08"/>
+  <path d="M214 349c0-115 95-187 245-187h172c137 0 223 83 223 190v73H347c-79 0-133-24-133-76Z" fill="#f5fbff" stroke="#021625" stroke-width="18"/>
+  <path d="m848 330 248-98v66l-240 138Z" fill="#f5fbff" stroke="#021625" stroke-width="18"/>
+  <path d="M409 441h347l-61 82H477Z" fill="#f5fbff" stroke="#021625" stroke-width="18"/>
+  <path d="M135 115h844M555 115V44" stroke="#dff7ff" stroke-width="26" stroke-linecap="round"/>
+  <path d="M510 218h88v67h67v88h-67v68h-88v-68h-68v-88h68Z" fill="#e63246"/>
+  <text x="600" y="610" fill="#dff7ff" font-family="system-ui,sans-serif" font-size="38" text-anchor="middle" font-weight="700">SECOURS / SAMU — ILLUSTRATION DE CATÉGORIE</text>
+</svg>

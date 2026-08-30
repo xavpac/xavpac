@@ -9,6 +9,7 @@ export type RemarkableAircraft = {
 };
 
 const rules: Array<{ key: string; icon: string; label: string; pattern: RegExp }> = [
+  { key: "airship", icon: "🎈", label: "Dirigeable", pattern: /\b(AIRSHIP|DIRIGEABLE|ZEPPELIN|ZEP)\b/i },
   { key: "condor", icon: "🚁", label: "Hélicoptère CONDOR", pattern: /\bCONDOR[A-Z]?\b/i },
   { key: "samu", icon: "🚑", label: "SAMU", pattern: /\b(SAMU|SMUR)\b/i },
   { key: "gendarmerie", icon: "🚓", label: "Gendarmerie", pattern: /\b(GENDARMERIE|F-MJ|GEND)\b/i },

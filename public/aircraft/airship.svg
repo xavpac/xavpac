@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675" role="img" aria-labelledby="title desc">
+  <title id="title">Illustration d’un dirigeable</title>
+  <desc id="desc">Dirigeable argenté sur fond de ciel bleu.</desc>
+  <defs><linearGradient id="sky" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#07325b"/><stop offset="1" stop-color="#2a90bd"/></linearGradient><linearGradient id="body" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffffff"/><stop offset=".55" stop-color="#cfe5ee"/><stop offset="1" stop-color="#7ca4b4"/></linearGradient></defs>
+  <rect width="1200" height="675" fill="url(#sky)"/>
+  <path d="M99 310c0-150 197-244 475-244 320 0 535 92 535 230 0 155-235 267-555 267-275 0-455-91-455-253Z" fill="url(#body)" stroke="#06243a" stroke-width="18"/>
+  <path d="m557 548 157 89H427Z" fill="#d9edf4" stroke="#06243a" stroke-width="15"/>
+  <path d="m199 210-104-91m104 282L95 492" fill="none" stroke="#c8e4ee" stroke-width="26" stroke-linecap="round"/>
+  <text x="600" y="626" fill="#e6f8ff" font-family="system-ui,sans-serif" font-size="38" text-anchor="middle" font-weight="700">DIRIGEABLE — ILLUSTRATION DE CATÉGORIE</text>
+</svg>

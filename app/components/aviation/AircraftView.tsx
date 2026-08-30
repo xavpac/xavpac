@@ -10,6 +10,7 @@ import { classifyAircraftVisual } from "../../lib/aviation/aircraftVisual";
 import { detectRemarkable } from "../../lib/aviation/remarkable";
 import { estimateRouteTiming } from "../../lib/aviation/routeTiming";
 import type { PassageAnalysis } from "../../lib/aviation/passageTracker";
+import type { MapTrail } from "../StableMap";
 import AircraftPhoto from "./AircraftPhoto";
 import OperatorBrand from "./OperatorBrand";
 
@@ -32,6 +33,8 @@ type Props = {
   routeConfidence: RouteConfidence;
   observerPosition: [number, number] | null;
   passage: PassageAnalysis | null;
+  trail: MapTrail | null;
+  passageCount: number;
   nationalAlert: NearbyNationalAsset | null;
   nationalAlertRadius: number;
   soundsEnabled: boolean;
@@ -97,33 +100,28 @@ function MetricIcon({ kind }: { kind: "altitude" | "speed" | "direction" }) {
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d={paths[kind]} /></svg>;
 }
 
-export default function AircraftView({ open, rootRef, aircraft, enriched, operator, route, routeConfidence, observerPosition, passage, nationalAlert, nationalAlertRadius, soundsEnabled, favorite, onClose, onShowMap, onToggleSounds, onToggleFavorite }: Props) {
-  const [wakeLockStatus, setWakeLockStatus] = useState<"idle" | "active" | "unavailable">("idle");
+export default function AircraftView({ open, rootRef, aircraft, enriched, operator, route, routeConfidence, observerPosition, passage, trail, passageCount, nationalAlert, nationalAlertRadius, soundsEnabled, favorite, onClose, onShowMap, onToggleSounds, onToggleFavorite }: Props) {
   const [routeClockMs, setRouteClockMs] = useState<number | null>(null);
 
   useEffect(() => {
-    if (!open) {
-      setWakeLockStatus("idle");
-      return;
-    }
+    if (!open) return;
 
     let cancelled = false;
     let sentinel: WakeLockSentinel | null = null;
 
     async function requestWakeLock() {
-      if (!("wakeLock" in navigator) || document.visibilityState !== "visible") {
-        if (!cancelled) setWakeLockStatus("unavailable");
-        return;
-      }
+      if (!("wakeLock" in navigator) || document.visibilityState !== "visible") return;
       try {
         sentinel = await navigator.wakeLock.request("screen");
-        if (!cancelled) setWakeLockStatus("active");
+        if (cancelled) {
+          void sentinel.release();
+          sentinel = null;
+          return;
+        }
         sentinel.addEventListener("release", () => {
-          if (!cancelled) setWakeLockStatus("unavailable");
+          sentinel = null;
         }, { once: true });
-      } catch {
-        if (!cancelled) setWakeLockStatus("unavailable");
-      }
+      } catch { /* Le maintien d'écran est un confort silencieux et optionnel. */ }
     }
 
     function handleVisibilityChange() {
@@ -165,7 +163,7 @@ export default function AircraftView({ open, rootRef, aircraft, enriched, operat
   const routeAvailable = Boolean(route);
   const routeStatus = routeConfidence === "confirmed" ? "Itinéraire confirmé" : routeConfidence === "probable" ? "Vol sur l’itinéraire probable" : routeConfidence === "inferred" ? "Itinéraire déduit" : "Itinéraire indisponible";
   const aircraftPosition: [number, number] = [aircraft.latitude, aircraft.longitude];
-  const mapPositions = observerPosition ? [observerPosition, aircraftPosition] : [aircraftPosition];
+  const mapPositions: [number, number][] = [...(trail?.positions ?? []), ...(observerPosition ? [observerPosition] : []), aircraftPosition];
   const latitudes = mapPositions.map(([latitude]) => latitude);
   const longitudes = mapPositions.map(([, longitude]) => longitude);
   const minimumLatitude = Math.min(...latitudes);
@@ -202,6 +200,10 @@ export default function AircraftView({ open, rootRef, aircraft, enriched, operat
             ? { key: "public-service", icon: "🚓", label: "SERVICE PUBLIC" }
             : visual.kind === "helicopter"
               ? { key: "helicopter", icon: "🚁", label: "HÉLICOPTÈRE" }
+              : visual.kind === "airship"
+                ? { key: "airship", icon: "🎈", label: "DIRIGEABLE" }
+                : visual.kind === "balloon"
+                  ? { key: "balloon", icon: "🎈", label: "MONTGOLFIÈRE" }
               : remarkable.length
                 ? { key: "remarkable", icon: "⭐", label: "APPAREIL REMARQUABLE" }
                 : visual.kind === "light"
@@ -214,9 +216,7 @@ export default function AircraftView({ open, rootRef, aircraft, enriched, operat
     ...(observerPosition ? [{ id: "aircraft-view-observer", lat: observerPosition[0], lon: observerPosition[1], name: "Point d’observation", detail: "Référence utilisée pour la distance", category: "location" }] : []),
     { id: aircraft.id, lat: aircraft.latitude, lon: aircraft.longitude, name: flightLabel, detail: `${aircraft.distance.toFixed(1)} km • ${directionLabel}`, category: enriched?.aircraftCategory === "helicopter" ? "helicopter" : "commercial", heading: aircraft.trueTrack }
   ];
-  const mapTrails = observerPosition
-    ? [{ id: "aircraft-view-relative-track", positions: [observerPosition, aircraftPosition], color: "#ff3f88", selected: true }]
-    : [];
+  const mapTrails = trail ? [{ ...trail, id: "aircraft-view-observed-track", color: "#00a8ff", selected: true }] : [];
 
   return <div ref={rootRef} className={`aircraft-view aircraft-family-${family.key}${open ? " open" : ""}`} aria-hidden={!open} aria-label="Vue plein écran de l’avion sélectionné">
     <div className="aircraft-view-hero">
@@ -235,12 +235,48 @@ export default function AircraftView({ open, rootRef, aircraft, enriched, operat
         </div>
       </header>
 
-      <div className="aircraft-view-family-banner"><span>{family.icon}</span><strong>{family.label}</strong><small>{aircraft.feedSource ?? enriched?.identityProvenance.source ?? aircraft.positionSource ?? "Source ADS-B"}</small></div>
+      <section className="aircraft-view-mobile-sheet" aria-label="Informations essentielles sur l’avion">
+        <div className="aircraft-view-mobile-identity">
+          <AircraftPhoto
+            className="aircraft-view-mobile-photo"
+            identityKey={`${aircraft.id}-mobile`}
+            photoUrl={enriched?.photo.url}
+            isExact={enriched?.photo.kind === "exact"}
+            label={enriched?.photo.label}
+            source={enriched?.photo.source}
+            photographer={enriched?.photo.photographer}
+            aircraftType={enriched?.aircraftType ?? aircraft.aircraftType}
+            description={aircraft.description}
+            operator={operator}
+            category={aircraft.category}
+          />
+          <div>
+            <span>{family.icon} {family.label}</span>
+            <strong>{flightLabel}</strong>
+            <small>{aircraftType}</small>
+            <small>{operator ?? "Opérateur non identifié"}</small>
+          </div>
+        </div>
 
-      {wakeLockStatus !== "idle" && <div className={`aircraft-view-awake ${wakeLockStatus}`}>
-        <span>{wakeLockStatus === "active" ? "☀" : "◌"}</span>
-        <strong>{wakeLockStatus === "active" ? "Écran maintenu allumé" : "Maintien de l’écran indisponible"}</strong>
-      </div>}
+        <div className="aircraft-view-mobile-route">
+          <div><span>DÉPART</span><strong>{airportCode(route?.origin)}</strong><small>{airportPlace(route?.origin, "Non disponible")}</small></div>
+          <b aria-hidden="true">→</b>
+          <div><span>ARRIVÉE</span><strong>{airportCode(route?.destination)}</strong><small>{airportPlace(route?.destination, "Non disponible")}</small></div>
+        </div>
+
+        <div className="aircraft-view-mobile-stats">
+          <div><span>Altitude</span><strong>{formatAltitude(aircraft.barometricAltitude)}</strong></div>
+          <div><span>Vitesse</span><strong>{formatSpeed(aircraft.velocity)}</strong></div>
+          <div><span>Direction</span><strong>{directionLabel}</strong></div>
+          <div><span>Distance</span><strong>{aircraft.distance.toFixed(1).replace(".", ",")} km</strong></div>
+          <div><span>Passage</span><strong>{passage?.estimatedSecondsToClosest === null || passage?.estimatedSecondsToClosest === undefined ? "Non déterminé" : `≈ ${shortDuration(passage.estimatedSecondsToClosest)}`}</strong></div>
+          <div><span>Passages vus</span><strong>{passageCount}</strong></div>
+        </div>
+
+        <button type="button" className="aircraft-view-mobile-map-button" onClick={onShowMap}>Ouvrir la carte détaillée ›</button>
+      </section>
+
+      <div className="aircraft-view-family-banner"><span>{family.icon}</span><strong>{family.label}</strong><small>{aircraft.feedSource ?? enriched?.identityProvenance.source ?? aircraft.positionSource ?? "Source ADS-B"}</small></div>
 
       {nationalAlert && <div className="aircraft-view-national-alert"><span>ALERTE MOYEN NATIONAL • ZONE {nationalAlertRadius} KM</span><strong>{nationalAlert.badge} • {nationalAlert.callsign}</strong><b>{Math.round(nationalAlert.distanceKm)} km de votre position</b></div>}
 
@@ -323,6 +359,7 @@ export default function AircraftView({ open, rootRef, aircraft, enriched, operat
         <strong>{directionLabel}</strong>
         <small>{aircraft.distance.toFixed(1).replace(".", ",")} km • azimut {direction === null ? "—" : `≈ ${Math.round(direction)}°`} • élévation {elevation === null ? "—" : `≈ ${Math.round(elevation)}°`}</small>
         <small>Passage estimé : {passage?.estimatedSecondsToClosest === null || passage?.estimatedSecondsToClosest === undefined ? "non déterminé" : `≈ ${shortDuration(passage.estimatedSecondsToClosest)}`}</small>
+        <small>Passages enregistrés pour cet appareil : {passageCount}</small>
       </div>
     </div>
 

@@ -18,6 +18,8 @@ export default function AircraftTypeIllustration({ aircraftType, description, op
       {visual.kind === "military" && <path d="M80 10 96 43l48 18-5 13-45-8-8 23H74l-8-23-45 8-5-13 48-18Z" />}
       {visual.kind === "surveillance" && <><path d="M18 55 68 45 76 19h8l9 26 49 10-5 11-43-3-8 23H74l-8-23-43 3Z" /><path className="accent-outline" d="M104 28c12 3 21 11 25 22M110 16c17 5 31 17 36 33" /></>}
       {visual.kind === "drone" && <><path d="M64 43h32l9 20H55Z" /><path className="outline" d="m64 48-29-18m61 18 29-18M64 55 35 74m61-19 29 19" /><circle className="accent-outline" cx="30" cy="27" r="15" /><circle className="accent-outline" cx="130" cy="27" r="15" /><circle className="accent-outline" cx="30" cy="77" r="15" /><circle className="accent-outline" cx="130" cy="77" r="15" /></>}
+      {visual.kind === "airship" && <><path d="M15 47c0-20 24-34 59-34 41 0 70 13 70 31 0 21-32 36-73 36-34 0-56-12-56-33Z" /><path className="accent" d="m72 78 20 14H55z" /><path className="outline" d="M27 34 11 19m16 42L11 78" /></>}
+      {visual.kind === "balloon" && <><path d="M80 8c27 0 45 20 45 45 0 21-17 33-31 42H66C52 86 35 74 35 53 35 28 53 8 80 8Z" /><path className="accent" d="M67 84h26l-6 13H73Z" /></>}
       {visual.kind === "civil-security" && <><path d="M80 9 126 25v29c0 22-17 34-46 40-29-6-46-18-46-40V25Z" /><path className="accent" d="M75 27h10v18h18v10H85v18H75V55H57V45h18Z" /></>}
       {(visual.kind === "airliner" || visual.kind === "light" || visual.kind === "specialized") && <><path d="M16 54 66 45 76 15h8l10 30 50 9-5 12-45-3-8 24H74l-8-24-45 3Z" />{visual.kind === "light" && <circle className="accent" cx="80" cy="52" r="6" />}</>}
     </svg>
