@@ -40,7 +40,9 @@ export default function XavPacShell({ universe }: { universe: Universe }) {
   }, []);
 
   function selectModule(module: ModuleId) {
-    if (module === "technical" || moduleBelongsToUniverse(universe, module)) setActiveModule(module);
+    if (module !== "technical" && !moduleBelongsToUniverse(universe, module)) return;
+    setActiveModule(module);
+    window.requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: "auto" }));
   }
 
   return <main className={`v2-shell v2-${universe}`}>
