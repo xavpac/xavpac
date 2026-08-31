@@ -447,29 +447,31 @@ export default function AviationPanel() {
     return () => { cancelled = true; window.clearInterval(timer); };
   }, []);
 
+  const selectionCandidates = useMemo(() => [
+    ...aircraft.map((item) => ({ id: item.id, distanceKm: item.distance, national: false })),
+    ...nearbyNationalAssets.map((item) => ({ id: item.id, distanceKm: item.distanceKm, national: true }))
+  ], [aircraft, nearbyNationalAssets]);
+  const preferredSelectedId = useMemo(() => resolvePreferredAircraftId({
+    candidates: selectionCandidates,
+    selectedId,
+    manualSelection,
+    selectionDismissed
+  }), [manualSelection, selectedId, selectionCandidates, selectionDismissed]);
   const selected = useMemo(() => {
-    if (selectionDismissed) return null;
-    if (selectedId) {
-      const directAircraft = aircraft.find((item) => item.id === selectedId);
+    if (preferredSelectedId) {
+      const directAircraft = aircraft.find((item) => item.id === preferredSelectedId);
       if (directAircraft) return directAircraft;
-      const nationalAsset = nearbyNationalAssets.find((item) => item.id === selectedId);
+      const nationalAsset = nearbyNationalAssets.find((item) => item.id === preferredSelectedId);
       return nationalAsset ? nationalAssetToAircraft(nationalAsset) : null;
     }
-    return nearbyNationalAssets[0] ? nationalAssetToAircraft(nearbyNationalAssets[0]) : aircraft[0] ?? null;
-  }, [aircraft, nearbyNationalAssets, selectedId, selectionDismissed]);
+    return null;
+  }, [aircraft, nearbyNationalAssets, preferredSelectedId]);
   const selectedEnriched = selected ? enrichedByModeS[selected.id.replace(/^~/, "").toUpperCase()] ?? null : null;
 
   useEffect(() => {
-    const nextId = resolvePreferredAircraftId({
-      aircraftIds: aircraft.map((item) => item.id),
-      nationalAssetIds: nearbyNationalAssets.map((item) => item.id),
-      selectedId,
-      manualSelection,
-      selectionDismissed
-    });
-    if (nextId !== selectedId) setSelectedId(nextId);
-    if (manualSelection && selectedId && nextId !== selectedId) setManualSelection(false);
-  }, [aircraft, manualSelection, nearbyNationalAssets, selectedId, selectionDismissed]);
+    if (preferredSelectedId !== selectedId) setSelectedId(preferredSelectedId);
+    if (manualSelection && preferredSelectedId !== selectedId) setManualSelection(false);
+  }, [manualSelection, preferredSelectedId, selectedId]);
   const enrichableAircraft = useMemo(() => {
     const byId = new Map(aircraft.map((item) => [item.id, item]));
     for (const asset of nearbyNationalAssets) {
