@@ -13,7 +13,8 @@ export const XAVPAC_STORAGE_KEYS = {
   aviationRadius: "xavpac:aviation-radius",
   observations: "xavpac-spotting-observations-v1",
   aircraftIdentities: "xavpac-aircraft-identities-v2",
-  lightningLastView: "xavpac:lightning-last-view-v1"
+  lightningLastView: "xavpac:lightning-last-view-v1",
+  fireSitac: "xavpac:fire-sitac-v1"
 } as const;
 
 export type StorageLike = Pick<Storage, "getItem" | "setItem" | "removeItem">;

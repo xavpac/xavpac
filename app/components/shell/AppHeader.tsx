@@ -17,7 +17,7 @@ export default function AppHeader({ onOpenTechnical, technicalActive }: { onOpen
   return <header className="v2-header">
     <div className="v2-brand">
       <span className="v2-brand-mark"><AppIcon name="aircraft" size={28} /></span>
-      <div><h1>XavPac <b>V2</b></h1><p>Build {BUILD_INFO.number} · {BUILD_INFO.environment}</p></div>
+      <div><h1>XavPac <b>6.5</b></h1><p>Build {BUILD_INFO.number} · {BUILD_INFO.environment}</p></div>
     </div>
 
     <div className="v2-header-status">

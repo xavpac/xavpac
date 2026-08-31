@@ -10,6 +10,7 @@ import CenterOperationsPanel from "../CenterOperationsPanel";
 import TechnicalInformationPanel from "../TechnicalInformationPanel";
 import SpottingLogPanel from "../SpottingLogPanel";
 import LightningPanel from "../LightningPanel";
+import FireRiskPanel from "../FireRiskPanel";
 import { NAVIGATION, moduleBelongsToUniverse, type ModuleId, type Universe } from "../../config/navigation";
 import AppHeader from "./AppHeader";
 import ModuleNavigation from "./ModuleNavigation";
@@ -22,6 +23,7 @@ function ActivePanel({ module }: { module: ModuleId }) {
   if (module === "operations") return <OperationsPanel />;
   if (module === "spotting") return <SpottingLogPanel />;
   if (module === "drone") return <DronePanel />;
+  if (module === "risks") return <FireRiskPanel />;
   if (module === "center") return <CenterOperationsPanel />;
   if (module === "astronomy") return <AstronomyPanel />;
   if (module === "weather") return <WeatherPanel />;

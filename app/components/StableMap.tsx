@@ -12,6 +12,7 @@ import {
   Popup,
   TileLayer,
   Tooltip,
+  WMSTileLayer,
   useMap,
   useMapEvents
 } from "react-leaflet";
@@ -45,6 +46,14 @@ export type MapZone = {
   floor: string;
   ceiling: string;
   positions: [number, number][];
+};
+
+export type MapWmsOverlay = {
+  id: string;
+  url: string;
+  layers: string;
+  attribution: string;
+  opacity?: number;
 };
 
 type Bounds = [[number, number], [number, number]];
@@ -271,6 +280,28 @@ function weatherIcon(point: MapPoint) {
   });
 }
 
+function fieldIcon(point: MapPoint) {
+  const category = String(point.category);
+  const symbols: Record<string, string> = {
+    hotspot: "🔥",
+    "sitac-incident": "🔥",
+    "sitac-command": "◆",
+    "sitac-access": "↗",
+    "sitac-water": "●",
+    "sitac-drone": "+",
+    "sitac-watch": "◎"
+  };
+  const symbol = symbols[category] ?? "•";
+  const color = point.color ?? (category === "hotspot" ? "#ff5e4d" : "#56a8ff");
+  return L.divIcon({
+    className: "xavpac-map-icon-root",
+    html: `<div class="xavpac-field-marker ${escapeHtml(category)}" style="--field-color:${escapeHtml(color)}"><span aria-hidden="true">${symbol}</span><strong>${escapeHtml(point.name)}</strong></div>`,
+    iconSize: [42, 42],
+    iconAnchor: [21, 21],
+    popupAnchor: [0, -22]
+  });
+}
+
 function operationalIcon(point: MapPoint, selected: boolean, faded: boolean, labelMode: "none" | "callsign" | "detail") {
   const category = String(point.category).replace("national-", "");
   const colors: Record<string, string> = { canadair: "#ff4d61", fireboss: "#ff6f32", dash: "#ff9d36", dragon: "#28a9ff", gendarmerie: "#4c7dff", samu: "#29d596", beechcraft: "#e1b94d", military: "#a5b1bd", customs: "#28c7b6", drone: "#9b78ff", unknown: "#7fb6d5" };
@@ -288,6 +319,7 @@ function operationalIcon(point: MapPoint, selected: boolean, faded: boolean, lab
 
 function pointIcon(point: MapPoint, selected: boolean, faded: boolean, labelMode: "none" | "callsign" | "detail") {
   if (["home", "moi", "mission", "location"].includes(String(point.category))) return referenceIcon(point);
+  if (point.category === "hotspot" || String(point.category).startsWith("sitac-")) return fieldIcon(point);
   if (String(point.category).startsWith("lightning")) {
     const color = point.color ?? "#f6c453";
     return L.divIcon({
@@ -324,7 +356,8 @@ function PointMarkers({ points, selectedId, onSelect }: { points: MapPoint[]; se
 
   return points.map((point) => {
     const selected = point.id === selectedId;
-    const isUtility = ["home", "moi", "mission", "weather", "location", "route-airport", "aerodrome"].includes(String(point.category));
+    const isUtility = ["home", "moi", "mission", "weather", "location", "route-airport", "aerodrome", "hotspot"].includes(String(point.category))
+      || String(point.category).startsWith("sitac-");
     const isReference = ["home", "moi", "mission", "location"].includes(String(point.category));
     const faded = Boolean(selectedId) && !selected && !isUtility;
     return (
@@ -414,7 +447,8 @@ export default function StableMap({
   followTarget,
   onCameraModeChange,
   controls = true,
-  onMapClick
+  onMapClick,
+  wmsOverlays = []
 }: {
   points: MapPoint[];
   center: [number, number];
@@ -438,6 +472,7 @@ export default function StableMap({
   onCameraModeChange?: (mode: MapCameraMode) => void;
   controls?: boolean;
   onMapClick?: (position: [number, number]) => void;
+  wmsOverlays?: MapWmsOverlay[];
 }) {
   return (
     <MapContainer
@@ -465,6 +500,15 @@ export default function StableMap({
       <MapViewportGuard />
       <MapClickHandler onMapClick={onMapClick} />
       <BaseLayer variant={mapVariant} />
+      {wmsOverlays.map((overlay) => <WMSTileLayer
+        key={overlay.id}
+        url={overlay.url}
+        layers={overlay.layers}
+        format="image/png"
+        transparent
+        opacity={overlay.opacity ?? .65}
+        attribution={overlay.attribution}
+      />)}
 
       {showRadius && radiusKm && (
         <Circle

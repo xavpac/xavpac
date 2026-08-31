@@ -2,6 +2,7 @@ import "leaflet/dist/leaflet.css";
 import "./globals.css";
 import "./styles/v2-tokens.css";
 import "./styles/v2-shell.css";
+import "./styles/fire-risk.css";
 import { LiveGeolocationProvider } from "./hooks/useLiveGeolocation";
 
 export const metadata = {

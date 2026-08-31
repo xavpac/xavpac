@@ -13,6 +13,7 @@ test("les deux univers exposent des navigations métier distinctes", () => {
   assert.equal(moduleBelongsToUniverse("spotter", "aviation"), true);
   assert.equal(moduleBelongsToUniverse("spotter", "drone"), false);
   assert.equal(moduleBelongsToUniverse("drone", "drone"), true);
+  assert.equal(moduleBelongsToUniverse("drone", "risks"), true);
   assert.equal(moduleBelongsToUniverse("drone", "aviation"), false);
 });
 

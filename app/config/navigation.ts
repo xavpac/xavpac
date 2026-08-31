@@ -8,12 +8,13 @@ export type ModuleId =
   | "lightning"
   | "astronomy"
   | "drone"
+  | "risks"
   | "center"
   | "technical";
 
 export type NavigationModule = {
   id: ModuleId;
-  icon: "aircraft" | "rescue" | "weather" | "moon" | "drone" | "operations";
+  icon: "aircraft" | "rescue" | "weather" | "moon" | "drone" | "operations" | "fire";
   title: string;
   shortTitle: string;
   subtitle: string;
@@ -49,6 +50,7 @@ export const NAVIGATION: Record<Universe, UniverseNavigation> = {
     defaultModule: "drone",
     modules: [
       { id: "drone", icon: "drone", title: "Assistant de vol", shortTitle: "Assistant", subtitle: "Décision et trafic" },
+      { id: "risks", icon: "fire", title: "Feux & Risques", shortTitle: "Risques", subtitle: "FIRMS, DFCI et terrain" },
       { id: "center", icon: "operations", title: "Opérations", shortTitle: "Opérations", subtitle: "Situation terrain" },
       { id: "weather", icon: "weather", title: "Météo Drone", shortTitle: "Météo", subtitle: "Prévisions détaillées" }
     ]
