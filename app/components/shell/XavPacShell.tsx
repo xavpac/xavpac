@@ -17,6 +17,7 @@ import ModuleNavigation from "./ModuleNavigation";
 import UniverseSwitcher from "./UniverseSwitcher";
 import ModuleErrorBoundary from "../ModuleErrorBoundary";
 import { initializeBrowserStorage } from "../../lib/safeStorage";
+import AppIcon from "../ui/AppIcon";
 
 function ActivePanel({ module }: { module: ModuleId }) {
   if (module === "aviation") return <AviationPanel />;
@@ -34,6 +35,9 @@ function ActivePanel({ module }: { module: ModuleId }) {
 export default function XavPacShell({ universe }: { universe: Universe }) {
   const navigation = NAVIGATION[universe];
   const [activeModule, setActiveModule] = useState<ModuleId>(navigation.defaultModule);
+  const activeNavigation = activeModule === "technical"
+    ? { title: "Informations techniques", shortTitle: "Technique", icon: "info" as const }
+    : navigation.modules.find((module) => module.id === activeModule) ?? navigation.modules[0];
 
   useEffect(() => {
     initializeBrowserStorage();
@@ -47,8 +51,16 @@ export default function XavPacShell({ universe }: { universe: Universe }) {
 
   return <main className={`v2-shell v2-${universe}`}>
     <AppHeader technicalActive={activeModule === "technical"} onOpenTechnical={() => selectModule("technical")} />
-    <UniverseSwitcher activeUniverse={universe} />
-    <ModuleNavigation modules={navigation.modules} activeModule={activeModule} onChange={selectModule} />
+    <div className="v2-control-deck">
+      <UniverseSwitcher activeUniverse={universe} />
+      <ModuleNavigation modules={navigation.modules} activeModule={activeModule} onChange={selectModule} />
+    </div>
+
+    <div className="v2-workspace-context" aria-label={`Section active : ${activeNavigation.title}`}>
+      <span className="v2-context-icon"><AppIcon name={activeNavigation.icon} size={17} /></span>
+      <span className="v2-context-path"><b>{navigation.title}</b><i>/</i>{activeNavigation.title}</span>
+      <span className="v2-context-live"><i /> Veille active</span>
+    </div>
 
     <section className="v2-workspace" aria-live="polite">
       <ModuleErrorBoundary key={activeModule} module={activeModule}>

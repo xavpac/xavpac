@@ -8,9 +8,9 @@ export default function UniverseSwitcher({ activeUniverse }: { activeUniverse: U
       const item = NAVIGATION[universe];
       const active = universe === activeUniverse;
       return <Link key={universe} href={item.href} className={active ? `v2-universe ${universe} active` : `v2-universe ${universe}`} aria-current={active ? "page" : undefined}>
-        <span className="v2-universe-icon"><AppIcon name={universe === "spotter" ? "aircraft" : "drone"} size={25} /></span>
+        <span className="v2-universe-icon"><AppIcon name={universe === "spotter" ? "aircraft" : "drone"} size={21} /></span>
         <span><strong>{item.title}</strong><small>{item.description}</small></span>
-        <i>{active ? "Ouvert" : "Accéder"}</i>
+        <i>{active ? "Actif" : "Ouvrir"}</i>
       </Link>;
     })}
   </nav>;

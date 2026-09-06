@@ -35,12 +35,12 @@ export const NAVIGATION: Record<Universe, UniverseNavigation> = {
     href: "/spotter",
     defaultModule: "aviation",
     modules: [
-      { id: "aviation", icon: "aircraft", title: "Trafic aérien", shortTitle: "Trafic", subtitle: "Carte et passages" },
-      { id: "operations", icon: "rescue", title: "Moyens aériens", shortTitle: "Moyens", subtitle: "Sécurité et missions" },
-      { id: "spotting", icon: "operations", title: "Carnet de spotting", shortTitle: "Carnet", subtitle: "Souvenirs et statistiques" },
-      { id: "lightning", icon: "weather", title: "Orage / Foudre", shortTitle: "Orage", subtitle: "Impacts autour de HOME" },
-      { id: "weather", icon: "weather", title: "Météo", shortTitle: "Météo", subtitle: "Conditions locales" },
-      { id: "astronomy", icon: "moon", title: "Ciel", shortTitle: "Ciel", subtitle: "ISS et astronomie" }
+      { id: "aviation", icon: "aircraft", title: "Trafic aérien", shortTitle: "Trafic", subtitle: "Carte live" },
+      { id: "operations", icon: "rescue", title: "Moyens aériens", shortTitle: "Moyens", subtitle: "Secours & missions" },
+      { id: "spotting", icon: "operations", title: "Carnet de spotting", shortTitle: "Carnet", subtitle: "Observations" },
+      { id: "lightning", icon: "weather", title: "Orage / Foudre", shortTitle: "Orage", subtitle: "Impacts live" },
+      { id: "weather", icon: "weather", title: "Météo", shortTitle: "Météo", subtitle: "Prévisions" },
+      { id: "astronomy", icon: "moon", title: "Ciel", shortTitle: "Ciel", subtitle: "ISS & astronomie" }
     ]
   },
   drone: {
@@ -49,10 +49,10 @@ export const NAVIGATION: Record<Universe, UniverseNavigation> = {
     href: "/drone",
     defaultModule: "drone",
     modules: [
-      { id: "drone", icon: "drone", title: "Assistant de vol", shortTitle: "Assistant", subtitle: "Décision et trafic" },
-      { id: "risks", icon: "fire", title: "Feux & Risques", shortTitle: "Risques", subtitle: "FIRMS, DFCI et terrain" },
+      { id: "drone", icon: "drone", title: "Assistant de vol", shortTitle: "Assistant", subtitle: "Décision live" },
+      { id: "risks", icon: "fire", title: "Feux & Risques", shortTitle: "Risques", subtitle: "FIRMS & DFCI" },
       { id: "center", icon: "operations", title: "Opérations", shortTitle: "Opérations", subtitle: "Situation terrain" },
-      { id: "weather", icon: "weather", title: "Météo Drone", shortTitle: "Météo", subtitle: "Prévisions détaillées" }
+      { id: "weather", icon: "weather", title: "Météo Drone", shortTitle: "Météo", subtitle: "Prévisions" }
     ]
   }
 };

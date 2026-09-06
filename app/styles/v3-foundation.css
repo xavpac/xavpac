@@ -1,0 +1,186 @@
+/* XavPac visual system 3 — shared hierarchy, surfaces and interaction states. */
+:root {
+  --bg: var(--v2-bg);
+  --bg2: #061523;
+  --panel: rgba(7, 22, 36, .9);
+  --panel2: rgba(10, 31, 49, .92);
+  --line: var(--v2-line);
+  --line-strong: var(--v2-line-strong);
+  --text: var(--v2-text);
+  --muted: var(--v2-muted);
+  --cyan: var(--v2-spotter);
+  --blue: #4d9fff;
+  --green: var(--v2-success);
+  --orange: var(--v2-warning);
+  --red: var(--v2-danger);
+}
+
+html { background: var(--v2-bg-deep); }
+body { overflow-x: hidden; text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; }
+body::before {
+  content: "";
+  position: fixed;
+  z-index: -1;
+  inset: 0;
+  opacity: .22;
+  background-image: linear-gradient(rgba(108, 177, 216, .035) 1px, transparent 1px), linear-gradient(90deg, rgba(108, 177, 216, .025) 1px, transparent 1px);
+  background-size: 72px 72px;
+  mask-image: linear-gradient(180deg, #000, transparent 78%);
+  pointer-events: none;
+}
+
+::selection { color: #001018; background: var(--v2-spotter); }
+* { scrollbar-color: rgba(111, 153, 181, .28) transparent; scrollbar-width: thin; }
+
+button,
+a,
+input,
+select,
+textarea,
+summary { -webkit-tap-highlight-color: transparent; }
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--v2-accent, var(--v2-spotter));
+  outline-offset: 3px;
+}
+
+input,
+select,
+textarea {
+  border-color: rgba(143, 191, 220, .2) !important;
+  color: var(--v2-text) !important;
+  background: rgba(1, 10, 18, .66) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .025);
+}
+input::placeholder,
+textarea::placeholder { color: #61778a; }
+
+.panel,
+.hero,
+.fire-card {
+  border: 1px solid var(--v2-line);
+  background:
+    linear-gradient(145deg, rgba(11, 31, 49, .91), rgba(5, 17, 29, .94)),
+    var(--v2-surface);
+  box-shadow: var(--v2-shadow-soft), inset 0 1px 0 rgba(255, 255, 255, .04);
+  backdrop-filter: blur(18px) saturate(125%);
+}
+
+.panel {
+  border-radius: var(--v2-radius);
+  transition: border-color .2s ease, box-shadow .2s ease, transform .2s var(--v2-ease);
+}
+
+.hero {
+  position: relative;
+  min-height: 128px;
+  overflow: hidden;
+  border-radius: var(--v2-radius-lg);
+  background:
+    radial-gradient(circle at 84% 0%, color-mix(in srgb, var(--v2-accent, var(--v2-spotter)) 18%, transparent), transparent 27rem),
+    linear-gradient(120deg, rgba(11, 36, 57, .97), rgba(5, 17, 29, .94));
+}
+.hero::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 3px;
+  background: var(--v2-accent, var(--v2-spotter));
+  box-shadow: 0 0 22px color-mix(in srgb, var(--v2-accent, var(--v2-spotter)) 80%, transparent);
+}
+.hero > * { position: relative; z-index: 1; }
+.hero h1 { margin: 5px 0 6px; font-size: clamp(28px, 3.1vw, 46px); line-height: 1; letter-spacing: -.035em; }
+.hero > div:first-child > p { max-width: 760px; color: var(--v2-muted); font-size: clamp(10px, .8vw, 13px); line-height: 1.5; }
+
+.eyebrow,
+.fire-risk-eyebrow,
+.fire-card-kicker {
+  color: var(--v2-accent, var(--v2-spotter));
+  font-size: 8px;
+  font-weight: 950;
+  letter-spacing: .17em;
+  text-transform: uppercase;
+}
+.v2-drone .eyebrow { color: var(--v2-drone); }
+.muted { color: var(--v2-muted); }
+.panel-title h2,
+.panel-title h3,
+.panel > header h2,
+.panel > header h3 { letter-spacing: -.02em; }
+
+.panel-title > div > p,
+.panel > header p.muted {
+  max-width: 680px;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.panel button,
+.hero button,
+.fire-card button {
+  transition: color .18s ease, border-color .18s ease, background .18s ease, box-shadow .18s ease, transform .18s var(--v2-ease);
+}
+.panel button:not(:disabled):hover,
+.hero button:not(:disabled):hover,
+.fire-card button:not(:disabled):hover { transform: translateY(-1px); }
+.panel button:disabled,
+.hero button:disabled,
+.fire-card button:disabled { cursor: not-allowed; opacity: .45; }
+
+.live-dot,
+.available::before,
+.honest-live-badge::before { box-shadow: 0 0 11px rgba(76, 229, 164, .65); }
+
+details {
+  border-color: rgba(142, 190, 220, .16) !important;
+  background: rgba(3, 13, 23, .5) !important;
+}
+details > summary { color: var(--v2-text-soft); }
+
+.leaflet-container { font-family: inherit; }
+.leaflet-control-zoom,
+.leaflet-control-layers { overflow: hidden; border: 1px solid rgba(132, 185, 218, .28) !important; border-radius: 12px !important; box-shadow: 0 12px 30px rgba(0, 0, 0, .24) !important; }
+.leaflet-control-zoom a { width: 34px !important; height: 34px !important; line-height: 32px !important; }
+
+.module-error-boundary {
+  border: 1px solid rgba(255, 99, 123, .26);
+  border-radius: var(--v2-radius-lg);
+  background: linear-gradient(145deg, rgba(72, 17, 30, .7), rgba(8, 18, 29, .92));
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .panel:has(> header):hover { border-color: rgba(143, 194, 224, .2); }
+}
+
+@media (max-width: 760px) {
+  body::before { background-size: 52px 52px; }
+  .panel,
+  .hero,
+  .fire-card { backdrop-filter: blur(14px) saturate(120%); }
+  .panel { padding: 12px; border-radius: 15px; }
+  .hero { min-height: 0; padding: 15px; border-radius: 17px; }
+  .hero h1 { font-size: clamp(24px, 8vw, 32px); }
+  .hero > div:first-child > p { font-size: 9px; -webkit-line-clamp: 2; }
+  .panel-title { align-items: flex-start; gap: 8px; }
+  .panel-title > div > p,
+  .panel > header p.muted { -webkit-line-clamp: 1; }
+  input,
+  select,
+  textarea,
+  button { font-size: max(16px, 1em); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}

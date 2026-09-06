@@ -3,6 +3,8 @@ import "./globals.css";
 import "./styles/v2-tokens.css";
 import "./styles/v2-shell.css";
 import "./styles/fire-risk.css";
+import "./styles/v3-foundation.css";
+import "./styles/v3-modules.css";
 import { LiveGeolocationProvider } from "./hooks/useLiveGeolocation";
 
 export const metadata = {

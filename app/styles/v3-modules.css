@@ -1,0 +1,510 @@
+/* XavPac visual system 3 — operational modules and responsive aircraft view. */
+
+/* Aviation: the live map is the visual anchor; diagnostics remain compact. */
+.flightwall-v61 { --v2-accent: var(--v2-spotter); gap: 9px; }
+.flightwall-commandbar {
+  min-height: 52px;
+  padding: 7px 9px;
+  border-color: rgba(85, 216, 255, .2);
+  background: linear-gradient(135deg, rgba(8, 31, 49, .95), rgba(4, 17, 29, .94));
+}
+.flightwall-actions { gap: 6px; }
+.fw-action {
+  min-height: 36px;
+  padding-inline: 11px;
+  border: 1px solid rgba(132, 184, 215, .15);
+  border-radius: 9px;
+  color: #9fb4c3;
+  background: rgba(255, 255, 255, .035);
+}
+.fw-action.active,
+.fw-action:hover {
+  border-color: rgba(85, 216, 255, .42);
+  color: #e9faff;
+  background: rgba(31, 143, 190, .18);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06);
+}
+.fw-live-summary { color: #9db3c3; font-weight: 800; }
+
+.aviation-source-health {
+  gap: 6px;
+  padding: 6px;
+  border-radius: 13px;
+  background: rgba(3, 15, 26, .66);
+}
+.aviation-source-health > span {
+  min-width: 118px;
+  border-color: rgba(135, 184, 214, .13);
+  background: rgba(8, 28, 44, .72);
+}
+.aviation-source-health .available { box-shadow: inset 2px 0 0 rgba(76, 229, 164, .72); }
+.aviation-source-health .degraded { box-shadow: inset 2px 0 0 rgba(255, 199, 96, .72); }
+.aviation-source-health .offline { box-shadow: inset 2px 0 0 rgba(255, 99, 123, .72); }
+
+.aviation-compact-summary {
+  min-height: 38px;
+  border-color: rgba(85, 216, 255, .18);
+  background: linear-gradient(90deg, rgba(15, 70, 101, .31), rgba(4, 18, 30, .9));
+}
+.aviation-compact-summary strong { color: var(--v2-spotter-soft); }
+
+.aviation-location-panel {
+  grid-template-columns: minmax(250px, .72fr) minmax(430px, 1.28fr);
+  padding: 9px 12px;
+  border-color: rgba(85, 216, 255, .26);
+  background: linear-gradient(135deg, rgba(6, 41, 63, .9), rgba(4, 19, 32, .94));
+}
+.aviation-location-settings {
+  min-width: 0;
+  border: 1px solid rgba(122, 183, 216, .13) !important;
+  border-radius: 10px;
+  background: rgba(2, 13, 23, .42) !important;
+}
+.aviation-location-settings > summary {
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 10px;
+  list-style: none;
+  cursor: pointer;
+}
+.aviation-location-settings > summary::-webkit-details-marker { display: none; }
+.aviation-location-settings > summary span { font-size: 8px; font-weight: 850; text-transform: uppercase; }
+.aviation-location-settings > summary strong { color: var(--v2-spotter); font-size: 8px; }
+.aviation-location-settings > summary strong::after { content: "  +"; }
+.aviation-location-settings[open] > summary strong::after { content: "  −"; }
+.aviation-location-inputs { padding: 7px; border-top: 1px solid rgba(125, 180, 213, .12); }
+
+.flightwall-main-grid { grid-template-columns: minmax(0, 1.72fr) minmax(330px, .78fr); gap: 9px; }
+.flightwall-left { gap: 9px; }
+.flightwall-map-card {
+  padding: 5px;
+  border-color: rgba(85, 216, 255, .28);
+  border-radius: 19px;
+  background: linear-gradient(145deg, rgba(11, 42, 62, .95), rgba(3, 15, 26, .96));
+  box-shadow: 0 24px 66px rgba(0, 0, 0, .34), 0 0 32px rgba(20, 161, 215, .07);
+}
+.flightwall-map-stage { height: clamp(560px, 65vh, 760px); border-radius: 14px; }
+.flightwall-map-stage::after { box-shadow: inset 0 0 60px rgba(0, 11, 21, .2); }
+.fw-map-style,
+.fw-radius-selector,
+.fw-map-counters,
+.fw-camera-controls {
+  border-color: rgba(190, 226, 245, .2);
+  background: rgba(3, 16, 28, .88);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, .26);
+  backdrop-filter: blur(14px) saturate(130%);
+}
+.fw-map-style button.active,
+.fw-radius-selector button.active,
+.fw-camera-controls button.active { box-shadow: 0 0 18px rgba(85, 216, 255, .16); }
+.fw-map-counters > div strong { font-variant-numeric: tabular-nums; }
+
+.flightwall-focus {
+  padding: 13px;
+  border-color: rgba(85, 216, 255, .2);
+  background: linear-gradient(155deg, rgba(10, 38, 59, .94), rgba(4, 17, 29, .96));
+}
+.fw-kicker { color: var(--v2-spotter); letter-spacing: .12em; }
+.fw-nearest-list button,
+.aviation-watch-now button { transition: border-color .18s ease, background .18s ease, transform .18s var(--v2-ease); }
+.fw-nearest-list button:hover,
+.fw-nearest-list button.selected,
+.aviation-watch-now button:hover { transform: translateX(2px); }
+
+.spotter-fun-panel {
+  padding: 13px;
+  border-color: rgba(85, 216, 255, .17);
+  background: radial-gradient(circle at 87% 5%, rgba(85, 216, 255, .1), transparent 24rem), linear-gradient(145deg, rgba(9, 31, 48, .94), rgba(4, 17, 29, .94));
+}
+.spotter-fun-panel > header span { color: var(--v2-spotter); letter-spacing: .14em; }
+.spotter-fun-grid > article,
+.spotter-fun-target { border-color: rgba(132, 189, 221, .14); background: rgba(1, 13, 23, .46); }
+.spotter-fun-target:hover { border-color: rgba(85, 216, 255, .38); background: rgba(15, 84, 116, .24); }
+.spotter-touch-dock { border-color: rgba(85, 216, 255, .19); background: rgba(3, 17, 29, .9); }
+
+.aviation-sound-console { border-color: rgba(85, 216, 255, .15); background: rgba(5, 20, 33, .82); }
+.aviation-news-list a:hover { border-color: rgba(85, 216, 255, .34); background: rgba(14, 61, 88, .42); transform: translateY(-1px); }
+
+/* Weather: a compact briefing with a data-led hero and scannable forecast. */
+.weather-hero {
+  --v2-accent: #68cfff;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, .72fr);
+  align-items: center;
+  gap: 30px;
+  padding: 24px clamp(22px, 3vw, 44px);
+  background: radial-gradient(circle at 83% 13%, rgba(104, 207, 255, .26), transparent 27rem), linear-gradient(135deg, rgba(8, 43, 66, .98), rgba(5, 20, 36, .97));
+}
+.weather-now { justify-content: flex-end; }
+.weather-now > span { filter: drop-shadow(0 10px 16px rgba(0, 0, 0, .3)); }
+.weather-now > div { flex: 0 0 auto; }
+.weather-temperature-trend { width: min(210px, 34vw); height: 55px; color: #83ddff; filter: drop-shadow(0 0 8px rgba(85, 216, 255, .2)); }
+.weather-layout { grid-template-columns: minmax(0, 1fr) 305px; gap: 10px; margin-top: 10px; }
+.weather-main,
+.weather-side { gap: 10px; }
+.weather-summary { min-height: 144px; }
+.weather-metrics { gap: 7px; }
+.weather-metrics article { min-height: 72px; border-left: 2px solid rgba(104, 207, 255, .52); background: rgba(5, 24, 39, .74); }
+.weather-metrics strong { color: #8ae2ff; font-size: 16px; font-variant-numeric: tabular-nums; }
+.forecast-grid { gap: 7px; }
+.forecast-day { border-color: rgba(127, 185, 217, .14); background: rgba(4, 20, 34, .68); }
+.forecast-day:first-child { border-color: rgba(104, 207, 255, .4); background: rgba(21, 100, 137, .2); box-shadow: inset 0 2px 0 #68cfff; }
+
+/* Lightning: energetic amber/violet states without turning the view into a game. */
+.lightning-module { --v2-accent: #ffd36a; gap: 10px; }
+.lightning-now {
+  gap: 18px;
+  padding: 22px;
+  border-color: rgba(255, 211, 106, .27);
+  background: radial-gradient(circle at 80% 12%, rgba(133, 95, 220, .31), transparent 35%), linear-gradient(135deg, #071321, #0b1c32 60%, #15172d);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, .34), 0 0 40px rgba(142, 96, 224, .08);
+}
+.lightning-now.available { box-shadow: 0 24px 70px rgba(0, 0, 0, .34), inset 3px 0 0 #ffd36a; }
+.lightning-now-grid > div { border-color: rgba(173, 199, 225, .14); background: rgba(2, 11, 24, .62); }
+.lightning-now-grid > div strong { font-variant-numeric: tabular-nums; }
+.lightning-reference-card { min-height: 82px; }
+.lightning-live-panel { border-color: rgba(255, 211, 106, .22); background: linear-gradient(145deg, rgba(20, 20, 43, .94), rgba(5, 17, 29, .95)); }
+.lightning-live-frame { border-color: rgba(255, 211, 106, .38); box-shadow: inset 0 0 35px rgba(116, 76, 181, .1); }
+.lightning-time-filters button.active { box-shadow: 0 0 20px rgba(255, 211, 106, .12); }
+.lightning-local-map-card { border-color: rgba(160, 127, 224, .24); }
+.lightning-local-map { border-color: rgba(174, 137, 233, .31); box-shadow: 0 18px 48px rgba(0, 0, 0, .22); }
+.lightning-period-grid { gap: 8px; }
+.lightning-period-grid article { min-height: 118px; border-top: 2px solid rgba(255, 211, 106, .48); }
+.storm-forecast-grid article { background: rgba(5, 22, 37, .74); }
+
+/* Drone: amber marks decisions and actions; maps keep maximum room. */
+.drone-panel-flow { --v2-accent: var(--v2-drone); }
+.drone-hero-v4 {
+  min-height: 138px;
+  padding: 22px clamp(20px, 3vw, 42px);
+  background: radial-gradient(circle at 83% 10%, rgba(255, 180, 84, .24), transparent 25rem), linear-gradient(135deg, rgba(38, 31, 24, .96), rgba(7, 20, 32, .98));
+}
+.drone-decision-status { border-color: rgba(255, 180, 84, .26); background: rgba(40, 29, 18, .55); }
+.drone-mission-planner,
+.drone-decision-panel,
+.drone-briefing-v65 { border-color: rgba(255, 180, 84, .16); }
+.drone-mission-mode button.active,
+.drone-mission-reference-actions button:hover { border-color: rgba(255, 180, 84, .48); background: rgba(155, 89, 19, .25); }
+.drone-clearance-panel { overflow: hidden; background: radial-gradient(circle at 95% 0%, rgba(255, 180, 84, .1), transparent 20rem), linear-gradient(145deg, rgba(18, 34, 45, .95), rgba(6, 19, 31, .95)); }
+.drone-clearance-answer h2 { letter-spacing: -.035em; }
+.drone-briefing-grid article { border-color: rgba(145, 184, 207, .14); background: rgba(4, 19, 31, .7); }
+.drone-briefing-grid article.clear { box-shadow: inset 2px 0 0 rgba(76, 229, 164, .72); }
+.drone-briefing-grid article.blocking { box-shadow: inset 2px 0 0 rgba(255, 99, 123, .78); }
+.drone-console-v4 { grid-template-columns: minmax(0, 1.75fr) minmax(330px, .75fr); gap: 10px; }
+.drone-map-card-v4 { padding: 8px; border-color: rgba(255, 180, 84, .22); }
+.drone-map-v4 { height: clamp(560px, 65vh, 760px); border-color: rgba(255, 180, 84, .26); }
+.drone-side-v4 { gap: 10px; }
+.drone-location-tools { padding: 8px; border-radius: 11px; background: rgba(4, 18, 29, .54); }
+
+/* Fire and risks: an immersive operational map with restrained danger cues. */
+.fire-risk-panel { --v2-accent: #ff725f; gap: 10px; }
+.fire-risk-hero {
+  min-height: 150px;
+  border-color: rgba(255, 114, 95, .28);
+  border-radius: var(--v2-radius-lg);
+  background: radial-gradient(circle at 86% 7%, rgba(255, 102, 75, .24), transparent 26rem), linear-gradient(135deg, rgba(45, 20, 22, .95), rgba(6, 18, 30, .97));
+  box-shadow: var(--v2-shadow), inset 3px 0 0 #ff725f;
+}
+.fire-risk-eyebrow { color: #ff9788; }
+.fire-risk-source-pills span { border-color: rgba(255, 131, 110, .2); background: rgba(47, 21, 24, .52); }
+.fire-reference-bar { border-color: rgba(255, 114, 95, .16); background: rgba(6, 20, 32, .84); }
+.fire-map-stage { border: 1px solid rgba(255, 114, 95, .25); border-radius: 20px; box-shadow: 0 24px 66px rgba(0, 0, 0, .36); }
+.fire-map-stage > .leaflet-map { height: clamp(560px, 67vh, 790px); min-height: 560px; }
+.fire-map-layers,
+.fire-map-actions { border-color: rgba(238, 215, 209, .18); background: rgba(17, 13, 18, .89); backdrop-filter: blur(16px) saturate(130%); }
+.fire-map-actions button.active { box-shadow: 0 0 24px rgba(255, 87, 62, .2); }
+.fire-risk-grid { gap: 10px; }
+.fire-card {
+  border-color: rgba(255, 114, 95, .14);
+  background: radial-gradient(circle at 100% 0%, rgba(255, 114, 95, .07), transparent 18rem), linear-gradient(145deg, rgba(18, 29, 40, .95), rgba(5, 17, 28, .96));
+}
+.firms-card { border-top: 2px solid rgba(255, 114, 95, .65); }
+.dfci-card { border-top: 2px solid rgba(85, 216, 255, .5); }
+.sitac-card { border-top: 2px solid rgba(177, 132, 255, .5); }
+.forest-card { border-top: 2px solid rgba(76, 229, 164, .5); }
+
+/* Aircraft view: immersive dark cockpit, explicit active reference. */
+.aircraft-view { color: #f5fbff; background: #020812; }
+.aircraft-view .aircraft-view-hero {
+  background: radial-gradient(circle at 62% 31%, color-mix(in srgb, var(--family-accent) 25%, transparent), transparent 30%), linear-gradient(150deg, #061a2d, #020914 72%);
+}
+.aircraft-view-terrain { background: radial-gradient(circle at 72% 20%, rgba(113, 207, 255, .1), transparent 19rem), linear-gradient(180deg, #061b2e, #020914); }
+.aircraft-view-terrain::before { opacity: .48; }
+.aircraft-view-terrain::after { opacity: .23; }
+.aircraft-view-shade { background: linear-gradient(180deg, rgba(0, 7, 17, .72), transparent 26%, transparent 72%, rgba(0, 6, 15, .9)); }
+.aircraft-view-title h2,
+.aircraft-view-title p,
+.aircraft-view-company .operator-brand strong { color: #f8fcff; text-shadow: 0 3px 14px rgba(0, 0, 0, .5); }
+.aircraft-view-title > button { color: #fff; border-color: rgba(139, 204, 237, .25); background: rgba(3, 22, 38, .72); }
+.aircraft-view-title b { color: #a5f6ca; border-color: rgba(76, 229, 164, .43); background: rgba(30, 125, 82, .22); }
+.aircraft-view-title em { color: color-mix(in srgb, var(--family-accent) 75%, #fff); border-color: color-mix(in srgb, var(--family-accent) 45%, transparent); background: color-mix(in srgb, var(--family-accent) 14%, rgba(3, 22, 38, .76)); }
+.aircraft-view-company { border-color: color-mix(in srgb, var(--family-accent) 35%, transparent); background: rgba(3, 19, 33, .76); box-shadow: 0 16px 38px rgba(0, 0, 0, .32); }
+.aircraft-view-reference {
+  position: absolute;
+  z-index: 15;
+  top: 106px;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 11px;
+  border: 1px solid color-mix(in srgb, var(--family-accent) 46%, transparent);
+  border-radius: 999px;
+  color: #acc3d4;
+  background: rgba(2, 15, 27, .84);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, .28), 0 0 22px color-mix(in srgb, var(--family-accent) 10%, transparent);
+  font-size: 9px;
+  white-space: nowrap;
+  transform: translateX(-50%);
+  backdrop-filter: blur(14px);
+}
+.aircraft-view-reference strong { color: color-mix(in srgb, var(--family-accent) 72%, #fff); font-size: 9px; letter-spacing: .03em; }
+.aircraft-view-family-banner { top: 148px; color: #e9f8ff; background: rgba(3, 22, 38, .85); }
+.aircraft-view-family-banner small { color: #a9c1d1; }
+.aircraft-view-photo-stage { background: rgba(3, 20, 35, .82); box-shadow: 0 16px 38px rgba(0, 0, 0, .32); }
+.aircraft-view-center-focus { color: #f5fbff; background: rgba(4, 23, 39, .74); box-shadow: 0 22px 60px rgba(0, 0, 0, .32), inset 0 0 48px color-mix(in srgb, var(--family-accent) 12%, transparent); }
+.aircraft-view-center-kicker { color: #9eb5c6; }
+.aircraft-view-center-focus strong { color: #fff; }
+.aircraft-view-center-focus b { color: color-mix(in srgb, var(--family-accent) 72%, #fff); }
+.aircraft-view-center-focus small { color: #c3d7e4; background: rgba(255, 255, 255, .07); }
+.aircraft-view-tower-panel,
+.aircraft-view-geo-panel,
+.aircraft-view-mission-panel {
+  color: #eef8ff;
+  background: linear-gradient(145deg, rgba(5, 29, 49, .95), rgba(2, 13, 25, .97));
+  box-shadow: 0 22px 54px rgba(0, 0, 0, .4), 0 0 30px color-mix(in srgb, var(--family-accent) 8%, transparent);
+}
+.aircraft-view-tower-panel > header,
+.aircraft-view-geo-panel > header { background: linear-gradient(90deg, color-mix(in srgb, var(--family-accent) 18%, rgba(4, 25, 43, .96)), rgba(3, 18, 31, .94)); }
+.aircraft-view-tower-panel > header strong,
+.aircraft-view-tower-city h3,
+.aircraft-view-tower-weather strong,
+.aircraft-view-tower-journey strong,
+.aircraft-view-geo-panel > header strong { color: #f4fbff; text-shadow: none; }
+.aircraft-view-tower-weather { border-color: rgba(105, 190, 227, .18); background: rgba(7, 34, 53, .74); box-shadow: none; }
+.aircraft-view-tower-weather small,
+.aircraft-view-tower-journey small { color: #9db5c6; }
+.aircraft-view-tower-journey { background: rgba(7, 35, 57, .7); }
+.aircraft-view-geo-panel { border-width: 1px; border-radius: 23px; background: rgba(2, 16, 29, .96); box-shadow: 0 22px 54px rgba(0, 0, 0, .4); }
+.aircraft-view-geo-canvas { transform: none; }
+.aircraft-view-footer { color: #eef8ff; border-color: rgba(96, 179, 223, .17); background: #03101e; box-shadow: 0 -16px 40px rgba(0, 0, 0, .38); }
+.aircraft-view-metrics > div { border-color: rgba(92, 173, 216, .2); background: rgba(8, 34, 54, .72); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .03); }
+.aircraft-view-metrics span { color: #a2b8c8; }
+.aircraft-view-metrics strong { color: #f5fbff; }
+.aircraft-view-data-note { color: #70899d; }
+
+/* Tablets: keep maps dominant while reducing secondary density. */
+@media (max-width: 1120px) {
+  .flightwall-main-grid,
+  .drone-console-v4 { grid-template-columns: minmax(0, 1.5fr) minmax(300px, .78fr); }
+  .flightwall-bottom-grid { grid-template-columns: 1fr 1fr; }
+  .flightwall-bottom-grid > :last-child { grid-column: 1 / -1; }
+  .weather-layout { grid-template-columns: minmax(0, 1fr) 280px; }
+  .fire-risk-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .lightning-closest-list { grid-template-columns: repeat(3, 1fr); }
+}
+
+@media (max-width: 900px) {
+  .flightwall-main-grid,
+  .drone-console-v4,
+  .weather-layout { grid-template-columns: 1fr; }
+  .flightwall-map-stage,
+  .drone-map-v4 { height: clamp(500px, 62vh, 680px); }
+  .weather-side { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .weather-side > :first-child { grid-column: 1 / -1; }
+  .lightning-now { grid-template-columns: 1fr; }
+}
+
+/* Phones: concise first screen, horizontal summaries, robust touch targets. */
+@media (max-width: 760px) {
+  .flightwall-v61 { display: flex; flex-direction: column; gap: 6px; }
+  .aviation-source-health { order: 0; }
+  .aviation-compact-summary { order: 1; overflow-x: auto; white-space: nowrap; }
+  .aviation-location-panel { order: 2; }
+  .flightwall-commandbar { order: 3; }
+  .flightwall-main-grid { order: 4; }
+  .spotter-touch-dock { order: 5; }
+  .spotter-fun-panel { order: 6; }
+  .aviation-sound-console { order: 7; }
+  .fw-filterbar { order: 8; }
+
+  .flightwall-commandbar { min-height: 45px; overflow-x: auto; padding: 5px; }
+  .flightwall-actions { flex-wrap: nowrap; }
+  .fw-action { flex: 0 0 auto; min-height: 34px; padding-inline: 9px; white-space: nowrap; }
+  .fw-live-summary { display: none; }
+  .aviation-source-health > span { min-width: 108px; }
+  .aviation-source-health > span:nth-child(n+4) { display: none; }
+  .aviation-compact-summary span:not(:last-child) { display: none; }
+  .aviation-compact-summary span:last-child { margin-left: 0; }
+  .aviation-location-panel { grid-template-columns: 1fr; gap: 7px; }
+  .aviation-location-state small { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 1; }
+  .aviation-location-inputs { grid-template-columns: 1fr; }
+  .aviation-location-inputs label { min-width: 0; }
+  .aviation-location-inputs button { border-radius: 8px; }
+
+  .flightwall-map-card { border-radius: 16px; }
+  .flightwall-map-stage { height: min(63dvh, 610px); min-height: 430px; border-radius: 12px; }
+  .fw-map-counters { top: 8px; right: 8px; }
+  .fw-map-counters > div { min-width: 54px; }
+  .fw-map-style { right: 8px; bottom: 58px; max-width: calc(100% - 16px); overflow-x: auto; }
+  .fw-radius-selector { top: 8px; left: 8px; }
+  .fw-radius-selector > span { display: none; }
+  .fw-camera-controls { max-width: calc(100% - 16px); overflow-x: auto; }
+  .flightwall-focus { padding: 11px; }
+  .flightwall-bottom-grid { grid-template-columns: 1fr; }
+  .flightwall-bottom-grid > :last-child { grid-column: auto; }
+  .spotter-fun-grid { scroll-padding-inline: 2px; }
+  .spotter-fun-grid > article,
+  .spotter-fun-target { min-width: min(82vw, 300px); }
+
+  .weather-hero { grid-template-columns: 1fr; gap: 13px; padding: 16px; }
+  .weather-hero > div:first-child p { display: none; }
+  .weather-now { justify-content: flex-start; }
+  .weather-now > span { font-size: 40px; }
+  .weather-now strong { font-size: 28px; }
+  .weather-temperature-trend { width: 100%; max-width: none; flex: 1; }
+  .weather-layout { margin-top: 6px; }
+  .weather-side { display: grid; grid-template-columns: 1fr; }
+  .weather-side > :first-child { grid-column: auto; }
+  .weather-side .panel:nth-child(n+3) { display: none; }
+  .weather-summary { min-height: 0; display: grid; grid-template-columns: 1fr; gap: 10px; }
+  .weather-summary-text p { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+  .weather-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .forecast-grid { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; }
+  .forecast-day { min-width: 118px; scroll-snap-align: start; }
+
+  .lightning-now { padding: 15px; border-radius: 17px; }
+  .lightning-now-title h1 { font-size: 27px; }
+  .lightning-now-title p { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+  .lightning-now-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .lightning-now-grid > div { min-height: 67px; padding: 9px; }
+  .lightning-reference-card { min-height: 0; align-items: flex-start; }
+  .lightning-reference-meta { display: none; }
+  .lightning-live-frame { height: min(55dvh, 440px); }
+  .lightning-local-map { height: min(58dvh, 470px); min-height: 360px; }
+  .lightning-period-grid { display: flex; overflow-x: auto; }
+  .lightning-period-grid article { min-width: 210px; }
+  .lightning-closest-list { display: flex; overflow-x: auto; }
+  .lightning-closest-list button { min-width: 170px; min-height: 126px; }
+  .lightning-history-grid { grid-template-columns: 1fr; }
+
+  .drone-hero-v4 { padding: 15px; }
+  .drone-hero-v4 > div:first-child p { display: none; }
+  .drone-mission-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .drone-mission-reference { grid-template-columns: auto 1fr; }
+  .drone-mission-reference-actions { grid-column: 1 / -1; }
+  .drone-briefing-grid { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; }
+  .drone-briefing-grid article { min-width: 245px; scroll-snap-align: start; }
+  .drone-console-v4 { display: flex; flex-direction: column; }
+  .drone-map-card-v4 { order: 0; }
+  .drone-side-v4 { order: 1; }
+  .drone-map-v4 { height: min(62dvh, 570px); min-height: 420px; }
+  .drone-location-tools { grid-template-columns: 1fr; }
+  .drone-location-tools label { grid-template-columns: 1fr auto; }
+  .drone-location-tools label input { grid-column: 1 / -1; }
+
+  .fire-risk-hero { min-height: 0; padding: 16px; }
+  .fire-risk-hero p { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+  .fire-risk-source-pills { overflow-x: auto; flex-wrap: nowrap; }
+  .fire-risk-source-pills span { flex: 0 0 auto; }
+  .fire-reference-bar { grid-template-columns: 1fr; }
+  .fire-reference-bar > small { display: none; }
+  .fire-map-stage { border-radius: 16px; }
+  .fire-map-stage > .leaflet-map { height: min(65dvh, 600px); min-height: 430px; }
+  .fire-map-layers { top: 8px; right: 8px; left: 8px; display: flex; overflow-x: auto; }
+  .fire-map-layers strong { display: none; }
+  .fire-map-layers label { flex: 0 0 auto; }
+  .fire-map-actions { right: 8px; bottom: 8px; left: 8px; justify-content: stretch; }
+  .fire-map-actions button { flex: 1; min-width: 0; }
+  .fire-risk-grid { grid-template-columns: 1fr; }
+}
+
+/* Vue Avion on iPhone: CSS grid replaces the old top/bottom calculations. */
+@media (max-width: 680px) {
+  .aircraft-view-hero {
+    height: 100%;
+    display: grid;
+    grid-template-rows: auto auto minmax(190px, 31dvh) minmax(0, 1fr);
+    gap: 7px;
+    padding: 0 8px max(8px, env(safe-area-inset-bottom));
+    box-sizing: border-box;
+    overflow: hidden;
+  }
+  .aircraft-view-header {
+    position: relative;
+    inset: auto;
+    grid-row: 1;
+    margin: 0 -8px;
+    padding: max(9px, env(safe-area-inset-top)) 9px 7px;
+    background: linear-gradient(180deg, rgba(2, 13, 25, .98), rgba(2, 13, 25, .84));
+  }
+  .aircraft-view-title h2 { max-width: 38vw; color: #fff; }
+  .aircraft-view-title > button { color: #fff; background: rgba(10, 45, 70, .72); }
+  .aircraft-view-company { padding: 0; border: 0; background: transparent; box-shadow: none; }
+  .aircraft-view-reference {
+    position: relative;
+    inset: auto;
+    grid-row: 2;
+    justify-content: space-between;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 7px 9px;
+    border-radius: 10px;
+    font-size: 7px;
+    transform: none;
+  }
+  .aircraft-view-reference strong { font-size: 7px; }
+  .aircraft-view-geo-panel {
+    position: relative;
+    inset: auto;
+    grid-row: 3;
+    width: 100%;
+    min-width: 0;
+    min-height: 0;
+    border-color: color-mix(in srgb, var(--family-accent) 42%, transparent);
+    border-radius: 13px;
+    transform: none;
+  }
+  .aircraft-view-geo-panel > header { min-height: 38px; }
+  .aircraft-view-geo-canvas { height: calc(100% - 38px); min-height: 145px; }
+  .aircraft-view-mobile-sheet {
+    position: relative;
+    inset: auto;
+    grid-row: 4;
+    min-height: 0;
+    width: 100%;
+    box-sizing: border-box;
+    gap: 7px;
+    padding: 9px;
+    border-radius: 13px;
+    color: #f5fbff;
+    background: rgba(3, 18, 31, .95);
+  }
+}
+
+@media (max-width: 950px) and (max-height: 600px) and (orientation: landscape) {
+  .aircraft-view-hero {
+    height: 100%;
+    display: grid;
+    grid-template-columns: minmax(0, 56vw) minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr);
+    gap: 6px;
+    padding: 0 max(7px, env(safe-area-inset-right)) max(7px, env(safe-area-inset-bottom)) max(7px, env(safe-area-inset-left));
+    box-sizing: border-box;
+    overflow: hidden;
+  }
+  .aircraft-view-header { position: relative; inset: auto; grid-column: 1 / -1; grid-row: 1; margin: 0 -7px; }
+  .aircraft-view-reference { position: relative; inset: auto; grid-column: 1 / -1; grid-row: 2; width: 100%; box-sizing: border-box; justify-content: space-between; padding: 5px 8px; border-radius: 9px; transform: none; }
+  .aircraft-view-geo-panel { position: relative; inset: auto; grid-column: 1; grid-row: 3; width: 100%; min-height: 0; border-radius: 11px; }
+  .aircraft-view-geo-canvas { height: calc(100% - 37px); min-height: 120px; }
+  .aircraft-view-mobile-sheet { position: relative; inset: auto; grid-column: 2; grid-row: 3; width: 100%; min-height: 0; box-sizing: border-box; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aircraft-view-center-focus { animation: none; }
+  .fw-nearest-list button:hover,
+  .aviation-watch-now button:hover { transform: none; }
+}

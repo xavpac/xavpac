@@ -6,6 +6,7 @@ export default function ModuleNavigation({ modules, activeModule, onChange, mobi
     {modules.map((module) => <button type="button" key={module.id} className={activeModule === module.id ? "active" : ""} onClick={() => onChange(module.id)} aria-pressed={activeModule === module.id}>
       <AppIcon name={module.icon} size={mobile ? 20 : 22} />
       <span><strong>{mobile ? module.shortTitle : module.title}</strong>{!mobile && <small>{module.subtitle}</small>}</span>
+      <i className="v2-nav-indicator" aria-hidden="true" />
     </button>)}
   </nav>;
 }
