@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { XAVPAC_HOME } from "../config/home";
 import { reportDataUpdate } from "../lib/buildInfo";
 import LightningMapPanel from "./LightningMapPanel";
+import TrendSparkline from "./ui/TrendSparkline";
 
 type CurrentWeather = {
   temperature_2m: number;
@@ -189,6 +190,11 @@ export default function WeatherPanel() {
             <strong>{Math.round(current.temperature_2m)} °C</strong>
             <small>{weatherLabel(current.weather_code)}</small>
           </div>
+          <TrendSparkline
+            className="weather-temperature-trend"
+            values={weather.daily.temperature_2m_max}
+            label="Tendance des températures maximales sur sept jours"
+          />
         </div>
       </section>
 

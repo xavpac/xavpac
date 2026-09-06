@@ -1082,6 +1082,9 @@ export default function AviationPanel() {
           nationalAlertRadius={radius}
           soundsEnabled={soundsEnabled}
           favorite={favoriteIds.includes(selected.id)}
+          observerLabel={observerReference === "moi" ? "MOI" : observerReference === "home" ? "HOME" : "POINT CHOISI"}
+          observerAccuracy={observerReference === "moi" ? observerAccuracy : null}
+          selectionLabel={nearbyNationalAlert?.id === selected.id ? "PRIORITÉ NATIONALE" : "LE PLUS PROCHE"}
           onClose={closeAircraftView}
           onShowMap={closeAircraftView}
           onToggleSounds={toggleAircraftViewSounds}
@@ -1120,12 +1123,12 @@ export default function AviationPanel() {
         <div className="aviation-alert-radius"><span>LE SON NATIONAL SE DÉCLENCHE UNIQUEMENT DANS</span><div>{AVIATION_RADIUS_OPTIONS.map((value) => <button type="button" key={value} className={radius === value ? "active" : ""} onClick={() => changeAlertRadius(value)}>{value} km</button>)}</div><small>Ce choix règle aussi le rayon de la carte et reste mémorisé sur ce Mac.</small></div>
       </div>
 
-      <section className={`spotter-fun-panel panel ${skyMood.level}`} aria-label="Cockpit fun Spotter">
-        <header><div><span>COCKPIT FUN</span><h2>Votre ciel, comme un petit jeu d’observation</h2></div><div className="spotter-fun-score"><small>SCORE LIVE</small><strong>{funScore}</strong><span>/ 99</span></div></header>
+      <section className={`spotter-fun-panel panel ${skyMood.level}`} aria-label="Synthèse visuelle Spotter">
+        <header><div><span>SYNTHÈSE DU CIEL</span><h2>Ce qui mérite votre regard</h2></div><div className="spotter-fun-score"><small>ACTIVITÉ</small><strong>{funScore}</strong><span>/ 99</span></div></header>
         <div className="spotter-fun-grid">
           <article className="spotter-sky-mood"><div className="spotter-radar-toy"><i /><span>{skyMood.icon}</span></div><div><small>AMBIANCE DU CIEL</small><strong>{skyMood.label}</strong><p>{skyMood.message}</p></div></article>
           <button type="button" className="spotter-fun-target" disabled={!funClosest} onClick={selectFunClosest}><small>🎯 CIBLE LA PLUS PROCHE</small><strong>{funClosestLabel}</strong><span>{funClosest ? `${funClosest.distance.toFixed(1)} km • ${funClosestBearing?.label ?? "direction en attente"}` : "Aucun avion pour le moment"}</span><em>{funClosest ? "Afficher sur la carte →" : "Le radar continue de chercher"}</em></button>
-          <article className="spotter-fun-bingo"><small>🏆 MINI-MISSION</small><strong>Le bingo du ciel</strong><div><span className={funClosePassage ? "done" : ""}>✓ Avion à moins de 10 km</span><span className={funRouteReady ? "done" : ""}>✓ Trajet identifié</span><span className={funSpecialSeen ? "done" : ""}>✓ Appareil spécial</span></div></article>
+          <article className="spotter-fun-bingo"><small>REPÈRES LIVE</small><strong>À observer aujourd’hui</strong><div><span className={funClosePassage ? "done" : ""}>✓ Avion à moins de 10 km</span><span className={funRouteReady ? "done" : ""}>✓ Trajet identifié</span><span className={funSpecialSeen ? "done" : ""}>✓ Appareil spécial</span></div></article>
           <article className="spotter-fun-compass"><small>🧭 OÙ REGARDER ?</small><strong>{funClosestBearing?.label ?? "Patientez…"}</strong><div className="spotter-compass-dial" style={{ "--spotter-bearing": `${funClosestBearing?.bearing ?? 0}deg` } as CSSProperties}><i>➤</i></div><span>{funClosestBearing ? `${Math.round(funClosestBearing.bearing)}° depuis ${observerReference === "home" ? "HOME" : "votre position"}` : "Direction disponible dès le prochain signal"}</span></article>
         </div>
       </section>
@@ -1155,13 +1158,16 @@ export default function AviationPanel() {
 
       <div className={`aviation-location-panel panel ${observerPosition ? "ready" : "missing"}`}>
         <div className="aviation-location-state"><span>POSITION D’OBSERVATION • {observerReference === "home" ? "HOME" : observerReference === "moi" ? "MOI" : "POINT CHOISI"}</span><strong>{observerStatus}</strong><small>{observerPosition ? `${observerReference === "moi" ? gpsQualityReason : "Coordonnées définies volontairement"} • les distances sont calculées depuis cette référence.` : "Aucun trafic local n’est affiché tant que votre position n’est pas fiable."}</small>{savedHome && <em>📍 HOME enregistré • {savedHome[0].toFixed(5)} / {savedHome[1].toFixed(5)}</em>}</div>
-        <div className="aviation-location-inputs">
+        <details className="aviation-location-settings" open={observerPosition ? undefined : true}>
+          <summary><span>Réglages de position</span><strong>{observerPosition ? "Modifier" : "Définir"}</strong></summary>
+          <div className="aviation-location-inputs">
           <label>Adresse ou commune <span><input value={observerCommune} onChange={(event) => setObserverCommune(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void searchObserverCommune(); } }} placeholder="Ex. 12 rue…, 01380 Bâgé-Dommartin" /><button type="button" onClick={() => void searchObserverCommune()}>Me placer</button></span></label>
           <label>Latitude, longitude <span><input value={observerCoordinates} onChange={(event) => setObserverCoordinates(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); applyObserverCoordinates(); } }} placeholder="46.306, 4.831" /><button type="button" onClick={applyObserverCoordinates}>Appliquer</button></span></label>
           <button type="button" className="aviation-gps-retry" onClick={useGpsObserver}>{observerReference === "moi" ? "Relancer le GPS" : "Reprendre MOI GPS"}</button>
           <button type="button" className="aviation-home-save" onClick={saveCurrentHome}>🏠 Revenir à mon adresse HOME</button>
           {savedHome && <button type="button" className="aviation-home-use" onClick={useSavedHome}>🏠 Aller à HOME</button>}
-        </div>
+          </div>
+        </details>
         {observerMessage && <p>{observerMessage}</p>}
       </div>
 

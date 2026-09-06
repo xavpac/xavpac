@@ -39,6 +39,9 @@ type Props = {
   nationalAlertRadius: number;
   soundsEnabled: boolean;
   favorite: boolean;
+  observerLabel: string;
+  observerAccuracy: number | null;
+  selectionLabel: string;
   onClose: () => void;
   onShowMap: () => void;
   onToggleSounds: () => void;
@@ -100,7 +103,7 @@ function MetricIcon({ kind }: { kind: "altitude" | "speed" | "direction" }) {
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d={paths[kind]} /></svg>;
 }
 
-export default function AircraftView({ open, rootRef, aircraft, enriched, operator, route, routeConfidence, observerPosition, passage, trail, passageCount, nationalAlert, nationalAlertRadius, soundsEnabled, favorite, onClose, onShowMap, onToggleSounds, onToggleFavorite }: Props) {
+export default function AircraftView({ open, rootRef, aircraft, enriched, operator, route, routeConfidence, observerPosition, passage, trail, passageCount, nationalAlert, nationalAlertRadius, soundsEnabled, favorite, observerLabel, observerAccuracy, selectionLabel, onClose, onShowMap, onToggleSounds, onToggleFavorite }: Props) {
   const [routeClockMs, setRouteClockMs] = useState<number | null>(null);
 
   useEffect(() => {
@@ -226,7 +229,7 @@ export default function AircraftView({ open, rootRef, aircraft, enriched, operat
       <header className="aircraft-view-header">
         <div className="aircraft-view-title">
           <button type="button" onClick={onClose} aria-label="Fermer la Vue avion">←</button>
-          <div><div><h2>{flightLabel}</h2><span className="aircraft-view-live-dot" /><b>{status}</b><em>Le plus proche</em></div><p>{aircraftType}</p></div>
+          <div><div><h2>{flightLabel}</h2><span className="aircraft-view-live-dot" /><b>{status}</b><em>{selectionLabel}</em></div><p>{aircraftType}</p></div>
         </div>
         <div className="aircraft-view-company">
           <OperatorBrand name={operator} logoUrl={enriched?.logo} />
@@ -234,6 +237,11 @@ export default function AircraftView({ open, rootRef, aircraft, enriched, operat
           <button type="button" className={favorite ? "active" : ""} onClick={onToggleFavorite} aria-label={favorite ? "Retirer des favoris" : "Ajouter aux favoris"}>☆</button>
         </div>
       </header>
+
+      <div className="aircraft-view-reference" aria-label={`${observerLabel}, ${selectionLabel}, ${aircraft.distance.toFixed(1)} kilomètres`}>
+        <span>⌖ {observerLabel}{observerAccuracy === null ? "" : ` • GPS ±${Math.round(observerAccuracy)} m`}</span>
+        <strong>✈ {selectionLabel} • {aircraft.distance.toFixed(1).replace(".", ",")} km</strong>
+      </div>
 
       <section className="aircraft-view-mobile-sheet" aria-label="Informations essentielles sur l’avion">
         <div className="aircraft-view-mobile-identity">

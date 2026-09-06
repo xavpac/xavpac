@@ -217,9 +217,9 @@ export default function FireRiskPanel() {
   return <section className="fire-risk-panel">
     <header className="fire-risk-hero">
       <div>
-        <span className="fire-risk-eyebrow">Nouveau · XavPac 6.5 terrain</span>
+        <span className="fire-risk-eyebrow">SURVEILLANCE TERRAIN · LIVE</span>
         <h2>Feux &amp; Risques</h2>
-        <p>Détections thermiques, carroyage DFCI, accessibilité forestière et annotations locales sur une seule carte.</p>
+        <p>Détections thermiques, DFCI et situation terrain sur une seule carte.</p>
       </div>
       <div className="fire-risk-source-pills" aria-label="Sources cartographiques">
         <span><i className="live" /> NASA FIRMS</span>
