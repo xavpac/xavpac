@@ -3165,6 +3165,24 @@ a { color: inherit; }
 }
 @media(prefers-reduced-motion:reduce){.aircraft-standby-sweep,.aircraft-standby-live i,.aircraft-standby-blip{animation:none}}
 
+/* Lecture immédiate du trafic autour de la référence active. */
+.aircraft-proximity-strip { display:grid; grid-template-columns:1.35fr repeat(3,minmax(0,1fr)); gap:5px; padding:5px; border:1px solid rgba(33,137,191,.3); border-radius:17px; background:rgba(255,255,255,.9); box-shadow:0 12px 28px rgba(16,87,128,.16); backdrop-filter:blur(15px); }
+.aircraft-proximity-strip article { min-width:0; display:grid; align-content:center; padding:8px 9px; border:1px solid rgba(48,132,177,.16); border-radius:11px; background:rgba(231,247,255,.72); text-align:center; }
+.aircraft-proximity-strip article.nearest { text-align:left; background:linear-gradient(135deg,color-mix(in srgb,var(--family-accent,#35b9ff) 19%,#fff),#f7fdff); }
+.aircraft-proximity-strip span,.aircraft-proximity-strip strong,.aircraft-proximity-strip small { min-width:0; display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.aircraft-proximity-strip span { color:#39708f; font-size:7px; font-weight:950; letter-spacing:.08em; }
+.aircraft-proximity-strip strong { margin-top:2px; color:#082f4c; font-size:19px; line-height:1; }
+.aircraft-proximity-strip article.nearest strong { color:#0877ad; font-size:17px; }
+.aircraft-proximity-strip small { margin-top:3px; color:#68859a; font-size:6px; font-weight:750; }
+.aircraft-view-proximity-desktop { position:absolute; z-index:9; top:112px; right:3vw; width:clamp(430px,36vw,650px); box-sizing:border-box; }
+.aircraft-view-proximity-mobile { display:none; }
+.aircraft-view-proximity-standby { width:min(650px,100%); box-sizing:border-box; margin-top:14px; border-color:rgba(92,211,255,.28); background:rgba(3,24,45,.78); box-shadow:none; }
+.aircraft-view-proximity-standby article { border-color:rgba(92,211,255,.14); background:rgba(28,84,116,.26); }
+.aircraft-view-proximity-standby article.nearest { background:linear-gradient(135deg,rgba(26,137,180,.35),rgba(4,30,52,.84)); }
+.aircraft-view-proximity-standby span { color:#75d8f5; }
+.aircraft-view-proximity-standby strong,.aircraft-view-proximity-standby article.nearest strong { color:#f4fbff; }
+.aircraft-view-proximity-standby small { color:#91adbd; }
+
 /* Vue avion mobile : une carte et une fiche dédiées remplacent l'empilement bureau. */
 .aircraft-view-mobile-sheet { display:none; }
 
@@ -3179,6 +3197,7 @@ a { color: inherit; }
   .aircraft-view-mission-panel,
   .aircraft-view-distance-callout,
   .aircraft-view-national-alert { display:none; }
+  .aircraft-view-proximity-desktop { display:none; }
   .aircraft-view-header { z-index:12; align-items:center; gap:8px; padding:max(9px,env(safe-area-inset-top)) 9px 7px; background:linear-gradient(180deg,rgba(2,13,29,.98),rgba(2,13,29,.82)); }
   .aircraft-view-title { min-width:0; flex:1; gap:8px; }
   .aircraft-view-title>button { width:34px; height:34px; flex:0 0 auto; }
@@ -3198,6 +3217,12 @@ a { color: inherit; }
   .aircraft-view-geo-panel>header button { padding:6px 7px; font-size:6px; }
   .aircraft-view-geo-canvas { height:min(29dvh,240px); transform:none; }
   .aircraft-view-mobile-sheet { position:absolute; z-index:10; top:calc(114px + min(29dvh,240px)); right:8px; bottom:max(8px,env(safe-area-inset-bottom)); left:8px; display:grid; grid-template-rows:auto auto auto auto; align-content:start; gap:8px; overflow:auto; padding:10px; border:1px solid color-mix(in srgb,var(--family-accent) 60%,transparent); border-radius:15px; color:#f5f9ff; background:rgba(2,17,37,.97); box-shadow:0 16px 35px rgba(0,0,0,.45); }
+  .aircraft-view-proximity-mobile { display:grid; grid-template-columns:1.3fr repeat(3,minmax(0,1fr)); gap:4px; padding:0; border:0; border-radius:0; background:transparent; box-shadow:none; backdrop-filter:none; }
+  .aircraft-view-proximity-mobile article { padding:6px 4px; border-color:rgba(94,183,232,.2); border-radius:8px; background:rgba(255,255,255,.04); }
+  .aircraft-view-proximity-mobile article.nearest { background:color-mix(in srgb,var(--family-accent) 16%,rgba(255,255,255,.03)); }
+  .aircraft-view-proximity-mobile span { color:#75b9de; font-size:5px; letter-spacing:.03em; }
+  .aircraft-view-proximity-mobile strong,.aircraft-view-proximity-mobile article.nearest strong { color:#f5fbff; font-size:13px; }
+  .aircraft-view-proximity-mobile small { color:#8da9bc; font-size:5px; }
   .aircraft-view-mobile-identity { min-width:0; display:grid; grid-template-columns:92px minmax(0,1fr); align-items:center; gap:10px; }
   .aircraft-view-mobile-photo { width:92px; height:72px; border:1px solid rgba(101,197,240,.32); border-radius:9px; background:#092a47; }
   .aircraft-view-mobile-photo>img { width:100%; height:100%; display:block; object-fit:cover; }
@@ -3223,6 +3248,11 @@ a { color: inherit; }
   .aircraft-view-mobile-stats span { color:#7fb2d2; font-size:6px; text-transform:uppercase; }
   .aircraft-view-mobile-stats strong { margin-top:3px; font-size:9px; }
   .aircraft-view-mobile-map-button { min-height:36px; border:1px solid color-mix(in srgb,var(--family-accent) 75%,#fff); border-radius:9px; color:#fff; background:color-mix(in srgb,var(--family-accent) 48%,#073257); font-size:9px!important; font-weight:950!important; }
+  .aircraft-view-proximity-standby { margin-top:9px; }
+  .aircraft-view-proximity-standby article { padding:5px 3px; }
+  .aircraft-view-proximity-standby span { font-size:5px; }
+  .aircraft-view-proximity-standby strong,.aircraft-view-proximity-standby article.nearest strong { font-size:12px; }
+  .aircraft-view-proximity-standby small { display:none; }
 }
 
 @media(max-width:950px) and (max-height:600px) and (orientation:landscape){
@@ -3235,6 +3265,7 @@ a { color: inherit; }
   .aircraft-view-mission-panel,
   .aircraft-view-distance-callout,
   .aircraft-view-national-alert { display:none; }
+  .aircraft-view-proximity-desktop { display:none; }
   .aircraft-view-header { align-items:center; padding:max(6px,env(safe-area-inset-top)) max(9px,env(safe-area-inset-right)) 5px max(9px,env(safe-area-inset-left)); }
   .aircraft-view-title h2 { font-size:19px; }
   .aircraft-view-title p,.aircraft-view-title em,.aircraft-view-company .operator-brand { display:none; }
@@ -3243,6 +3274,11 @@ a { color: inherit; }
   .aircraft-view-geo-panel>header { min-height:39px; padding:4px 7px; }
   .aircraft-view-geo-canvas { height:calc(100% - 39px); transform:none; }
   .aircraft-view-mobile-sheet { position:absolute; z-index:10; top:52px; right:max(7px,env(safe-area-inset-right)); bottom:7px; left:auto; width:calc(44vw - 21px); box-sizing:border-box; display:grid; align-content:start; gap:6px; overflow:auto; padding:8px; border:1px solid color-mix(in srgb,var(--family-accent) 60%,transparent); border-radius:12px; color:#f5f9ff; background:rgba(2,17,37,.97); }
+  .aircraft-view-proximity-mobile { display:grid; grid-template-columns:1.3fr repeat(3,minmax(0,1fr)); gap:3px; padding:0; border:0; border-radius:0; background:transparent; box-shadow:none; }
+  .aircraft-view-proximity-mobile article { padding:4px 3px; border-radius:7px; background:rgba(255,255,255,.04); }
+  .aircraft-view-proximity-mobile span { font-size:4px; }
+  .aircraft-view-proximity-mobile strong,.aircraft-view-proximity-mobile article.nearest strong { color:#f5fbff; font-size:10px; }
+  .aircraft-view-proximity-mobile small { display:none; }
   .aircraft-view-mobile-identity { grid-template-columns:70px minmax(0,1fr); gap:8px; }
   .aircraft-view-mobile-photo { width:70px; height:55px; }
   .aircraft-view-mobile-identity>div>strong { font-size:14px; }

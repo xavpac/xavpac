@@ -25,6 +25,7 @@ import { distanceKm } from "../lib/aviation/geometry";
 import { routeCanUseAirportWeather, routeWeatherKey, weatherCondition, weatherVisibility } from "../lib/aviation/routeWeather";
 import { resolvePreferredAircraftId } from "../lib/aviation/selection";
 import { aircraftSoundNature } from "../lib/aviation/audioSignatures";
+import { aircraftCoverageRadius, summarizeAircraftProximity } from "../lib/aviation/proximitySummary";
 import { enterFullscreenIfAvailable, exitFullscreenIfActive, isFullscreenActive } from "../lib/fullscreen";
 import {
   getBrowserStorage,
@@ -228,6 +229,7 @@ export default function AviationPanel() {
   const [observerMessage, setObserverMessage] = useState("");
   const [savedHome, setSavedHome] = useState<[number, number] | null>(XAVPAC_HOME.position);
   const [aircraft, setAircraft] = useState<AircraftWithDistance[]>([]);
+  const [aircraftViewProximity, setAircraftViewProximity] = useState(() => summarizeAircraftProximity([]));
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [manualSelection, setManualSelection] = useState(false);
   const [selectionDismissed, setSelectionDismissed] = useState(false);
@@ -355,6 +357,7 @@ export default function AviationPanel() {
     async function refresh() {
       if (!observerPosition) {
         setAircraft([]);
+        setAircraftViewProximity(summarizeAircraftProximity([]));
         setSelectedId(null);
         setSourceStatus("Position requise pour rechercher les avions proches");
         return;
@@ -362,7 +365,8 @@ export default function AviationPanel() {
       try {
         setError("");
         const center = observerPosition;
-        const response = await fetch(`/api/aircraft?lat=${center[0]}&lon=${center[1]}&radius=${radius}`, { cache: "no-store" });
+        const coverageRadius = aircraftCoverageRadius(radius);
+        const response = await fetch(`/api/aircraft?lat=${center[0]}&lon=${center[1]}&radius=${coverageRadius}`, { cache: "no-store" });
         const payload = await response.json();
         if (cancelled) return;
 
@@ -373,12 +377,14 @@ export default function AviationPanel() {
           return;
         }
 
-        const sorted: AircraftWithDistance[] = (Array.isArray(payload.aircraft) ? payload.aircraft : [])
+        const coverageAircraft: AircraftWithDistance[] = (Array.isArray(payload.aircraft) ? payload.aircraft : [])
           .map((item: LiveAircraft) => ({ ...item, distance: distanceKm(center, [item.latitude, item.longitude]) }))
-          .filter((item: AircraftWithDistance) => item.distance <= radius + 1)
+          .filter((item: AircraftWithDistance) => item.distance <= coverageRadius + 1)
           .sort((a: AircraftWithDistance, b: AircraftWithDistance) => a.distance - b.distance);
+        const sorted = coverageAircraft.filter((item) => item.distance <= radius + 1);
 
         setAircraft(sorted);
+        setAircraftViewProximity(summarizeAircraftProximity(coverageAircraft));
         reportDataUpdate("aviation");
 
         for (const item of sorted.slice(0, 80)) {
@@ -1063,6 +1069,7 @@ export default function AviationPanel() {
           radiusKm={radius}
           sourceStatus={sourceStatus}
           soundsEnabled={soundsEnabled}
+          proximity={aircraftViewProximity}
           onClose={closeAircraftView}
           onToggleSounds={toggleAircraftViewSounds}
         />}
@@ -1085,6 +1092,7 @@ export default function AviationPanel() {
           observerLabel={observerReference === "moi" ? "MOI" : observerReference === "home" ? "HOME" : "POINT CHOISI"}
           observerAccuracy={observerReference === "moi" ? observerAccuracy : null}
           selectionLabel={nearbyNationalAlert?.id === selected.id ? "PRIORITÉ NATIONALE" : "LE PLUS PROCHE"}
+          proximity={aircraftViewProximity}
           onClose={closeAircraftView}
           onShowMap={closeAircraftView}
           onToggleSounds={toggleAircraftViewSounds}

@@ -12,7 +12,9 @@ import { estimateRouteTiming } from "../../lib/aviation/routeTiming";
 import type { PassageAnalysis } from "../../lib/aviation/passageTracker";
 import type { MapTrail } from "../StableMap";
 import AircraftPhoto from "./AircraftPhoto";
+import AircraftProximityStrip from "./AircraftProximityStrip";
 import OperatorBrand from "./OperatorBrand";
+import type { AircraftProximitySummary } from "../../lib/aviation/proximitySummary";
 
 const MiniMap = dynamic(() => import("../StableMap"), { ssr: false });
 
@@ -42,6 +44,7 @@ type Props = {
   observerLabel: string;
   observerAccuracy: number | null;
   selectionLabel: string;
+  proximity: AircraftProximitySummary;
   onClose: () => void;
   onShowMap: () => void;
   onToggleSounds: () => void;
@@ -103,7 +106,7 @@ function MetricIcon({ kind }: { kind: "altitude" | "speed" | "direction" }) {
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d={paths[kind]} /></svg>;
 }
 
-export default function AircraftView({ open, rootRef, aircraft, enriched, operator, route, routeConfidence, observerPosition, passage, trail, passageCount, nationalAlert, nationalAlertRadius, soundsEnabled, favorite, observerLabel, observerAccuracy, selectionLabel, onClose, onShowMap, onToggleSounds, onToggleFavorite }: Props) {
+export default function AircraftView({ open, rootRef, aircraft, enriched, operator, route, routeConfidence, observerPosition, passage, trail, passageCount, nationalAlert, nationalAlertRadius, soundsEnabled, favorite, observerLabel, observerAccuracy, selectionLabel, proximity, onClose, onShowMap, onToggleSounds, onToggleFavorite }: Props) {
   const [routeClockMs, setRouteClockMs] = useState<number | null>(null);
 
   useEffect(() => {
@@ -243,6 +246,8 @@ export default function AircraftView({ open, rootRef, aircraft, enriched, operat
         <strong>✈ {selectionLabel} • {aircraft.distance.toFixed(1).replace(".", ",")} km</strong>
       </div>
 
+      <AircraftProximityStrip className="aircraft-view-proximity-desktop" proximity={proximity} />
+
       <section className="aircraft-view-mobile-sheet" aria-label="Informations essentielles sur l’avion">
         <div className="aircraft-view-mobile-identity">
           <AircraftPhoto
@@ -265,6 +270,8 @@ export default function AircraftView({ open, rootRef, aircraft, enriched, operat
             <small>{operator ?? "Opérateur non identifié"}</small>
           </div>
         </div>
+
+        <AircraftProximityStrip className="aircraft-view-proximity-mobile" proximity={proximity} />
 
         <div className="aircraft-view-mobile-route">
           <div><span>DÉPART</span><strong>{airportCode(route?.origin)}</strong><small>{airportPlace(route?.origin, "Non disponible")}</small></div>

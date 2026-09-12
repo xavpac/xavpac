@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, type RefObject } from "react";
+import type { AircraftProximitySummary } from "../../lib/aviation/proximitySummary";
+import AircraftProximityStrip from "./AircraftProximityStrip";
 
 type Props = {
   open: boolean;
@@ -10,11 +12,14 @@ type Props = {
   radiusKm: number;
   sourceStatus: string;
   soundsEnabled: boolean;
+  proximity: AircraftProximitySummary;
   onClose: () => void;
   onToggleSounds: () => void;
 };
 
-export default function AircraftStandbyView({ open, rootRef, observerLabel, observerPosition, radiusKm, sourceStatus, soundsEnabled, onClose, onToggleSounds }: Props) {
+export default function AircraftStandbyView({ open, rootRef, observerLabel, observerPosition, radiusKm, sourceStatus, soundsEnabled, proximity, onClose, onToggleSounds }: Props) {
+  const trafficWithinTwenty = proximity.within20Km > 0;
+
   useEffect(() => {
     if (!open) return;
 
@@ -75,9 +80,12 @@ export default function AircraftStandbyView({ open, rootRef, observerLabel, obse
         </div>
         <div className="aircraft-standby-message">
           <span>RECHERCHE EN CONTINU</span>
-          <h1>Aucun avion<br />pour le moment</h1>
-          <p>Dès qu’un appareil entre dans votre zone, sa photo, sa compagnie et son trajet s’affichent automatiquement.</p>
+          <h1>{trafficWithinTwenty ? <>Trafic repéré<br />à proximité</> : <>Aucun avion<br />pour le moment</>}</h1>
+          <p>{trafficWithinTwenty
+            ? `${proximity.within20Km} appareil${proximity.within20Km > 1 ? "s" : ""} détecté${proximity.within20Km > 1 ? "s" : ""} dans les 20 km. Le plus proche reste suivi automatiquement.`
+            : "Dès qu’un appareil entre dans votre zone, sa photo, sa compagnie et son trajet s’affichent automatiquement."}</p>
           <div><i /> Surveillance de <strong>{radiusKm} km</strong> autour de votre point</div>
+          <AircraftProximityStrip className="aircraft-view-proximity-standby" proximity={proximity} />
         </div>
       </main>
 
