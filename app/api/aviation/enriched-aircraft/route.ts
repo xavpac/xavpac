@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
   }
   return NextResponse.json({
     ok: true,
-    source: "Airplanes.live + mémoire XavPac + ADSBDB + OpenSky",
+    source: "Airplanes.live + adsb.fi + mémoire XavPac + ADSBDB + HexDB + OpenSky",
     enriched,
     metrics: {
       total: enriched.length,

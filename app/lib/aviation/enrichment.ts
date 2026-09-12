@@ -6,6 +6,7 @@ import { classifyAircraftVisual } from "./aircraftVisual.ts";
 import { resolveAircraftIdentity, type IdentityCandidate } from "./identityResolver.ts";
 import type { AircraftCategory, AircraftEnrichmentInput, AirportIdentity, DataMethod, EnrichedAircraft, EnrichedPhoto, RouteConfidence } from "./types.ts";
 import { lookupAdsbDb, type AdsbDbAirport } from "./providers/adsbdb.ts";
+import { lookupHexDb } from "./providers/hexdb.ts";
 import { lookupOpenSkyFlight } from "./providers/opensky.ts";
 import { lookupExactPhoto } from "./providers/planespotters.ts";
 import { resolveAircraftRoute, type RouteCandidate } from "./routeResolver.ts";
@@ -89,7 +90,20 @@ export async function enrichAircraft(input: AircraftEnrichmentInput): Promise<En
   const adsbdb = await lookupAdsbDb({ modeS, registration: registrationInput, callsign: rawCallsign });
   const aircraft = adsbdb.aircraft;
   const route = adsbdb.route;
+  const needsHexDb = Boolean(modeS) && (
+    !(registrationInput || aircraft?.registration) ||
+    !(input.aircraftType?.trim() || input.description?.trim() || aircraft?.icao_type || aircraft?.type) ||
+    !(input.operator?.trim() || aircraft?.registered_owner) ||
+    !aircraft?.manufacturer
+  );
+  const hexdb = needsHexDb ? await lookupHexDb(modeS) : null;
   const verified = verifiedAircraftIdentity(modeS);
+  const callsignAirline = findAirline({
+    icao: route?.airline?.icao ?? parsed.airlineIcao,
+    iata: route?.airline?.iata ?? parsed.airlineIata,
+    operator: route?.airline?.name ?? input.operator,
+    callsign: rawCallsign
+  });
   const candidates: IdentityCandidate[] = [
     {
       source: input.positionSource?.trim() || "Airplanes.live",
@@ -119,6 +133,33 @@ export async function enrichAircraft(input: AircraftEnrichmentInput): Promise<En
         icaoTypeCode: input.learnedIdentity.icaoTypeCode,
         operator: input.learnedIdentity.operator,
         category: input.learnedIdentity.category
+      }
+    }] : []),
+    ...(callsignAirline ? [{
+      source: "Référentiel compagnies XavPac",
+      retrievedAt,
+      confidence: "inferred" as const,
+      method: "calculated" as const,
+      priority: 30,
+      values: {
+        operator: callsignAirline.canonicalName,
+        category: "airliner"
+      }
+    }] : []),
+    ...(hexdb ? [{
+      source: "HexDB",
+      retrievedAt,
+      confidence: "probable" as const,
+      method: "community" as const,
+      // Source de complément : elle remplit les trous sans remplacer le flux live.
+      priority: 35,
+      values: {
+        registration: normalizeRegistration(hexdb.registration),
+        manufacturer: hexdb.manufacturer,
+        aircraftModel: hexdb.aircraftModel,
+        icaoTypeCode: hexdb.icaoTypeCode,
+        operator: hexdb.registeredOwner,
+        category: identityCategory(hexdb.icaoTypeCode, hexdb.aircraftModel, hexdb.manufacturer, hexdb.registeredOwner)
       }
     }] : []),
     ...(aircraft ? [{
@@ -162,7 +203,7 @@ export async function enrichAircraft(input: AircraftEnrichmentInput): Promise<En
     iata: route?.airline?.iata ?? parsed.airlineIata,
     operator: route?.airline?.name ?? identity.operator ?? input.operator,
     callsign: callsignIcao ?? rawCallsign
-  });
+  }) ?? callsignAirline;
 
   const routeCandidates: RouteCandidate[] = [];
   const adsbDbOrigin = airport(route?.origin);

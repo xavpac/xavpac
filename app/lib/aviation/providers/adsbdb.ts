@@ -22,38 +22,50 @@ async function fetchAdsbDb(path: string, revalidate: number) {
 
 type Input = { modeS?: string | null; registration?: string | null; callsign?: string | null };
 
+function aircraftRecord(value: unknown): AdsbDbResult["aircraft"] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const aircraft = value as Record<string, unknown>;
+  const identityFields = ["registration", "type", "icao_type", "manufacturer", "registered_owner", "url_photo", "url_photo_thumbnail"];
+  return identityFields.some((field) => typeof aircraft[field] === "string" && aircraft[field]?.trim())
+    ? aircraft as NonNullable<AdsbDbResult["aircraft"]>
+    : null;
+}
+
+function cachedAircraft(key: string) {
+  return cachedWithPolicy(
+    `adsbdb-aircraft:${key}`,
+    { ttlMs: 30 * 86_400_000, negativeTtlMs: 15 * 60_000, isNegative: (value) => value === null },
+    async () => {
+      const result = await fetchAdsbDb(`aircraft/${encodeURIComponent(key)}`, 2_592_000);
+      return aircraftRecord(result?.aircraft ?? result);
+    }
+  );
+}
+
 const adapter: SourceAdapter<Input, AdsbDbResult> = {
   id: "adsbdb",
   name: "ADSBDB",
   enabled: process.env.ADSBDB_ENABLED !== "false",
   quota: "512 requêtes/minute avant blocage temporaire",
   async fetch(input) {
-  const modeS = normalizeModeS(input.modeS);
-  const registration = normalizeRegistration(input.registration);
-  const callsign = normalizeRawCallsign(input.callsign);
-  const aircraftKey = modeS || registration;
-  const aircraftPromise = aircraftKey
-    ? cachedWithPolicy(
-      `adsbdb-aircraft:${aircraftKey}`,
-      { ttlMs: 30 * 86_400_000, negativeTtlMs: 15 * 60_000, isNegative: (value) => value === null },
-      async () => {
-        const result = await fetchAdsbDb(`aircraft/${encodeURIComponent(aircraftKey)}`, 2_592_000);
-        return result?.aircraft ?? result ?? null;
-      }
-    )
-    : Promise.resolve(null);
-  const routePromise = callsign && /^[A-Z0-9]{2,10}$/.test(callsign)
-    ? cachedWithPolicy(
-      `adsbdb-route:${callsign}`,
-      { ttlMs: 30 * 60_000, negativeTtlMs: 5 * 60_000, isNegative: (value) => value === null },
-      async () => {
-        const result = await fetchAdsbDb(`callsign/${encodeURIComponent(callsign)}`, 1800);
-        return result?.flightroute ?? result ?? null;
-      }
-    )
-    : Promise.resolve(null);
-  const [aircraft, route] = await Promise.all([aircraftPromise, routePromise]);
-  return { aircraft, route };
+    const modeS = normalizeModeS(input.modeS);
+    const registration = normalizeRegistration(input.registration);
+    const callsign = normalizeRawCallsign(input.callsign);
+    const aircraftPromise = modeS
+      ? cachedAircraft(modeS).then((aircraft) => aircraft ?? (registration ? cachedAircraft(registration) : null))
+      : registration ? cachedAircraft(registration) : Promise.resolve(null);
+    const routePromise = callsign && /^[A-Z0-9]{2,10}$/.test(callsign)
+      ? cachedWithPolicy(
+        `adsbdb-route:${callsign}`,
+        { ttlMs: 30 * 60_000, negativeTtlMs: 5 * 60_000, isNegative: (value) => value === null },
+        async () => {
+          const result = await fetchAdsbDb(`callsign/${encodeURIComponent(callsign)}`, 1800);
+          return result?.flightroute ?? result ?? null;
+        }
+      )
+      : Promise.resolve(null);
+    const [aircraft, route] = await Promise.all([aircraftPromise, routePromise]);
+    return { aircraft, route };
   }
 };
 registerSource(adapter);
