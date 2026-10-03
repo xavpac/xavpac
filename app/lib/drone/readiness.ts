@@ -49,8 +49,8 @@ export function buildDroneReadiness(input: DroneReadinessInput): DroneReadiness 
       id: "rtba",
       level: "check",
       label: input.rtbaOutsideLocalCoverage
-        ? "Consulter l’AZBA national : la carte XavPac ne couvre localement que LF-R45."
-        : "Consulter l’AZBA officiel pour confirmer l’activation RTBA."
+        ? "Ouvrir la carte AZBA France et vérifier le créneau RTBA."
+        : "Ouvrir la carte AZBA officielle et confirmer l’activation RTBA."
     });
   } else {
     confirmed.push("RTBA vérifié pour le créneau");
@@ -75,7 +75,7 @@ export function buildDroneReadiness(input: DroneReadinessInput): DroneReadiness 
   if (input.nearbyAircraftCount > 0) actions.push({ id: "traffic", level: "check", label: `${input.nearbyAircraftCount} aéronef${input.nearbyAircraftCount === 1 ? "" : "s"} en rapprochement : maintenir une vigilance renforcée.` });
   else confirmed.push("Aucun rapprochement ADS-B préoccupant");
 
-  if (!input.pilotChecksConfirmed) actions.push({ id: "local", level: "check", label: "Confirmer les zones UAS, autorisations, SUP AIP et restrictions locales." });
+  if (!input.pilotChecksConfirmed) actions.push({ id: "local", level: "check", label: "Ouvrir la carte UAS officielle puis vérifier SUP AIP et restrictions temporaires." });
 
   const hasBlocking = actions.some((action) => action.level === "blocking");
   const tone: DroneReadinessTone = hasBlocking ? "stop" : actions.length ? "hold" : "clear";
