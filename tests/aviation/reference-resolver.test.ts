@@ -26,10 +26,10 @@ test("utilise MOI automatiquement sur smartphone même loin de HOME", () => {
   assert.equal(result.fallbackFrom, null);
 });
 
-test("conserve HOME par défaut sur Mac", () => {
+test("utilise aussi MOI automatiquement sur ordinateur quand le GPS est exploitable", () => {
   const result = resolveReference({ device: "desktop", home, gps: gps(milan) });
-  assert.equal(result.kind, "home");
-  assert.deepEqual(result.position, home);
+  assert.equal(result.kind, "moi");
+  assert.deepEqual(result.position, milan);
 });
 
 test("une sélection volontaire de HOME reste possible sur smartphone", () => {
@@ -45,7 +45,7 @@ test("conserve la dernière position GPS valide lors d'une perte temporaire", ()
   assert.equal(result.usedLastValidGps, true);
 });
 
-test("HOME ne sert que de secours mobile sans position GPS connue", () => {
+test("HOME sert de secours sans position GPS connue", () => {
   const result = resolveReference({ device: "mobile", home, gps: null });
   assert.equal(result.kind, "home");
   assert.equal(result.fallbackFrom, "moi");

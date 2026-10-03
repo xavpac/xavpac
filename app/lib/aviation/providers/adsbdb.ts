@@ -1,5 +1,6 @@
 import { cachedWithPolicy } from "../cache.ts";
-import { normalizeModeS, normalizeRawCallsign, normalizeRegistration } from "../callsign.ts";
+import { normalizeModeS, normalizeRawCallsign, normalizeRegistration, parseCallsign } from "../callsign.ts";
+import { findAirline } from "../../../data/airlines.ts";
 import { measuredFetch, registerSource, type SourceAdapter } from "../sourceAdapter.ts";
 
 export type AdsbDbAirport = { name?: string; municipality?: string; iata_code?: string; icao_code?: string; latitude?: number; longitude?: number };
@@ -42,6 +43,36 @@ function cachedAircraft(key: string) {
   );
 }
 
+function cachedRoute(callsign: string) {
+  return cachedWithPolicy(
+    `adsbdb-route:${callsign}`,
+    { ttlMs: 30 * 60_000, negativeTtlMs: 5 * 60_000, isNegative: (value) => value === null },
+    async () => {
+      const result = await fetchAdsbDb(`callsign/${encodeURIComponent(callsign)}`, 1800);
+      return result?.flightroute ?? result ?? null;
+    }
+  );
+}
+
+function alternateCallsign(value: string | null) {
+  if (!value) return null;
+  const parsed = parseCallsign(value);
+  const airline = findAirline({
+    icao: parsed.airlineIcao,
+    iata: parsed.airlineIata,
+    callsign: value
+  });
+  if (!airline) return null;
+
+  if (parsed.icao && airline.iata[0]) {
+    return normalizeRawCallsign(`${airline.iata[0]}${value.slice(3)}`);
+  }
+  if (parsed.iata && airline.icao[0]) {
+    return normalizeRawCallsign(`${airline.icao[0]}${value.slice(2)}`);
+  }
+  return null;
+}
+
 const adapter: SourceAdapter<Input, AdsbDbResult> = {
   id: "adsbdb",
   name: "ADSBDB",
@@ -55,14 +86,12 @@ const adapter: SourceAdapter<Input, AdsbDbResult> = {
       ? cachedAircraft(modeS).then((aircraft) => aircraft ?? (registration ? cachedAircraft(registration) : null))
       : registration ? cachedAircraft(registration) : Promise.resolve(null);
     const routePromise = callsign && /^[A-Z0-9]{2,10}$/.test(callsign)
-      ? cachedWithPolicy(
-        `adsbdb-route:${callsign}`,
-        { ttlMs: 30 * 60_000, negativeTtlMs: 5 * 60_000, isNegative: (value) => value === null },
-        async () => {
-          const result = await fetchAdsbDb(`callsign/${encodeURIComponent(callsign)}`, 1800);
-          return result?.flightroute ?? result ?? null;
-        }
-      )
+      ? cachedRoute(callsign).then(async (primary) => {
+          if (primary) return primary;
+          const alternate = alternateCallsign(callsign);
+          if (!alternate || alternate === callsign || !/^[A-Z0-9]{2,10}$/.test(alternate)) return null;
+          return cachedRoute(alternate);
+        })
       : Promise.resolve(null);
     const [aircraft, route] = await Promise.all([aircraftPromise, routePromise]);
     return { aircraft, route };

@@ -3,6 +3,7 @@ import { feetPerMinuteToMetersPerSecond, feetToMeters, knotsToMetersPerSecond } 
 import { enforceRateLimit } from "../../lib/api/guard";
 import { fetchAirplanesLive } from "../../lib/aviation/providers/airplanesLive";
 import { fetchAdsbFi } from "../../lib/aviation/providers/adsbFi";
+import { fetchAdsbLol } from "../../lib/aviation/providers/adsbLol";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -138,7 +139,8 @@ export async function GET(request: NextRequest) {
     const input = { latitude: Number(latitude.toFixed(5)), longitude: Number(longitude.toFixed(5)), radiusNm, revalidateSeconds: 8 };
     const results = await Promise.allSettled([
       fetchAirplanesLive(input).then((payload) => ({ name: "Airplanes.live", payload })),
-      fetchAdsbFi(input).then((payload) => ({ name: "adsb.fi", payload }))
+      fetchAdsbFi(input).then((payload) => ({ name: "adsb.fi", payload })),
+      fetchAdsbLol(input).then((payload) => ({ name: "adsb.lol", payload }))
     ]);
     const fulfilled = results.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
     if (!fulfilled.length) throw new Error("Sources ADS-B indisponibles");
@@ -214,7 +216,7 @@ export async function GET(request: NextRequest) {
       {
         error: message,
         aircraft: [],
-        source: "Airplanes.live + adsb.fi"
+        source: "Airplanes.live + adsb.fi + adsb.lol"
       },
       {
         status: 502,

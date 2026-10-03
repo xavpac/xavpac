@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 type CameraGroup = "aero" | "cities71" | "holidays";
-type CameraMode = "image" | "page";
+type CameraMode = "image" | "frame";
 
 type CameraItem = {
   id: string;
@@ -17,6 +17,7 @@ type CameraItem = {
   sourceUrl: string;
   mode: CameraMode;
   imageUrl?: string;
+  frameUrl?: string;
   code?: string;
 };
 
@@ -56,14 +57,24 @@ const CAMERAS: CameraItem[] = [
   { id: "lflp", group: "aero", name: "Annecy", area: "Haute-Savoie", country: "France", latitude: 45.929, longitude: 6.099, sourceName: "Cam-Aéro", sourceUrl: "https://cam-aero.eu/raspicamaero/LFLP_AnnecyTour", mode: "image", imageUrl: "https://cam-aero.eu/raspicamaero/LFLP_AnnecyTour", code: "LFLP" },
   { id: "lfmh", group: "aero", name: "Saint-Étienne", area: "Loire", country: "France", latitude: 45.534, longitude: 4.297, sourceName: "Cam-Aéro", sourceUrl: "https://cam-aero.eu/raspicamaero/LFMH_AeroClubSaintEtienne", mode: "image", imageUrl: "https://cam-aero.eu/raspicamaero/LFMH_AeroClubSaintEtienne", code: "LFMH" },
 
-  { id: "macon", group: "cities71", name: "Mâcon", area: "Centre-ville", country: "France", latitude: 46.307, longitude: 4.829, sourceName: "Skaping", sourceUrl: "https://www.skaping.com/macon/ville", mode: "page" },
-  { id: "cluny-tour", group: "cities71", name: "Cluny", area: "Tour Ronde", country: "France", latitude: 46.434, longitude: 4.659, sourceName: "Cluny Sud Bourgogne", sourceUrl: "https://www.cluny-tourisme.com/webcam/carriere-de-la-tour-ronde/", mode: "page" },
-  { id: "cluny-abbaye", group: "cities71", name: "Cluny", area: "Carrière de l’Abbaye", country: "France", latitude: 46.434, longitude: 4.659, sourceName: "Cluny Sud Bourgogne", sourceUrl: "https://www.cluny-tourisme.com/webcam/carriere-de-labbaye/", mode: "page" },
-  { id: "tournus", group: "cities71", name: "Tournus", area: "Rive gauche de la Saône", country: "France", latitude: 46.562, longitude: 4.911, sourceName: "Tournus Sud Bourgogne", sourceUrl: "https://www.tournus-tourisme.com/webcam/tournus-en-direct/", mode: "page" },
-  { id: "autun", group: "cities71", name: "Autun", area: "Grand Autunois", country: "France", latitude: 46.951, longitude: 4.299, sourceName: "MeteoHorizon", sourceUrl: "https://www.meteohorizon.com/europe/france/bourgogne-franche-comte/saone-et-loire/autun/webcam", mode: "page" },
+  { id: "macon", group: "cities71", name: "Mâcon", area: "Panorama ville", country: "France", latitude: 46.307, longitude: 4.829, sourceName: "Skaping", sourceUrl: "https://www.skaping.com/macon/ville", frameUrl: "https://www.skaping.com/macon/ville", mode: "frame" },
+  { id: "macon-airport", group: "cities71", name: "Mâcon / Charnay", area: "Aérodrome · piste 17/35", country: "France", latitude: 46.295, longitude: 4.795, sourceName: "Traffic-Cams", sourceUrl: "https://www.traffic-cams.com/world/webcam/feed1578229136didkey34610", frameUrl: "https://www.traffic-cams.com/world/webcam/feed1578229136didkey34610", mode: "frame" },
+  { id: "cluny-tour", group: "cities71", name: "Cluny", area: "Carrière de la Tour Ronde", country: "France", latitude: 46.434, longitude: 4.659, sourceName: "Cluny Sud Bourgogne", sourceUrl: "https://www.cluny-tourisme.com/webcam/carriere-de-la-tour-ronde/", frameUrl: "https://www.cluny-tourisme.com/webcam/carriere-de-la-tour-ronde/", mode: "frame" },
+  { id: "cluny-abbaye", group: "cities71", name: "Cluny", area: "Carrière de l’Abbaye", country: "France", latitude: 46.434, longitude: 4.659, sourceName: "Cluny Sud Bourgogne", sourceUrl: "https://www.cluny-tourisme.com/webcam/carriere-de-labbaye/", frameUrl: "https://www.cluny-tourisme.com/webcam/carriere-de-labbaye/", mode: "frame" },
+  { id: "tournus", group: "cities71", name: "Tournus", area: "Quais de Saône", country: "France", latitude: 46.562, longitude: 4.911, sourceName: "Tournus Sud Bourgogne", sourceUrl: "https://www.tournus-tourisme.com/webcam/tournus-en-direct/", frameUrl: "https://www.tournus-tourisme.com/webcam/tournus-en-direct/", mode: "frame" },
+  { id: "autun", group: "cities71", name: "Autun", area: "Panorama ville", country: "France", latitude: 46.934, longitude: 4.287, sourceName: "Grand Autunois Morvan", sourceUrl: "https://www.grandautunoismorvan.fr/webcam", frameUrl: "https://www.grandautunoismorvan.fr/webcam", mode: "frame" },
+  { id: "digoin", group: "cities71", name: "Digoin", area: "Pont-canal · panoramique", country: "France", latitude: 46.482, longitude: 3.979, sourceName: "Skaping", sourceUrl: "https://www.skaping.com/digoin", frameUrl: "https://www.skaping.com/digoin", mode: "frame" },
 
-  { id: "galtur", group: "holidays", name: "Galtür", area: "Tyrol", country: "Autriche", latitude: 46.967, longitude: 10.187, sourceName: "Galtür Tourismus", sourceUrl: "https://www.galtuer.com/en/plan-your-trip/webcams", mode: "page" },
-  { id: "les-carroz", group: "holidays", name: "Les Carroz", area: "Grand Massif · Haute-Savoie", country: "France", latitude: 46.02558, longitude: 6.64339, sourceName: "Les Carroz", sourceUrl: "https://www.lescarroz.com/webcams/", mode: "page" }
+  { id: "galtur-breit", group: "holidays", name: "Galtür", area: "Breitspitzbahn · 2120 m", country: "Autriche", latitude: 46.967, longitude: 10.187, sourceName: "Feratel", sourceUrl: "https://www.feratel.com/fr/webcams/autriche/tyrol/galtur-breitspitzbahn", frameUrl: "https://webtvfc.feratel.com/webtv/?cam=5547&design=v5&lg=fr&pg=DA7D2F22-8600-464D-9D4F-CDB04014A6C5&sound=muted", mode: "frame" },
+  { id: "galtur-dorf", group: "holidays", name: "Galtür", area: "Village · 1600 m", country: "Autriche", latitude: 46.967, longitude: 10.187, sourceName: "Feratel", sourceUrl: "https://www.feratel.com/fr/webcams/autriche/tyrol/galtur-dorf", frameUrl: "https://webtvfc.feratel.com/webtv/?cam=5548&design=v5&lg=fr&pg=DA7D2F22-8600-464D-9D4F-CDB04014A6C5&sound=muted", mode: "frame" },
+  { id: "galtur-kopssee", group: "holidays", name: "Galtür", area: "Kopssee · 1850 m", country: "Autriche", latitude: 46.967, longitude: 10.187, sourceName: "Feratel", sourceUrl: "https://www.feratel.com/fr/webcams/autriche/tyrol/galtur-kopssee", frameUrl: "https://webtvfc.feratel.com/webtv/?cam=5549&design=v5&lg=fr&pg=DA7D2F22-8600-464D-9D4F-CDB04014A6C5&sound=muted", mode: "frame" },
+  { id: "galtur-ballun", group: "holidays", name: "Galtür", area: "Ballunspitzbahn · 1950 m", country: "Autriche", latitude: 46.967, longitude: 10.187, sourceName: "Feratel", sourceUrl: "https://www.feratel.com/fr/webcams/autriche/tyrol/galtur-ballunspitzbahn", frameUrl: "https://webtvfc.feratel.com/webtv/?cam=5550&design=v5&lg=fr&pg=DA7D2F22-8600-464D-9D4F-CDB04014A6C5&sound=muted", mode: "frame" },
+  { id: "galtur-flying", group: "holidays", name: "Galtür", area: "FlyingCam · 1940 m", country: "Autriche", latitude: 46.967, longitude: 10.187, sourceName: "Feratel", sourceUrl: "https://www.feratel.com/fr/webcams/autriche/tyrol/galtur-flyingcam", frameUrl: "https://webtvfc.feratel.com/webtv/?cam=75547&design=v5&lg=fr&pg=DA7D2F22-8600-464D-9D4F-CDB04014A6C5&sound=muted", mode: "frame" },
+
+  { id: "carroz-telecabine", group: "holidays", name: "Les Carroz", area: "Arrivée télécabine", country: "France", latitude: 46.02558, longitude: 6.64339, sourceName: "Webcam-HD / Les Carroz", sourceUrl: "https://app.webcam-hd.com/lescarroz/arrivee-telecabine", frameUrl: "https://app.webcam-hd.com/lescarroz/arrivee-telecabine", mode: "frame" },
+  { id: "carroz-2100", group: "holidays", name: "Les Carroz", area: "Carroz 2100", country: "France", latitude: 46.02558, longitude: 6.64339, sourceName: "Webcam-HD / Les Carroz", sourceUrl: "https://app.webcam-hd.com/lescarroz/carroz-2100", frameUrl: "https://app.webcam-hd.com/lescarroz/carroz-2100", mode: "frame" },
+  { id: "carroz-cupoire", group: "holidays", name: "Les Carroz", area: "Pointe de Cupoire", country: "France", latitude: 46.02558, longitude: 6.64339, sourceName: "Webcam-HD / Les Carroz", sourceUrl: "https://app.webcam-hd.com/lescarroz/pointe-de-cupoire", frameUrl: "https://app.webcam-hd.com/lescarroz/pointe-de-cupoire", mode: "frame" },
+  { id: "carroz-molliets", group: "holidays", name: "Les Carroz", area: "Les Molliets 1500", country: "France", latitude: 46.02558, longitude: 6.64339, sourceName: "Webcam-HD / Les Carroz", sourceUrl: "https://app.webcam-hd.com/lescarroz/les-molliets-1500", frameUrl: "https://app.webcam-hd.com/lescarroz/les-molliets-1500", mode: "frame" }
 ];
 
 function formatWindDirection(value: number | null) {
@@ -84,7 +95,6 @@ export default function WebcamPanel() {
   const [selectedId, setSelectedId] = useState("lflh");
   const [refreshKey, setRefreshKey] = useState(0);
   const [imageError, setImageError] = useState(false);
-  const [embedLoaded, setEmbedLoaded] = useState(false);
   const [weather, setWeather] = useState<WeatherCurrent | null>(null);
   const [weatherFetchedAt, setWeatherFetchedAt] = useState<string | null>(null);
   const [weatherLoading, setWeatherLoading] = useState(true);
@@ -114,7 +124,6 @@ export default function WebcamPanel() {
 
   useEffect(() => {
     setImageError(false);
-    setEmbedLoaded(false);
   }, [selectedId, refreshKey]);
 
   useEffect(() => {
@@ -248,30 +257,20 @@ export default function WebcamPanel() {
                   <a href={selected.sourceUrl} target="_blank" rel="noreferrer">Ouvrir la source ↗</a>
                 </div>
               )
-            ) : embedLoaded ? (
+            ) : (
               <div className="webcam-frame-wrap">
                 <iframe
-                  key={selected.id}
-                  src={selected.sourceUrl}
-                  title={`Webcam ${selected.name}`}
-                  loading="lazy"
+                  key={`${selected.id}-${refreshKey}`}
+                  src={selected.frameUrl ?? selected.sourceUrl}
+                  title={`Webcam ${selected.name} · ${selected.area}`}
+                  loading="eager"
+                  allow="autoplay; fullscreen; picture-in-picture"
+                  allowFullScreen
                   referrerPolicy="no-referrer-when-downgrade"
                 />
-                <a href={selected.sourceUrl} target="_blank" rel="noreferrer">Ouvrir en plein écran ↗</a>
-              </div>
-            ) : (
-              <div className="webcam-launch">
-                <div>
-                  <span>📷</span>
-                  <strong>{selected.name}</strong>
-                  <small>{selected.area}</small>
-                </div>
-                <p>
-                  Cette caméra est fournie par {selected.sourceName}. Elle est chargée seulement à la demande.
-                </p>
-                <div>
-                  <button type="button" onClick={() => setEmbedLoaded(true)}>Charger la caméra</button>
-                  <a href={selected.sourceUrl} target="_blank" rel="noreferrer">Ouvrir la source ↗</a>
+                <div className="webcam-frame-badge">
+                  <span>● LIVE · {selected.sourceName}</span>
+                  <a href={selected.sourceUrl} target="_blank" rel="noreferrer">Source ↗</a>
                 </div>
               </div>
             )}
@@ -318,7 +317,7 @@ export default function WebcamPanel() {
           </div>
 
           <p className="webcam-note">
-            Les flux externes peuvent refuser l’intégration dans XavPac. Dans ce cas, le bouton « Ouvrir la source » reste toujours disponible.
+            Les lecteurs sont chargés automatiquement dans XavPac. Plusieurs vues sont proposées pour les lieux qui disposent de plusieurs caméras.
           </p>
         </aside>
       </section>
@@ -342,12 +341,9 @@ export default function WebcamPanel() {
         .weather-strip span,.weather-strip strong,.weather-strip small{display:block}.weather-strip span{color:#7891a5;font-size:7px;text-transform:uppercase;letter-spacing:.06em}.weather-strip strong{margin-top:4px;font-size:15px}.weather-strip small{margin-top:3px;color:#90a7b9;font-size:8px}.weather-primary strong{color:var(--cyan);font-size:22px}
         .webcam-stage{min-height:520px;display:grid;place-items:center;overflow:hidden;border:1px solid var(--line);border-radius:14px;background:#02090f}
         .webcam-stage>img{width:100%;height:100%;max-height:720px;display:block;object-fit:contain}
-        .webcam-unavailable,.webcam-launch{max-width:620px;display:grid;gap:14px;padding:26px;text-align:center;color:var(--muted)}
-        .webcam-unavailable strong,.webcam-launch strong{color:#fff}.webcam-unavailable a,.webcam-launch a{color:var(--cyan);text-decoration:none}
-        .webcam-launch>div:first-child span{display:block;font-size:46px}.webcam-launch>div:first-child strong,.webcam-launch>div:first-child small{display:block}.webcam-launch>div:first-child strong{margin-top:8px;font-size:22px}.webcam-launch>div:first-child small{margin-top:4px}
-        .webcam-launch>div:last-child{display:flex;justify-content:center;gap:8px;flex-wrap:wrap}
-        .webcam-launch button,.webcam-launch a{padding:10px 13px;border:1px solid rgba(88,212,255,.3);border-radius:10px;background:rgba(88,212,255,.08);color:#eafaff;font-weight:800;cursor:pointer;text-decoration:none}
-        .webcam-frame-wrap{position:relative;width:100%;height:100%;min-height:520px}.webcam-frame-wrap iframe{width:100%;height:100%;min-height:520px;border:0;background:#fff}.webcam-frame-wrap>a{position:absolute;right:10px;bottom:10px;padding:8px 10px;border-radius:9px;color:#fff;background:rgba(4,17,30,.9);text-decoration:none;font-size:9px;font-weight:900}
+        .webcam-unavailable{max-width:620px;display:grid;gap:14px;padding:26px;text-align:center;color:var(--muted)}
+        .webcam-unavailable strong{color:#fff}.webcam-unavailable a{color:var(--cyan);text-decoration:none}
+        .webcam-frame-wrap{position:relative;width:100%;height:100%;min-height:520px}.webcam-frame-wrap iframe{width:100%;height:100%;min-height:520px;border:0;background:#071522}.webcam-frame-badge{position:absolute;right:10px;bottom:10px;left:10px;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 10px;border:1px solid rgba(88,212,255,.22);border-radius:10px;color:#dff8ff;background:rgba(4,17,30,.88);backdrop-filter:blur(10px);font-size:8px;font-weight:900}.webcam-frame-badge span{color:#8cf0be}.webcam-frame-badge a{color:#7edfff;text-decoration:none}
         .webcam-meta{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin-top:8px}.webcam-meta>div{padding:9px 10px;border:1px solid var(--line);border-radius:10px;background:rgba(255,255,255,.025)}.webcam-meta span,.webcam-meta strong{display:block}.webcam-meta span{color:#7891a5;font-size:7px;text-transform:uppercase}.webcam-meta strong{margin-top:3px;font-size:10px}
         .webcam-metar{margin-top:8px;padding:11px;border:1px solid var(--line);border-radius:12px;background:rgba(88,212,255,.05)}.webcam-metar code{display:block;margin-top:7px;color:#e9f8ff;line-height:1.5;white-space:normal}.webcam-metar p{margin:7px 0 0}
         .webcam-list{padding:10px}.webcam-list-title{margin:0;padding:4px 4px 8px}.webcam-list-title h3{margin:4px 0 0}.webcam-buttons{display:grid;gap:4px}.webcam-buttons button{width:100%;display:grid;grid-template-columns:50px minmax(0,1fr) 18px;align-items:center;gap:9px;padding:10px;border:1px solid transparent;border-radius:11px;color:inherit;background:transparent;text-align:left;cursor:pointer}.webcam-buttons button:hover,.webcam-buttons button.active{border-color:rgba(88,212,255,.38);background:rgba(88,212,255,.08)}.webcam-buttons button>b{color:var(--cyan);font-size:9px}.webcam-buttons strong,.webcam-buttons small{display:block}.webcam-buttons small{margin-top:2px;color:var(--muted)}.webcam-buttons i{color:var(--cyan);font-size:18px;font-style:normal}.webcam-note{margin:10px 5px 3px;padding-top:9px;border-top:1px solid var(--line);color:var(--muted);font-size:10px;line-height:1.5}

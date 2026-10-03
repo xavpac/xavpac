@@ -68,6 +68,7 @@ export function resolveReference(input: {
     return gpsReference(preference, input.gps, lastValidGps, input.home);
   }
   if (preference === "moi") return gpsReference(preference, input.gps, lastValidGps, input.home);
-  if (input.device === "mobile") return gpsReference(preference, input.gps, lastValidGps, input.home);
-  return { kind: "home", position: input.home, preference, usedLastValidGps: false, fallbackFrom: null };
+  // En mode automatique, une position GPS exploitable est prioritaire sur tous les appareils.
+  // HOME reste le secours lorsque le navigateur ne fournit pas de position fiable.
+  return gpsReference(preference, input.gps, lastValidGps, input.home);
 }

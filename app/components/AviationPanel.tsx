@@ -323,7 +323,7 @@ export default function AviationPanel() {
       setManualObserver(null);
       setReferencePreference("auto");
       setObserverCoordinates("");
-      setObserverMessage("Référence automatique : MOI sur smartphone, HOME sur Mac.");
+      setObserverMessage("Référence automatique : position GPS actuelle si disponible, HOME uniquement en secours.");
     }
   }, []);
 
@@ -1112,7 +1112,7 @@ export default function AviationPanel() {
 
       <div className="aviation-source-health panel" aria-label="Santé des sources Aviation">
         <span className={error ? "offline" : trafficUpdatedAt ? "available" : "degraded"}><b>ADS-B</b><strong>{error ? "INDISPONIBLE" : trafficUpdatedAt ? "LIVE" : "CONNEXION"}</strong><small>{compactFreshness(trafficUpdatedAt)}</small></span>
-        <span className={observerReference === "moi" ? isLive ? "available" : "degraded" : "available"}><b>RÉFÉRENCE</b><strong>{observerReference === "moi" ? isLive ? "MOI GPS" : "MOI MÉMORISÉ" : observerReference === "home" ? "HOME" : "POINT CHOISI"}</strong><small>{observerReference === "moi" ? resolvedReference.usedLastValidGps ? "Dernière position GPS valide" : gpsQualityReason : observerReference === "home" ? referencePreference === "home" ? "HOME volontaire" : "HOME par défaut sur Mac / secours GPS" : "Référence manuelle"}</small></span>
+        <span className={observerReference === "moi" ? isLive ? "available" : "degraded" : "available"}><b>RÉFÉRENCE</b><strong>{observerReference === "moi" ? isLive ? "MOI GPS" : "MOI MÉMORISÉ" : observerReference === "home" ? "HOME" : "POINT CHOISI"}</strong><small>{observerReference === "moi" ? resolvedReference.usedLastValidGps ? "Dernière position GPS valide" : gpsQualityReason : observerReference === "home" ? referencePreference === "home" ? "HOME volontaire" : "HOME de secours • GPS indisponible" : "Référence manuelle"}</small></span>
         {providerHealth.filter((source) => ["adsbdb", "planespotters", "opensky"].includes(source.id)).map((source) => <span key={source.id} className={source.state}><b>{source.name}</b><strong>{source.state === "available" ? "DISPONIBLE" : source.state === "degraded" ? "DÉGRADÉ" : source.state === "disabled" ? "DÉSACTIVÉ" : "HORS LIGNE"}</strong><small>{compactFreshness(source.lastSuccess)}</small></span>)}
       </div>
       <div className="aviation-compact-summary panel" aria-label="Résumé XavPac Aviation">
