@@ -60,6 +60,26 @@ export type MapWmsOverlay = {
   opacity?: number;
 };
 
+export type MapTileOverlay = {
+  id: string;
+  url: string;
+  attribution: string;
+  opacity?: number;
+  minZoom?: number;
+  maxZoom?: number;
+};
+
+export type MapHazardArea = {
+  id: string;
+  center: [number, number];
+  radiusKm: number;
+  title: string;
+  category: string;
+  severity: "blocking" | "warning" | "information" | "inactive";
+  summary: string;
+  details?: Array<{ label: string; value: string }>;
+};
+
 type Bounds = [[number, number], [number, number]];
 type MapVariant = "layers" | "street" | "satellite" | "dark";
 export type MapCameraMode = "free" | "follow" | "focus";
@@ -419,6 +439,13 @@ function zoneDisplayPriority(status: MapZone["status"]) {
   return 1;
 }
 
+function hazardStyle(severity: MapHazardArea["severity"]) {
+  if (severity === "blocking") return { color: "#ff294d", fillColor: "#ff294d", fillOpacity: .22, opacity: 1, weight: 3.5, dashArray: "10 5" };
+  if (severity === "warning") return { color: "#ffad32", fillColor: "#ffad32", fillOpacity: .16, opacity: .95, weight: 3, dashArray: "8 6" };
+  if (severity === "inactive") return { color: "#7d8b98", fillColor: "#7d8b98", fillOpacity: .08, opacity: .72, weight: 2, dashArray: "5 7" };
+  return { color: "#5cc8ff", fillColor: "#5cc8ff", fillOpacity: .1, opacity: .88, weight: 2.4, dashArray: "6 6" };
+}
+
 function BaseLayer({ variant }: { variant: MapVariant }) {
   if (variant === "satellite") {
     return <TileLayer attribution="Tiles &copy; Esri" url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}" />;
@@ -452,7 +479,9 @@ export default function StableMap({
   onCameraModeChange,
   controls = true,
   onMapClick,
-  wmsOverlays = []
+  wmsOverlays = [],
+  tileOverlays = [],
+  hazardAreas = []
 }: {
   points: MapPoint[];
   center: [number, number];
@@ -477,6 +506,8 @@ export default function StableMap({
   controls?: boolean;
   onMapClick?: (position: [number, number]) => void;
   wmsOverlays?: MapWmsOverlay[];
+  tileOverlays?: MapTileOverlay[];
+  hazardAreas?: MapHazardArea[];
 }) {
   return (
     <MapContainer
@@ -504,6 +535,14 @@ export default function StableMap({
       <MapViewportGuard />
       <MapClickHandler onMapClick={onMapClick} />
       <BaseLayer variant={mapVariant} />
+      {tileOverlays.map((overlay) => <TileLayer
+        key={overlay.id}
+        url={overlay.url}
+        opacity={overlay.opacity ?? .68}
+        attribution={overlay.attribution}
+        minZoom={overlay.minZoom}
+        maxZoom={overlay.maxZoom}
+      />)}
       {wmsOverlays.map((overlay) => <WMSTileLayer
         key={overlay.id}
         url={overlay.url}
@@ -539,6 +578,25 @@ export default function StableMap({
           }}
         >
           <Tooltip permanent direction="right" className="radius-label">{radius} km</Tooltip>
+        </Circle>
+      ))}
+
+      {hazardAreas.map((area) => (
+        <Circle
+          key={area.id}
+          center={area.center}
+          radius={Math.max(250, area.radiusKm * 1000)}
+          pathOptions={hazardStyle(area.severity)}
+        >
+          <Tooltip direction="top" className={`hazard-label ${area.severity}`}>{area.title}</Tooltip>
+          <Popup maxWidth={430}>
+            <div className={`xavpac-popup xavpac-hazard-popup ${area.severity}`}>
+              <strong>{area.title}</strong>
+              <span>{area.category}</span>
+              <p>{area.summary}</p>
+              {area.details?.map((detail) => <span key={`${area.id}-${detail.label}`}><b>{detail.label}</b> {detail.value}</span>)}
+            </div>
+          </Popup>
         </Circle>
       ))}
 
