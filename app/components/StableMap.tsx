@@ -420,25 +420,22 @@ function PointMarkers({ points, selectedId, onSelect }: { points: MapPoint[]; se
 }
 
 function zoneStyle(status: MapZone["status"]) {
-  if (status === "boundary") {
-    return { color: "#0089c9", fillColor: "#0089c9", fillOpacity: 0.015, opacity: 0.95, weight: 3, dashArray: "10 7" };
-  }
   if (status === "active") {
-    return { color: "#d51f3b", fillColor: "#ef334f", fillOpacity: 0.3, opacity: 1, weight: 3.5 };
-  }
-  if (status === "inactive") {
-    return { color: "#1769d2", fillColor: "#2f80ed", fillOpacity: 0.17, opacity: 0.96, weight: 2.8 };
+    return { color: "#e45462", fillColor: "#e45462", fillOpacity: 0.045, opacity: 0.95, weight: 2.2, dashArray: "8 5" };
   }
   if (status === "intersects-height") {
-    return { color: "#f2364f", fillColor: "#ef334f", fillOpacity: 0.3, opacity: 1, weight: 3.8 };
+    return { color: "#d18b4a", fillColor: "#d18b4a", fillOpacity: 0.035, opacity: 0.88, weight: 2, dashArray: "7 6" };
   }
   if (status === "below-floor") {
-    return { color: "#2588ff", fillColor: "#2f80ed", fillOpacity: 0.2, opacity: 1, weight: 3.2 };
+    return { color: "#7792a6", fillColor: "#7792a6", fillOpacity: 0.018, opacity: 0.74, weight: 1.5, dashArray: "6 8" };
   }
   if (status === "nearby") {
-    return { color: "#f4b83e", fillColor: "#f4b83e", fillOpacity: 0.16, opacity: 1, weight: 3, dashArray: "11 6" };
+    return { color: "#8a96a2", fillColor: "#8a96a2", fillOpacity: 0.012, opacity: 0.68, weight: 1.4, dashArray: "5 9" };
   }
-  return { color: "#536f8a", fillColor: "#7b93aa", fillOpacity: 0.1, opacity: 0.95, weight: 2.5, dashArray: "8 7" };
+  if (status === "inactive") {
+    return { color: "#738494", fillColor: "#738494", fillOpacity: 0.01, opacity: 0.62, weight: 1.4, dashArray: "5 9" };
+  }
+  return { color: "#70808e", fillColor: "#70808e", fillOpacity: 0.008, opacity: 0.58, weight: 1.25, dashArray: "4 9" };
 }
 
 function zoneStatusLabel(status: MapZone["status"]) {
@@ -461,10 +458,10 @@ function zoneDisplayPriority(status: MapZone["status"]) {
 }
 
 function hazardStyle(severity: MapHazardArea["severity"]) {
-  if (severity === "blocking") return { color: "#ff294d", fillColor: "#ff294d", fillOpacity: .22, opacity: 1, weight: 3.5, dashArray: "10 5" };
-  if (severity === "warning") return { color: "#ffad32", fillColor: "#ffad32", fillOpacity: .16, opacity: .95, weight: 3, dashArray: "8 6" };
-  if (severity === "inactive") return { color: "#7d8b98", fillColor: "#7d8b98", fillOpacity: .08, opacity: .72, weight: 2, dashArray: "5 7" };
-  return { color: "#5cc8ff", fillColor: "#5cc8ff", fillOpacity: .1, opacity: .88, weight: 2.4, dashArray: "6 6" };
+  if (severity === "blocking") return { color: "#e75c68", fillColor: "#e75c68", fillOpacity: .055, opacity: .92, weight: 2.1, dashArray: "8 6" };
+  if (severity === "warning") return { color: "#c89555", fillColor: "#c89555", fillOpacity: .035, opacity: .82, weight: 1.8, dashArray: "7 7" };
+  if (severity === "inactive") return { color: "#7c8995", fillColor: "#7c8995", fillOpacity: .008, opacity: .5, weight: 1.2, dashArray: "4 9" };
+  return { color: "#7695a9", fillColor: "#7695a9", fillOpacity: .018, opacity: .65, weight: 1.35, dashArray: "5 8" };
 }
 
 function BaseLayer({ variant }: { variant: MapVariant }) {
