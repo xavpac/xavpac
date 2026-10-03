@@ -37,6 +37,10 @@ export type MapTrail = {
   color?: string;
   selected?: boolean;
   kind?: "observed" | "heading";
+  weight?: number;
+  haloWeight?: number;
+  opacity?: number;
+  dashArray?: string;
 };
 
 export type MapZone = {
@@ -554,14 +558,14 @@ export default function StableMap({
 
       {trails.map((trail) => (
         <Fragment key={trail.id}>
-          {trail.selected && trail.kind !== "heading" && <Polyline positions={trail.positions} pathOptions={{ color: "#ffffff", weight: 14, opacity: .9, lineCap: "round", lineJoin: "round" }} />}
+          {trail.selected && trail.kind !== "heading" && <Polyline positions={trail.positions} pathOptions={{ color: "#ffffff", weight: trail.haloWeight ?? 14, opacity: Math.min(.9, trail.opacity ?? .9), lineCap: "round", lineJoin: "round" }} />}
           <Polyline
             positions={trail.positions}
             pathOptions={{
               color: trail.kind === "heading" ? "#00e5ff" : trail.color ?? "#008fd3",
-              weight: trail.kind === "heading" ? 5 : trail.selected ? 7 : 3,
-              opacity: trail.selected ? 1 : 0.5,
-              dashArray: trail.kind === "heading" ? "6 9" : trail.selected ? undefined : "7 8",
+              weight: trail.weight ?? (trail.kind === "heading" ? 5 : trail.selected ? 7 : 3),
+              opacity: trail.opacity ?? (trail.selected ? 1 : 0.5),
+              dashArray: trail.dashArray ?? (trail.kind === "heading" ? "6 9" : trail.selected ? undefined : "7 8"),
               lineCap: "round",
               lineJoin: "round"
             }}
