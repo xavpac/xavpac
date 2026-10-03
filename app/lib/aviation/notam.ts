@@ -80,9 +80,9 @@ export function translateNotamLimit(value: string | null) {
 
   text = text
     .replace(/\bFL\s?(\d{2,3})\b/g, "niveau de vol FL$1")
-    .replace(/\b(\d+)\s*FT\s*AMSL\b/g, (_match, feet) => `${Number(feet).toLocaleString("fr-FR")} pieds AMSL (au-dessus du niveau moyen de la mer)`)
-    .replace(/\b(\d+)\s*FT\s*AGL\b/g, (_match, feet) => `${Number(feet).toLocaleString("fr-FR")} pieds AGL (au-dessus du sol)`)
-    .replace(/\b(\d+)\s*FT\s*ASFC\b/g, (_match, feet) => `${Number(feet).toLocaleString("fr-FR")} pieds au-dessus de la surface`)
+    .replace(/\b(\d+)\s*FT\s*AMSL\b/g, (_match, feet) => `${Number(feet).toLocaleString("fr-FR")} pieds (au-dessus du niveau moyen de la mer)`)
+    .replace(/\b(\d+)\s*FT\s*AGL\b/g, (_match, feet) => `${Number(feet).toLocaleString("fr-FR")} pieds (au-dessus du sol)`)
+    .replace(/\b(\d+)\s*FT\s*ASFC\b/g, (_match, feet) => `${Number(feet).toLocaleString("fr-FR")} pieds (au-dessus de la surface)`)
     .replace(/\bAMSL\b/g, "au-dessus du niveau moyen de la mer")
     .replace(/\bAGL\b/g, "au-dessus du sol")
     .replace(/\bASFC\b/g, "au-dessus de la surface")
