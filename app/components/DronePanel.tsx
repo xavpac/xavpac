@@ -746,7 +746,22 @@ export default function DronePanel() {
                 <div className="notam-validity-v65"><span><b>Début local puis UTC</b>{formatNotamMoment(notam.startsAtIso, notam.startsAt)}</span><span><b>Fin locale puis UTC</b>{formatNotamMoment(notam.endsAtIso, notam.endsAt)}</span>{notam.schedule && <span><b>Horaires D)</b>{notam.schedule}</span>}</div>
                 <div className="notam-provenance-v65"><span><b>Autorité de publication</b>{notam.publicationAuthority}</span><span><b>Bureau NOTAM / NOF</b>{notam.nof ?? "Non indiqué"}</span><span><b>FIR</b>{notam.fir ?? "Non indiquée"}</span><span><b>Activité</b>{notam.category}</span><span><b>Organisme à l’origine de la demande</b>{notam.requestingOrganization ?? "Non indiqué dans le NOTAM"}</span></div>
                 <details className="notam-original-v65"><summary>1 — ORIGINAL OFFICIEL{notam.originalTextSource === "reconstructed" ? " • CHAMPS SOFIA RECONSTITUÉS" : ""}</summary><pre>{notam.originalText}</pre></details>
-                <section className="notam-translation-v65"><span>{notam.translationSource === "sofia" ? "2 — TRADUCTION FRANÇAISE OFFICIELLE SOFIA" : "2 — 🇫🇷 TRADUCTION XAVPAC • NON OFFICIELLE"}</span><p>{notam.frenchText}</p></section>
+                <section className="notam-translation-v65">
+                  <header>
+                    <div>
+                      <span>🇫🇷 LECTURE FRANÇAISE</span>
+                      <strong>{notam.translationSource === "sofia" ? "Traduction française fournie par SOFIA" : "Traduction assistée XavPac"}</strong>
+                    </div>
+                    <b>{notam.translationSource === "sofia" ? "OFFICIELLE" : "AIDE À LA LECTURE"}</b>
+                  </header>
+                  <p className="notam-french-main">{notam.frenchText}</p>
+                  <div className="notam-french-facts">
+                    <span><b>Horaires</b>{notam.schedule ?? "Pas d’horaires D) particuliers"}</span>
+                    <span><b>Plancher</b>{notam.lowerLimit ?? "Non indiqué"}</span>
+                    <span><b>Plafond</b>{notam.upperLimit ?? "Non indiqué"}</span>
+                  </div>
+                  {notam.translationSource !== "sofia" && <small>Traduction automatique destinée à faciliter la lecture. En cas de doute ou d’écart, le texte NOTAM officiel ci-dessus fait foi.</small>}
+                </section>
                 <section className={`notam-mission-explanation-v65 ${assessment?.level ?? "information"}`}><span>3 — EXPLICATION POUR LA MISSION</span>{assessment?.explanation.map((line) => <p key={line}>{line}</p>) ?? <p>Analyse impossible sans créneau MISSION valide.</p>}</section>
               </article>;
             })}
