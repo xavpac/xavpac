@@ -10,6 +10,7 @@ import { distanceKm } from "../lib/aviation/geometry";
 import type { LiveAircraft } from "../lib/aviation/liveAircraft";
 import { parseSofiaCoordinate, type SofiaNotam } from "../lib/aviation/sofiaNotams";
 import { readNotamInFrench } from "../lib/aviation/notam";
+import { normalizeRtbaCode, type AzbaLiveFeed } from "../lib/aviation/azbaLive";
 import {
   assessRtba,
   rtbaMapDisplayStatus,
@@ -172,6 +173,29 @@ function freshnessText(seconds: number | null) {
   return seconds === null ? "inconnue" : `${Math.round(seconds)} s`;
 }
 
+function polygonCenter(positions: [number, number][]): [number, number] {
+  if (!positions.length) return FRANCE_OVERVIEW_CENTER;
+  const total = positions.reduce((sum, point) => [sum[0] + point[0], sum[1] + point[1]] as [number, number], [0, 0] as [number, number]);
+  return [total[0] / positions.length, total[1] / positions.length];
+}
+
+function formatAzbaTime(value: string | null) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return value;
+  const local = new Intl.DateTimeFormat("fr-FR", { timeZone: DRONE_TIME_ZONE, day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(date);
+  const utc = new Intl.DateTimeFormat("fr-FR", { timeZone: "UTC", hour: "2-digit", minute: "2-digit" }).format(date);
+  return `${local} locale • ${utc} UTC`;
+}
+
+function rtbaStateLabel(state: "active" | "soon" | "planned" | "inactive" | "unknown") {
+  if (state === "active") return "ACTIF MAINTENANT";
+  if (state === "soon") return "ACTIF BIENTÔT";
+  if (state === "planned") return "CRÉNEAU PRÉVU";
+  if (state === "inactive") return "INACTIF MAINTENANT";
+  return "STATUT NON CONFIRMÉ";
+}
+
 export default function DronePanel() {
   const [mapMode, setMapMode] = useState<"official" | "map" | "uas">("map");
   const [showOaciLayer, setShowOaciLayer] = useState(true);
@@ -179,6 +203,15 @@ export default function DronePanel() {
   const [showRtbaLayer, setShowRtbaLayer] = useState(true);
   const [showAerodromesLayer, setShowAerodromesLayer] = useState(true);
   const [showTrafficLayer, setShowTrafficLayer] = useState(true);
+  const [azbaFeed, setAzbaFeed] = useState<AzbaLiveFeed>({
+    source: "SIA/AZBA officiel",
+    retrievedAt: new Date(0).toISOString(),
+    validityStartUtc: null,
+    validityEndUtc: null,
+    state: "unavailable",
+    message: "Chargement des créneaux AZBA…",
+    zones: []
+  });
   const { position, status: positionStatus, accuracy, altitude, timestamp, quality: gpsQuality, usableForPreciseCalculations, isLive, trackingEnabled, setTrackingEnabled, retryGeolocation, error: gpsError } = useLiveGeolocation();
   const [metar, setMetar] = useState<MetarReport | null>(null);
   const [metarStatus, setMetarStatus] = useState("Chargement de la météo locale…");
@@ -249,6 +282,49 @@ export default function DronePanel() {
     const timer = window.setInterval(() => setMissionNowAnchorMs(Date.now()), 10 * 60_000);
     return () => window.clearInterval(timer);
   }, [missionNowMode]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadAzba() {
+      try {
+        const response = await fetch("/api/rtba-activation", { cache: "no-store" });
+        const payload = await response.json() as AzbaLiveFeed;
+        if (cancelled) return;
+        if (!response.ok || payload.state !== "available") {
+          setAzbaFeed({
+            source: "SIA/AZBA officiel",
+            retrievedAt: payload.retrievedAt ?? new Date().toISOString(),
+            validityStartUtc: null,
+            validityEndUtc: null,
+            state: "unavailable",
+            message: payload.message ?? "Donnée AZBA indisponible.",
+            zones: []
+          });
+          return;
+        }
+        setAzbaFeed(payload);
+        reportDataUpdate("drone");
+      } catch {
+        if (!cancelled) {
+          setAzbaFeed({
+            source: "SIA/AZBA officiel",
+            retrievedAt: new Date().toISOString(),
+            validityStartUtc: null,
+            validityEndUtc: null,
+            state: "unavailable",
+            message: "Donnée AZBA indisponible : aucun statut inactif n’est supposé.",
+            zones: []
+          });
+        }
+      }
+    }
+    loadAzba();
+    const timer = window.setInterval(loadAzba, 5 * 60_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, []);
 
   useEffect(() => {
     const detectedDevice = detectReferenceDevice({
@@ -532,14 +608,44 @@ export default function DronePanel() {
     [requestedHeight, selectedPosition]
   );
   const containingZones = useMemo(() => rtbaAssessment?.matches ?? [], [rtbaAssessment]);
+  const azbaByZone = useMemo(
+    () => new Map(azbaFeed.zones.map((zone) => [normalizeRtbaCode(zone.code), zone])),
+    [azbaFeed]
+  );
+  const rtbaActivationFeed = useMemo<RtbaActivationFeed>(() => azbaFeed.state === "available" ? {
+    state: "ready",
+    source: azbaFeed.source,
+    publishedAt: null,
+    retrievedAt: azbaFeed.retrievedAt,
+    coverageStartsAt: azbaFeed.validityStartUtc,
+    coverageEndsAt: azbaFeed.validityEndUtc,
+    slots: azbaFeed.zones.flatMap((zone) => zone.activations.map((slot) => ({
+      zoneId: zone.code,
+      startsAt: slot.startUtc,
+      endsAt: slot.endUtc
+    }))),
+    message: azbaFeed.message
+  } : {
+    ...RTBA_UNAVAILABLE_FEED,
+    retrievedAt: azbaFeed.retrievedAt,
+    message: azbaFeed.message
+  }, [azbaFeed]);
   const rtbaMapZones = useMemo(
-    () => RTBA_ZONES.map((zone) => ({ ...zone, status: rtbaMapDisplayStatus(zone.id, rtbaAssessment) })),
-    [rtbaAssessment]
+    () => RTBA_ZONES.map((zone) => {
+      const live = azbaByZone.get(normalizeRtbaCode(zone.id));
+      const active = azbaFeed.state === "available" && live?.state === "active";
+      const localStatus = rtbaMapDisplayStatus(zone.id, rtbaAssessment);
+      return {
+        ...zone,
+        status: active ? "active" as const : localStatus === "intersects-height" ? "intersects-height" as const : "boundary" as const
+      };
+    }),
+    [azbaByZone, azbaFeed.state, rtbaAssessment]
   );
   const notamReading = useMemo(() => readNotamInFrench(notamText), [notamText]);
   const rtbaMissionStatus = useMemo(() => missionWindow
-    ? evaluateRtbaMission(rtbaAssessment, RTBA_UNAVAILABLE_FEED, missionWindow.startMs, missionWindow.endMs)
-    : evaluateRtbaMission(rtbaAssessment, RTBA_UNAVAILABLE_FEED, 0, 0), [missionWindow, rtbaAssessment]);
+    ? evaluateRtbaMission(rtbaAssessment, rtbaActivationFeed, missionWindow.startMs, missionWindow.endMs)
+    : evaluateRtbaMission(rtbaAssessment, rtbaActivationFeed, 0, 0), [missionWindow, rtbaActivationFeed, rtbaAssessment]);
   const notamAssessments = useMemo(() => new Map(officialNotams.map((notam) => [notam.id, missionWindow
     ? assessNotamForMission(notam, missionWindow.startMs, missionWindow.endMs, requestedHeight)
     : null])), [missionWindow, officialNotams, requestedHeight]);
@@ -643,6 +749,35 @@ export default function DronePanel() {
           ? "HORS DES CONTOURS LF-R45 LOCAUX"
           : "COUVERTURE RTBA LOCALE INSUFFISANTE";
 
+  const rtbaLivePoints = useMemo(() => showRtbaLayer ? RTBA_ZONES.map((zone) => {
+    const key = normalizeRtbaCode(zone.id);
+    const live = azbaByZone.get(key);
+    const state = live?.state ?? (azbaFeed.state === "available" ? "inactive" : "unknown");
+    const nowMs = Date.now();
+    const activeSlot = live?.activations.find((slot) => {
+      const start = new Date(slot.startUtc).getTime();
+      const end = new Date(slot.endUtc).getTime();
+      return Number.isFinite(start) && Number.isFinite(end) && start <= nowMs && nowMs < end;
+    }) ?? null;
+    const nextSlot = live?.activations.find((slot) => new Date(slot.startUtc).getTime() > nowMs) ?? null;
+    const slotText = activeSlot
+      ? `fin du créneau : ${formatAzbaTime(activeSlot.endUtc)}`
+      : nextSlot
+        ? `prochain créneau : ${formatAzbaTime(nextSlot.startUtc)} → ${formatAzbaTime(nextSlot.endUtc)}`
+        : azbaFeed.state === "available"
+          ? "aucun autre créneau publié dans la période AZBA connue"
+          : "créneaux officiels indisponibles";
+    const center = polygonCenter(zone.positions);
+    return {
+      id: `rtba-live-${key}`,
+      lat: center[0],
+      lon: center[1],
+      name: key,
+      detail: `${rtbaStateLabel(state)} • ${zone.name} • ${zone.floor} → ${zone.ceiling} • ${slotText} • source SIA/AZBA`,
+      category: `rtba-live-${state}`
+    };
+  }) : [], [azbaByZone, azbaFeed, showRtbaLayer]);
+
   const mapPoints = [
     ...(selectedPosition ? [{
         id: "mission",
@@ -654,6 +789,7 @@ export default function DronePanel() {
       }] : []),
     ...(position && missionReference !== "moi" ? [{ id: "moi", lat: position[0], lon: position[1], name: "MOI", detail: positionStatus, category: "moi" }] : []),
     ...(savedHome && missionReference !== "home" ? [{ id: "saved-home", lat: savedHome[0], lon: savedHome[1], name: "HOME", detail: "Position fixe enregistrée", category: "home" }] : []),
+    ...rtbaLivePoints,
     ...(showAerodromesLayer ? nearbyPlaces.map((place) => ({ id: place.id, lat: place.latitude, lon: place.longitude, name: place.icao ?? place.name, detail: `${place.kind === "heliport" ? "Héliport" : "Aérodrome"} • ${place.name} • ${place.distanceKm.toFixed(1)} km`, category: "aerodrome" })) : []),
     ...(showTrafficLayer ? nearbyTraffic.map((item) => ({ id:`traffic-${item.id}`, lat:item.latitude, lon:item.longitude, name:item.callsign, detail:`${dronePassageLabel(item.passage)} • ${item.distance.toFixed(1)} km • Alt. ${item.barometricAltitude === null ? "Non déterminée" : `${Math.round(item.barometricAltitude)} m`} • donnée ${freshnessText(item.passage.freshnessSeconds)}`, category:item.isHelicopter ? "helicopter" : "aircraft", heading:item.trueTrack })) : [])
   ];
@@ -963,7 +1099,7 @@ export default function DronePanel() {
               <div className="drone-danger-layerbar">
                 <button type="button" className={showOaciLayer ? "active oaci" : ""} onClick={() => setShowOaciLayer((value) => !value)}><span>🗺️</span><strong>OACI / AIP</strong><small>{showOaciLayer ? "affiché" : "masqué"}</small></button>
                 <button type="button" className={showNotamLayer ? "active notam" : ""} onClick={() => setShowNotamLayer((value) => !value)}><span>⚠️</span><strong>NOTAM</strong><small>{officialNotams.length} reçu{officialNotams.length === 1 ? "" : "s"}</small></button>
-                <button type="button" className={showRtbaLayer ? "active rtba" : ""} onClick={() => setShowRtbaLayer((value) => !value)}><span>🛩️</span><strong>RTBA</strong><small>{showRtbaLayer ? "contours affichés" : "masqué"}</small></button>
+                <button type="button" className={showRtbaLayer ? "active rtba" : ""} onClick={() => setShowRtbaLayer((value) => !value)}><span>🛩️</span><strong>RTBA live</strong><small>{azbaFeed.state === "available" ? "AZBA connecté" : "statut à vérifier"}</small></button>
                 <button type="button" className={showAerodromesLayer ? "active aerodrome" : ""} onClick={() => setShowAerodromesLayer((value) => !value)}><span>✚</span><strong>Aérodromes</strong><small>{nearbyPlaces.length} proche{nearbyPlaces.length === 1 ? "" : "s"}</small></button>
                 <button type="button" className={showTrafficLayer ? "active traffic" : ""} onClick={() => setShowTrafficLayer((value) => !value)}><span>✈️</span><strong>Trafic</strong><small>{nearbyTraffic.length} piste{nearbyTraffic.length === 1 ? "" : "s"}</small></button>
               </div>
@@ -980,21 +1116,21 @@ export default function DronePanel() {
                     id: "oaci-2026",
                     url: OACI_WMTS_URL,
                     attribution: "Carte OACI-VFR 2026 • DSNA / IGN",
-                    opacity: .72
+                    opacity: .5
                   }] : []}
                   center={mapCenter}
                   zoom={selectedPosition ? 10 : 6}
                   mapVariant="layers"
-                  showZoneLabels
                   onMapClick={(point) => { setManualPoint(point); setMissionReference("manual"); }}
                 />
               </div>
-              <div className="rtba-legend-v4">
-                <span className="intersects-height">Rouge : danger/NOTAM ou volume RTBA concernant la mission</span>
-                <span className="below-floor">Bleu : votre point est sous le plancher publié</span>
-                <span className="nearby">Jaune : zones les plus proches</span>
-                <span className="unknown">Gris : autres contours publiés</span>
-                <span className="official">Fond OACI 2026 + NOTAM SOFIA : cliquez les zones pour les détails</span>
+              <div className="rtba-live-legend">
+                <span><i className="active"></i><b>RTBA actif</b></span>
+                <span><i className="soon"></i><b>Actif bientôt</b></span>
+                <span><i className="planned"></i><b>Prévu plus tard</b></span>
+                <span><i className="inactive"></i><b>Inactif maintenant</b></span>
+                <span><i className="unknown"></i><b>Non confirmé</b></span>
+                <small>{azbaFeed.state === "available" ? `AZBA officiel • MAJ ${new Date(azbaFeed.retrievedAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}` : azbaFeed.message}</small>
               </div>
             </>
           )}
