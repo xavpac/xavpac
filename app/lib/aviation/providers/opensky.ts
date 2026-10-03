@@ -37,8 +37,14 @@ const adapter: SourceAdapter<Input, OpenSkyFlight | null> = {
     if (!response.ok) throw new Error(`OpenSky ${response.status}`);
     const flights = await response.json() as OpenSkyFlight[];
     if (!Array.isArray(flights)) return null;
-    const matching = flights.filter((flight) => !callsign || normalizeRawCallsign(flight.callsign) === callsign).sort((a, b) => (b.lastSeen ?? 0) - (a.lastSeen ?? 0));
-    return matching[0] ?? flights.sort((a, b) => (b.lastSeen ?? 0) - (a.lastSeen ?? 0))[0] ?? null;
+    // Cette API OpenSky expose des vols historiques, pas une route live garantie.
+    // Avec un indicatif connu, on n’accepte donc qu’une correspondance exacte.
+    // On ne recycle jamais le dernier trajet d’un autre vol du même appareil.
+    if (!callsign) return null;
+    const matching = flights
+      .filter((flight) => normalizeRawCallsign(flight.callsign) === callsign)
+      .sort((a, b) => (b.lastSeen ?? 0) - (a.lastSeen ?? 0));
+    return matching[0] ?? null;
   });
   }
 };
