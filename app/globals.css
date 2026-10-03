@@ -3363,3 +3363,12 @@ a { color: inherit; }
   .drone-clearance-confirmed>div { grid-template-columns:1fr; }
   .drone-map-v4,.azba-live-frame { min-height:360px; height:54dvh; }
 }
+
+/* Vue avion — mini-carte de proximité plus lisible */
+.aircraft-view-geo-panel .xavpac-silhouette-marker.is-selected { transform:scale(.82); }
+.aircraft-view-geo-panel .xavpac-silhouette-svg { width:23px; height:23px; }
+.aircraft-view-geo-panel .xavpac-silhouette-label { top:34px; min-width:48px; max-width:88px; padding:2px 5px; }
+.aircraft-view-geo-panel .xavpac-silhouette-label strong { font-size:7px; }
+.aircraft-view-geo-panel .xavpac-silhouette-label span { display:none; }
+.aircraft-view-geo-panel .xavpac-geolocation-pin svg { width:34px; height:42px; }
+.aircraft-view-geo-panel .xavpac-geolocation-pin>strong { left:36px; top:14px; padding:3px 5px; font-size:6px; }
