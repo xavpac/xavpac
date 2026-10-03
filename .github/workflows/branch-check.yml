@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - cartes-drone-webcams-simples
+
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -12,8 +13,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-      - run: npm ci
-      - run: npm run typecheck
-      - run: npm test
-      - run: npm run build
+      - run: corepack enable
+      - run: corepack prepare pnpm@10.13.1 --activate
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run typecheck
+      - run: pnpm test
+      - run: pnpm build
