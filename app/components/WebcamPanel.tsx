@@ -2,39 +2,110 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-type Webcam = {
-  icao: string;
+type CameraGroup = "aero" | "cities71" | "holidays";
+type CameraMode = "image" | "page";
+
+type CameraItem = {
+  id: string;
+  group: CameraGroup;
   name: string;
   area: string;
-  imageUrl: string;
+  country: string;
+  latitude: number;
+  longitude: number;
+  sourceName: string;
+  sourceUrl: string;
+  mode: CameraMode;
+  imageUrl?: string;
+  code?: string;
+};
+
+type WeatherCurrent = {
+  time: string | null;
+  temperature: number | null;
+  apparentTemperature: number | null;
+  windSpeed: number | null;
+  windDirection: number | null;
+  weatherCode: number | null;
+  label: string;
+};
+
+type WeatherPayload = {
+  source?: string;
+  fetchedAt?: string;
+  current?: WeatherCurrent;
 };
 
 type MetarItem = {
   rawOb?: string;
 };
 
-const CAMERAS: Webcam[] = [
-  { icao: "LFLH", name: "Grand Chalon", area: "Saône-et-Loire", imageUrl: "https://cam-aero.eu/raspicamaero/LFLH_GrandChalon" },
-  { icao: "LFGM", name: "Montceau-les-Mines", area: "Saône-et-Loire", imageUrl: "https://cam-aero.eu/raspicamaero/LFGM_MontceauLesMines" },
-  { icao: "LFGF", name: "Beaune", area: "Côte-d’Or", imageUrl: "https://cam-aero.eu/raspicamaero/LFGF_ULM_Beaune" },
-  { icao: "LFQF", name: "Autun / Morvan", area: "Bourgogne", imageUrl: "https://cam-aero.eu/raspicamaero/LFQF_AeroclubDuMorvan" },
-  { icao: "LFKY", name: "Belley", area: "Ain", imageUrl: "https://cam-aero.eu/raspicamaero/LFKY_AeroClubDeBelley" },
-  { icao: "LFLB", name: "Chambéry", area: "Savoie", imageUrl: "https://cam-aero.eu/raspicamaero/LFLB_AeroclubDeSavoie" },
-  { icao: "LFLP", name: "Annecy", area: "Haute-Savoie", imageUrl: "https://cam-aero.eu/raspicamaero/LFLP_AnnecyTour" },
-  { icao: "LFMH", name: "Saint-Étienne", area: "Loire", imageUrl: "https://cam-aero.eu/raspicamaero/LFMH_AeroClubSaintEtienne" }
+const GROUPS: Array<{ id: CameraGroup; title: string; subtitle: string }> = [
+  { id: "aero", title: "Aéronautique", subtitle: "Terrains & aérodromes" },
+  { id: "cities71", title: "Villes 71", subtitle: "Saône-et-Loire" },
+  { id: "holidays", title: "Vacances", subtitle: "Mes destinations" }
 ];
 
+const CAMERAS: CameraItem[] = [
+  { id: "lflh", group: "aero", name: "Grand Chalon", area: "Champforgeuil", country: "France", latitude: 46.826, longitude: 4.817, sourceName: "Cam-Aéro", sourceUrl: "https://cam-aero.eu/raspicamaero/LFLH_GrandChalon", mode: "image", imageUrl: "https://cam-aero.eu/raspicamaero/LFLH_GrandChalon", code: "LFLH" },
+  { id: "lfgm", group: "aero", name: "Montceau-les-Mines", area: "Pouilloux", country: "France", latitude: 46.603, longitude: 4.333, sourceName: "Cam-Aéro", sourceUrl: "https://cam-aero.eu/raspicamaero/LFGM_MontceauLesMines", mode: "image", imageUrl: "https://cam-aero.eu/raspicamaero/LFGM_MontceauLesMines", code: "LFGM" },
+  { id: "lfgf", group: "aero", name: "Beaune", area: "Côte-d’Or", country: "France", latitude: 47.007, longitude: 4.894, sourceName: "Cam-Aéro", sourceUrl: "https://cam-aero.eu/raspicamaero/LFGF_ULM_Beaune", mode: "image", imageUrl: "https://cam-aero.eu/raspicamaero/LFGF_ULM_Beaune", code: "LFGF" },
+  { id: "lfqf", group: "aero", name: "Autun / Morvan", area: "Autun", country: "France", latitude: 46.967, longitude: 4.261, sourceName: "Cam-Aéro", sourceUrl: "https://cam-aero.eu/raspicamaero/LFQF_AeroclubDuMorvan", mode: "image", imageUrl: "https://cam-aero.eu/raspicamaero/LFQF_AeroclubDuMorvan", code: "LFQF" },
+  { id: "lfky", group: "aero", name: "Belley", area: "Ain", country: "France", latitude: 45.995, longitude: 5.692, sourceName: "Cam-Aéro", sourceUrl: "https://cam-aero.eu/raspicamaero/LFKY_AeroClubDeBelley", mode: "image", imageUrl: "https://cam-aero.eu/raspicamaero/LFKY_AeroClubDeBelley", code: "LFKY" },
+  { id: "lflb", group: "aero", name: "Chambéry", area: "Savoie", country: "France", latitude: 45.638, longitude: 5.881, sourceName: "Cam-Aéro", sourceUrl: "https://cam-aero.eu/raspicamaero/LFLB_AeroclubDeSavoie", mode: "image", imageUrl: "https://cam-aero.eu/raspicamaero/LFLB_AeroclubDeSavoie", code: "LFLB" },
+  { id: "lflp", group: "aero", name: "Annecy", area: "Haute-Savoie", country: "France", latitude: 45.929, longitude: 6.099, sourceName: "Cam-Aéro", sourceUrl: "https://cam-aero.eu/raspicamaero/LFLP_AnnecyTour", mode: "image", imageUrl: "https://cam-aero.eu/raspicamaero/LFLP_AnnecyTour", code: "LFLP" },
+  { id: "lfmh", group: "aero", name: "Saint-Étienne", area: "Loire", country: "France", latitude: 45.534, longitude: 4.297, sourceName: "Cam-Aéro", sourceUrl: "https://cam-aero.eu/raspicamaero/LFMH_AeroClubSaintEtienne", mode: "image", imageUrl: "https://cam-aero.eu/raspicamaero/LFMH_AeroClubSaintEtienne", code: "LFMH" },
+
+  { id: "macon", group: "cities71", name: "Mâcon", area: "Centre-ville", country: "France", latitude: 46.307, longitude: 4.829, sourceName: "Skaping", sourceUrl: "https://www.skaping.com/macon/ville", mode: "page" },
+  { id: "cluny-tour", group: "cities71", name: "Cluny", area: "Tour Ronde", country: "France", latitude: 46.434, longitude: 4.659, sourceName: "Cluny Sud Bourgogne", sourceUrl: "https://www.cluny-tourisme.com/webcam/carriere-de-la-tour-ronde/", mode: "page" },
+  { id: "cluny-abbaye", group: "cities71", name: "Cluny", area: "Carrière de l’Abbaye", country: "France", latitude: 46.434, longitude: 4.659, sourceName: "Cluny Sud Bourgogne", sourceUrl: "https://www.cluny-tourisme.com/webcam/carriere-de-labbaye/", mode: "page" },
+  { id: "tournus", group: "cities71", name: "Tournus", area: "Rive gauche de la Saône", country: "France", latitude: 46.562, longitude: 4.911, sourceName: "Tournus Sud Bourgogne", sourceUrl: "https://www.tournus-tourisme.com/webcam/tournus-en-direct/", mode: "page" },
+  { id: "autun", group: "cities71", name: "Autun", area: "Grand Autunois", country: "France", latitude: 46.951, longitude: 4.299, sourceName: "MeteoHorizon", sourceUrl: "https://www.meteohorizon.com/europe/france/bourgogne-franche-comte/saone-et-loire/autun/webcam", mode: "page" },
+
+  { id: "galtur", group: "holidays", name: "Galtür", area: "Tyrol", country: "Autriche", latitude: 46.967, longitude: 10.187, sourceName: "Galtür Tourismus", sourceUrl: "https://www.galtuer.com/en/plan-your-trip/webcams", mode: "page" },
+  { id: "les-carroz", group: "holidays", name: "Les Carroz", area: "Grand Massif · Haute-Savoie", country: "France", latitude: 46.02558, longitude: 6.64339, sourceName: "Les Carroz", sourceUrl: "https://www.lescarroz.com/webcams/", mode: "page" }
+];
+
+function formatWindDirection(value: number | null) {
+  if (value === null || !Number.isFinite(value)) return "—";
+  const labels = ["N", "NE", "E", "SE", "S", "SO", "O", "NO"];
+  return labels[Math.round(value / 45) % 8];
+}
+
+function formatTime(value: string | null) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value.slice(11, 16) || value;
+  return date.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+}
+
 export default function WebcamPanel() {
-  const [selectedIcao, setSelectedIcao] = useState("LFLH");
+  const [activeGroup, setActiveGroup] = useState<CameraGroup>("aero");
+  const [selectedId, setSelectedId] = useState("lflh");
   const [refreshKey, setRefreshKey] = useState(0);
   const [imageError, setImageError] = useState(false);
+  const [embedLoaded, setEmbedLoaded] = useState(false);
+  const [weather, setWeather] = useState<WeatherCurrent | null>(null);
+  const [weatherFetchedAt, setWeatherFetchedAt] = useState<string | null>(null);
+  const [weatherLoading, setWeatherLoading] = useState(true);
   const [metar, setMetar] = useState<string | null>(null);
-  const [metarLoading, setMetarLoading] = useState(true);
+
+  const cameras = useMemo(
+    () => CAMERAS.filter((camera) => camera.group === activeGroup),
+    [activeGroup]
+  );
 
   const selected = useMemo(
-    () => CAMERAS.find((camera) => camera.icao === selectedIcao) ?? CAMERAS[0],
-    [selectedIcao]
+    () => CAMERAS.find((camera) => camera.id === selectedId) ?? CAMERAS[0],
+    [selectedId]
   );
+
+  useEffect(() => {
+    if (selected.group !== activeGroup) {
+      const first = CAMERAS.find((camera) => camera.group === activeGroup);
+      if (first) setSelectedId(first.id);
+    }
+  }, [activeGroup, selected.group]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setRefreshKey((value) => value + 1), 60_000);
@@ -43,27 +114,55 @@ export default function WebcamPanel() {
 
   useEffect(() => {
     setImageError(false);
-  }, [selectedIcao, refreshKey]);
+    setEmbedLoaded(false);
+  }, [selectedId, refreshKey]);
 
   useEffect(() => {
     const controller = new AbortController();
-    setMetar(null);
-    setMetarLoading(true);
+    setWeatherLoading(true);
+    setWeather(null);
+    setWeatherFetchedAt(null);
 
-    fetch(`/api/airport-weather?ids=${encodeURIComponent(selected.icao)}`, {
+    fetch(`/api/webcam-weather?lat=${selected.latitude}&lon=${selected.longitude}`, {
       signal: controller.signal,
       cache: "no-store"
     })
       .then((response) => response.ok ? response.json() : Promise.reject(new Error("weather")))
+      .then((payload: WeatherPayload) => {
+        setWeather(payload.current ?? null);
+        setWeatherFetchedAt(payload.fetchedAt ?? null);
+        setWeatherLoading(false);
+      })
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setWeather(null);
+        setWeatherLoading(false);
+      });
+
+    return () => controller.abort();
+  }, [selected, refreshKey]);
+
+  useEffect(() => {
+    if (!selected.code) {
+      setMetar(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    setMetar(null);
+
+    fetch(`/api/airport-weather?ids=${encodeURIComponent(selected.code)}`, {
+      signal: controller.signal,
+      cache: "no-store"
+    })
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error("metar")))
       .then((payload: { metar?: MetarItem[] }) => {
         const item = Array.isArray(payload.metar) ? payload.metar[0] : undefined;
         setMetar(item?.rawOb ?? null);
-        setMetarLoading(false);
       })
       .catch((error: unknown) => {
         if (error instanceof DOMException && error.name === "AbortError") return;
         setMetar(null);
-        setMetarLoading(false);
       });
 
     return () => controller.abort();
@@ -73,78 +172,142 @@ export default function WebcamPanel() {
     <div className="webcam-module">
       <section className="panel webcam-hero">
         <div>
-          <div className="eyebrow">SPOTTER · WEBCAMS AÉRONAUTIQUES</div>
-          <h1>Webcams des terrains</h1>
+          <div className="eyebrow">XAVPAC · CAMÉRAS & MÉTÉO</div>
+          <h1>Webcams en direct</h1>
           <p className="muted">
-            Images réelles de plateformes aéronautiques, avec priorité aux terrains proches de la Saône-et-Loire.
+            Un même espace pour l’aéronautique, la Saône-et-Loire et tes destinations de vacances.
           </p>
         </div>
-        <div className="system-live">● SOURCE LIVE</div>
+        <div className="system-live">● MÉTÉO LIVE</div>
       </section>
+
+      <nav className="webcam-tabs" aria-label="Catégories de webcams">
+        {GROUPS.map((group) => (
+          <button
+            key={group.id}
+            type="button"
+            className={activeGroup === group.id ? "active" : ""}
+            onClick={() => setActiveGroup(group.id)}
+          >
+            <strong>{group.title}</strong>
+            <small>{group.subtitle}</small>
+          </button>
+        ))}
+      </nav>
 
       <section className="webcam-grid">
         <article className="panel webcam-main">
-          <div className="webcam-head">
+          <header className="webcam-head">
             <div>
-              <div className="eyebrow">{selected.area}</div>
-              <h2>{selected.name} <span>{selected.icao}</span></h2>
+              <div className="eyebrow">{selected.area} · {selected.country}</div>
+              <h2>
+                {selected.name}
+                {selected.code && <span>{selected.code}</span>}
+              </h2>
             </div>
             <button className="tool-button" type="button" onClick={() => setRefreshKey((value) => value + 1)}>
               ↻ Actualiser
             </button>
+          </header>
+
+          <div className="weather-strip">
+            <div className="weather-primary">
+              <span>Maintenant</span>
+              <strong>{weatherLoading ? "…" : weather?.temperature !== null && weather?.temperature !== undefined ? `${Math.round(weather.temperature)}°C` : "—"}</strong>
+              <small>{weatherLoading ? "Météo en cours…" : weather?.label ?? "Météo indisponible"}</small>
+            </div>
+            <div>
+              <span>Ressenti</span>
+              <strong>{weather?.apparentTemperature !== null && weather?.apparentTemperature !== undefined ? `${Math.round(weather.apparentTemperature)}°C` : "—"}</strong>
+            </div>
+            <div>
+              <span>Vent</span>
+              <strong>{weather?.windSpeed !== null && weather?.windSpeed !== undefined ? `${Math.round(weather.windSpeed)} km/h` : "—"}</strong>
+              <small>{formatWindDirection(weather?.windDirection ?? null)}</small>
+            </div>
+            <div>
+              <span>Mise à jour</span>
+              <strong>{formatTime(weatherFetchedAt)}</strong>
+              <small>Open-Meteo</small>
+            </div>
           </div>
 
           <div className="webcam-stage">
-            {!imageError ? (
-              <img
-                key={refreshKey + selected.icao}
-                src={`${selected.imageUrl}?xavpac=${refreshKey}`}
-                alt={`Webcam aéronautique ${selected.name} ${selected.icao}`}
-                onError={() => setImageError(true)}
-              />
+            {selected.mode === "image" && selected.imageUrl ? (
+              !imageError ? (
+                <img
+                  key={refreshKey + selected.id}
+                  src={`${selected.imageUrl}?xavpac=${refreshKey}`}
+                  alt={`Webcam ${selected.name}`}
+                  onError={() => setImageError(true)}
+                />
+              ) : (
+                <div className="webcam-unavailable">
+                  <strong>Image temporairement indisponible</strong>
+                  <span>La caméra peut être hors ligne ou en cours d’actualisation.</span>
+                  <a href={selected.sourceUrl} target="_blank" rel="noreferrer">Ouvrir la source ↗</a>
+                </div>
+              )
+            ) : embedLoaded ? (
+              <div className="webcam-frame-wrap">
+                <iframe
+                  key={selected.id}
+                  src={selected.sourceUrl}
+                  title={`Webcam ${selected.name}`}
+                  loading="lazy"
+                  referrerPolicy="no-referrer-when-downgrade"
+                />
+                <a href={selected.sourceUrl} target="_blank" rel="noreferrer">Ouvrir en plein écran ↗</a>
+              </div>
             ) : (
-              <div className="webcam-unavailable">
-                <strong>Image temporairement indisponible</strong>
-                <span>La caméra peut être hors ligne ou en cours d’actualisation.</span>
+              <div className="webcam-launch">
+                <div>
+                  <span>📷</span>
+                  <strong>{selected.name}</strong>
+                  <small>{selected.area}</small>
+                </div>
+                <p>
+                  Cette caméra est fournie par {selected.sourceName}. Elle est chargée seulement à la demande.
+                </p>
+                <div>
+                  <button type="button" onClick={() => setEmbedLoaded(true)}>Charger la caméra</button>
+                  <a href={selected.sourceUrl} target="_blank" rel="noreferrer">Ouvrir la source ↗</a>
+                </div>
               </div>
             )}
           </div>
 
           <div className="webcam-meta">
-            <div className="source-chip">Source<br /><strong>Cam-Aéro</strong></div>
-            <div className="source-chip">Terrain<br /><strong>{selected.icao}</strong></div>
-            <a className="source-chip" href={selected.imageUrl} target="_blank" rel="noreferrer">Ouvrir la source ↗</a>
+            <div><span>Lieu</span><strong>{selected.name}</strong></div>
+            <div><span>Secteur</span><strong>{selected.area}</strong></div>
+            <div><span>Source</span><strong>{selected.sourceName}</strong></div>
           </div>
 
-          <div className="webcam-weather">
-            <div className="eyebrow">MÉTÉO AÉRONAUTIQUE</div>
-            {metarLoading ? (
-              <p className="muted">Recherche du METAR…</p>
-            ) : metar ? (
-              <code>{metar}</code>
-            ) : (
-              <p className="muted">Aucun METAR disponible pour ce terrain. L’image reste la référence visuelle.</p>
-            )}
-          </div>
+          {selected.code && (
+            <div className="webcam-metar">
+              <div className="eyebrow">MÉTÉO AÉRONAUTIQUE</div>
+              {metar ? <code>{metar}</code> : <p className="muted">METAR indisponible pour ce terrain.</p>}
+            </div>
+          )}
         </article>
 
         <aside className="panel webcam-list">
           <div className="panel-title webcam-list-title">
             <div>
-              <div className="eyebrow">RÉSEAU SÉLECTIONNÉ</div>
-              <h3>{CAMERAS.length} terrains</h3>
+              <div className="eyebrow">{GROUPS.find((group) => group.id === activeGroup)?.title}</div>
+              <h3>{cameras.length} caméra{cameras.length > 1 ? "s" : ""}</h3>
             </div>
           </div>
 
           <div className="webcam-buttons">
-            {CAMERAS.map((camera) => (
+            {cameras.map((camera) => (
               <button
-                key={camera.icao}
+                key={camera.id}
                 type="button"
-                className={camera.icao === selected.icao ? "active" : ""}
-                onClick={() => setSelectedIcao(camera.icao)}
+                className={camera.id === selected.id ? "active" : ""}
+                onClick={() => setSelectedId(camera.id)}
               >
-                <b>{camera.icao}</b>
+                <b>{camera.code ?? "CAM"}</b>
                 <span>
                   <strong>{camera.name}</strong>
                   <small>{camera.area}</small>
@@ -155,7 +318,7 @@ export default function WebcamPanel() {
           </div>
 
           <p className="webcam-note">
-            Cam-Aéro diffuse des images horodatées de terrains aéronautiques. Ce ne sont pas des flux vidéo continus.
+            Les flux externes peuvent refuser l’intégration dans XavPac. Dans ce cas, le bouton « Ouvrir la source » reste toujours disponible.
           </p>
         </aside>
       </section>
@@ -165,33 +328,31 @@ export default function WebcamPanel() {
         .webcam-hero{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;padding:18px 20px}
         .webcam-hero h1{margin:5px 0;font-size:clamp(28px,3vw,40px)}
         .webcam-hero p{margin:0;max-width:850px}
+        .webcam-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
+        .webcam-tabs button{min-height:62px;padding:10px 14px;border:1px solid var(--line);border-radius:14px;color:var(--muted);background:linear-gradient(145deg,rgba(12,35,61,.94),rgba(6,22,39,.94));text-align:left;cursor:pointer}
+        .webcam-tabs button.active{border-color:rgba(88,212,255,.58);color:#fff;background:linear-gradient(145deg,rgba(25,81,117,.96),rgba(7,35,59,.96));box-shadow:0 0 22px rgba(88,212,255,.08)}
+        .webcam-tabs strong,.webcam-tabs small{display:block}.webcam-tabs strong{font-size:12px}.webcam-tabs small{margin-top:4px;font-size:8px;color:#7e97ab}
         .webcam-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,350px);gap:10px}
         .webcam-main{min-width:0;padding:12px}
         .webcam-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}
         .webcam-head h2{margin:4px 0 0;font-size:22px}
-        .webcam-head h2 span{margin-left:6px;color:var(--cyan);font-size:13px}
-        .webcam-stage{aspect-ratio:4/3;display:grid;place-items:center;overflow:hidden;border:1px solid var(--line);border-radius:14px;background:#000}
-        .webcam-stage img{width:100%;height:100%;display:block;object-fit:contain}
-        .webcam-unavailable{display:grid;gap:6px;padding:18px;text-align:center;color:var(--muted)}
-        .webcam-unavailable strong{color:#fff}
-        .webcam-meta{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin-top:8px}
-        .webcam-meta .source-chip{display:block;text-align:center;text-decoration:none}
-        .webcam-weather{margin-top:8px;padding:11px;border:1px solid var(--line);border-radius:12px;background:rgba(88,212,255,.05)}
-        .webcam-weather p{margin:7px 0 0}
-        .webcam-weather code{display:block;margin-top:7px;color:#e9f8ff;line-height:1.5;white-space:normal}
-        .webcam-list{padding:10px}
-        .webcam-list-title{margin:0;padding:4px 4px 8px}
-        .webcam-list-title h3{margin:4px 0 0}
-        .webcam-buttons{display:grid;gap:4px}
-        .webcam-buttons button{width:100%;display:grid;grid-template-columns:50px minmax(0,1fr) 18px;align-items:center;gap:9px;padding:10px;border:1px solid transparent;border-radius:11px;color:inherit;background:transparent;text-align:left;cursor:pointer}
-        .webcam-buttons button:hover,.webcam-buttons button.active{border-color:rgba(88,212,255,.38);background:rgba(88,212,255,.08)}
-        .webcam-buttons button>b{color:var(--cyan)}
-        .webcam-buttons strong,.webcam-buttons small{display:block}
-        .webcam-buttons small{margin-top:2px;color:var(--muted)}
-        .webcam-buttons i{color:var(--cyan);font-size:18px;font-style:normal}
-        .webcam-note{margin:10px 5px 3px;padding-top:9px;border-top:1px solid var(--line);color:var(--muted);font-size:10px;line-height:1.5}
-        @media(max-width:900px){.webcam-grid{grid-template-columns:1fr}}
-        @media(max-width:560px){.webcam-hero{flex-direction:column;padding:14px}.webcam-meta{grid-template-columns:1fr}.webcam-main{padding:8px}}
+        .webcam-head h2 span{margin-left:7px;padding:3px 6px;border:1px solid rgba(88,212,255,.25);border-radius:7px;color:var(--cyan);font-size:11px}
+        .weather-strip{display:grid;grid-template-columns:1.2fr repeat(3,minmax(0,1fr));gap:6px;margin-bottom:8px}
+        .weather-strip>div{min-width:0;padding:10px 11px;border:1px solid rgba(88,212,255,.14);border-radius:11px;background:rgba(88,212,255,.045)}
+        .weather-strip span,.weather-strip strong,.weather-strip small{display:block}.weather-strip span{color:#7891a5;font-size:7px;text-transform:uppercase;letter-spacing:.06em}.weather-strip strong{margin-top:4px;font-size:15px}.weather-strip small{margin-top:3px;color:#90a7b9;font-size:8px}.weather-primary strong{color:var(--cyan);font-size:22px}
+        .webcam-stage{min-height:520px;display:grid;place-items:center;overflow:hidden;border:1px solid var(--line);border-radius:14px;background:#02090f}
+        .webcam-stage>img{width:100%;height:100%;max-height:720px;display:block;object-fit:contain}
+        .webcam-unavailable,.webcam-launch{max-width:620px;display:grid;gap:14px;padding:26px;text-align:center;color:var(--muted)}
+        .webcam-unavailable strong,.webcam-launch strong{color:#fff}.webcam-unavailable a,.webcam-launch a{color:var(--cyan);text-decoration:none}
+        .webcam-launch>div:first-child span{display:block;font-size:46px}.webcam-launch>div:first-child strong,.webcam-launch>div:first-child small{display:block}.webcam-launch>div:first-child strong{margin-top:8px;font-size:22px}.webcam-launch>div:first-child small{margin-top:4px}
+        .webcam-launch>div:last-child{display:flex;justify-content:center;gap:8px;flex-wrap:wrap}
+        .webcam-launch button,.webcam-launch a{padding:10px 13px;border:1px solid rgba(88,212,255,.3);border-radius:10px;background:rgba(88,212,255,.08);color:#eafaff;font-weight:800;cursor:pointer;text-decoration:none}
+        .webcam-frame-wrap{position:relative;width:100%;height:100%;min-height:520px}.webcam-frame-wrap iframe{width:100%;height:100%;min-height:520px;border:0;background:#fff}.webcam-frame-wrap>a{position:absolute;right:10px;bottom:10px;padding:8px 10px;border-radius:9px;color:#fff;background:rgba(4,17,30,.9);text-decoration:none;font-size:9px;font-weight:900}
+        .webcam-meta{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin-top:8px}.webcam-meta>div{padding:9px 10px;border:1px solid var(--line);border-radius:10px;background:rgba(255,255,255,.025)}.webcam-meta span,.webcam-meta strong{display:block}.webcam-meta span{color:#7891a5;font-size:7px;text-transform:uppercase}.webcam-meta strong{margin-top:3px;font-size:10px}
+        .webcam-metar{margin-top:8px;padding:11px;border:1px solid var(--line);border-radius:12px;background:rgba(88,212,255,.05)}.webcam-metar code{display:block;margin-top:7px;color:#e9f8ff;line-height:1.5;white-space:normal}.webcam-metar p{margin:7px 0 0}
+        .webcam-list{padding:10px}.webcam-list-title{margin:0;padding:4px 4px 8px}.webcam-list-title h3{margin:4px 0 0}.webcam-buttons{display:grid;gap:4px}.webcam-buttons button{width:100%;display:grid;grid-template-columns:50px minmax(0,1fr) 18px;align-items:center;gap:9px;padding:10px;border:1px solid transparent;border-radius:11px;color:inherit;background:transparent;text-align:left;cursor:pointer}.webcam-buttons button:hover,.webcam-buttons button.active{border-color:rgba(88,212,255,.38);background:rgba(88,212,255,.08)}.webcam-buttons button>b{color:var(--cyan);font-size:9px}.webcam-buttons strong,.webcam-buttons small{display:block}.webcam-buttons small{margin-top:2px;color:var(--muted)}.webcam-buttons i{color:var(--cyan);font-size:18px;font-style:normal}.webcam-note{margin:10px 5px 3px;padding-top:9px;border-top:1px solid var(--line);color:var(--muted);font-size:10px;line-height:1.5}
+        @media(max-width:900px){.webcam-grid{grid-template-columns:1fr}.webcam-stage,.webcam-frame-wrap,.webcam-frame-wrap iframe{min-height:440px}}
+        @media(max-width:620px){.webcam-hero{flex-direction:column;padding:14px}.webcam-tabs{grid-template-columns:1fr}.weather-strip{grid-template-columns:1fr 1fr}.webcam-meta{grid-template-columns:1fr}.webcam-main{padding:8px}.webcam-stage,.webcam-frame-wrap,.webcam-frame-wrap iframe{min-height:360px}}
       `}</style>
     </div>
   );
