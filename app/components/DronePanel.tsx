@@ -968,7 +968,7 @@ export default function DronePanel() {
                 <button type="button" className={showTrafficLayer ? "active traffic" : ""} onClick={() => setShowTrafficLayer((value) => !value)}><span>✈️</span><strong>Trafic</strong><small>{nearbyTraffic.length} piste{nearbyTraffic.length === 1 ? "" : "s"}</small></button>
               </div>
               <div className="drone-map-source-strip">
-                <span><b>Carte OACI-VFR 2026 DSNA</b> + données XavPac autour de la mission</span>
+                <span><b>Carte OACI-VFR 2026 DSNA</b> + NOTAM SOFIA dans un rayon de {OFFICIAL_NOTAM_RADIUS_NM} NM autour de la mission</span>
                 <div><a href={OACI_LEGEND_URL} target="_blank" rel="noreferrer">Légende OACI ↗</a><a href={SUP_AIP_OFFICIAL_URL} target="_blank" rel="noreferrer">SUP AIP officiels ↗</a><a href="https://sofia-briefing.aviation-civile.gouv.fr/sofia/pages/notamsearcharea.html" target="_blank" rel="noreferrer">SOFIA ↗</a></div>
               </div>
               <div className="drone-map-v4 drone-map-locked-v5">
