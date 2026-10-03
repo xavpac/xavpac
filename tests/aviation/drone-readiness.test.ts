@@ -34,7 +34,7 @@ test("demande d'attendre quand l'AZBA ou les NOTAM ne sont pas confirmés", () =
   });
   assert.equal(result.tone, "hold");
   assert.equal(result.headline, "NE DÉCOLLEZ PAS ENCORE");
-  assert.ok(result.actions.some((action) => /AZBA national/.test(action.label)));
+  assert.ok(result.actions.some((action) => /AZBA France/.test(action.label)));
   assert.ok(result.actions.some((action) => /NOTAM officiels/.test(action.label)));
 });
 

@@ -53,7 +53,7 @@ G) 1500FT AMSL`);
   assert.equal(reading.schedule, "Chaque jour de 08:00 à 16:00 UTC");
   assert.match(reading.frenchText ?? "", /activité de drones/i);
   assert.equal(reading.lowerLimit, "Surface \/ sol");
-  assert.match(reading.upperLimit ?? "", /1[\u202f ]500 pieds AMSL/i);
+  assert.match(reading.upperLimit ?? "", /1[\u202f ]500 pieds \(au-dessus du niveau moyen de la mer\)/i);
 });
 
 test("traduit les abréviations opérationnelles courantes d’un NOTAM", () => {
@@ -67,7 +67,7 @@ G) 500FT AGL`);
   assert.ok(reading);
   assert.match(reading.frenchText ?? "", /piste 18\/36 fermée en raison de travaux en cours/i);
   assert.match(reading.frenchText ?? "", /grue positionnée à 1 NM du seuil/i);
-  assert.match(reading.upperLimit ?? "", /500 pieds AGL \(au-dessus du sol\)/i);
+  assert.match(reading.upperLimit ?? "", /500 pieds \(au-dessus du sol\)/i);
 });
 
 

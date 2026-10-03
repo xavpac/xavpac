@@ -58,6 +58,7 @@ type MissionReference = "moi" | "home" | "manual";
 type OfficialNotam = SofiaNotam;
 
 const FRANCE_OVERVIEW_CENTER: [number, number] = [46.603354, 1.888334];
+const UAS_OFFICIAL_MAP_URL = "https://www.geoportail.gouv.fr/donnees/restrictions-pour-drones-de-loisir%20";
 const OFFICIAL_NOTAM_LIMIT = 2;
 const RTBA_UNAVAILABLE_FEED: RtbaActivationFeed = {
   state: "unavailable",
@@ -169,7 +170,7 @@ function freshnessText(seconds: number | null) {
 }
 
 export default function DronePanel() {
-  const [mapMode, setMapMode] = useState<"official" | "map">("map");
+  const [mapMode, setMapMode] = useState<"official" | "map" | "uas">("map");
   const { position, status: positionStatus, accuracy, altitude, timestamp, quality: gpsQuality, usableForPreciseCalculations, isLive, trackingEnabled, setTrackingEnabled, retryGeolocation, error: gpsError } = useLiveGeolocation();
   const [metar, setMetar] = useState<MetarReport | null>(null);
   const [metarStatus, setMetarStatus] = useState("Chargement de la météo locale…");
@@ -643,6 +644,13 @@ export default function DronePanel() {
     setMissionNowMode(true);
   }
 
+  function showAirspaceMap(mode: "official" | "map" | "uas") {
+    setMapMode(mode);
+    window.setTimeout(() => {
+      document.getElementById("carte-drone")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
+  }
+
   return (
     <div className="drone-panel-flow">
       <section className="hero drone-hero-v4">
@@ -677,7 +685,22 @@ export default function DronePanel() {
         <div className="drone-clearance-answer"><span className="eyebrow">RÉPONSE SIMPLE AVANT DÉCOLLAGE</span><h2>{readiness.headline}</h2><p>{readiness.summary}</p><strong>{missionReference === "home" ? "🏠 HOME" : missionReference === "moi" ? "📍 MOI" : "🎯 POINT CHOISI"} • {requestedHeight} m • {missionWindow?.isNow ? "maintenant" : missionWindow ? formatMissionLocal(missionWindow.startMs) : "horaire invalide"}</strong></div>
         <div className="drone-decision-why">
           <header><strong>À faire maintenant</strong><span>{readiness.actions.length} action{readiness.actions.length === 1 ? "" : "s"}</span></header>
-          {readiness.actions.map((action, index) => <p className={action.level === "blocking" ? "blocking" : "checking"} key={action.id}><b>{action.level === "blocking" ? "×" : index + 1}</b><span>{action.label}</span></p>)}
+          {readiness.actions.map((action, index) => {
+            const mapTarget: "official" | "uas" | null = action.id === "rtba" ? "official" : action.id === "local" ? "uas" : null;
+            if (mapTarget) {
+              return <button
+                type="button"
+                className={`drone-check-action ${action.level === "blocking" ? "blocking" : "checking"}`}
+                key={action.id}
+                onClick={() => showAirspaceMap(mapTarget)}
+              >
+                <b>{action.id === "rtba" ? "🛩️" : "🗺️"}</b>
+                <span><strong>{action.id === "rtba" ? "Carte AZBA / RTBA" : "Carte zones UAS"}</strong><small>{action.label}</small></span>
+                <i>Voir la carte →</i>
+              </button>;
+            }
+            return <p className={action.level === "blocking" ? "blocking" : "checking"} key={action.id}><b>{action.level === "blocking" ? "×" : index + 1}</b><span>{action.label}</span></p>;
+          })}
           {!readiness.actions.length && <p className="positive"><b>✓</b><span>Aucune action complémentaire signalée par les données disponibles.</span></p>}
         </div>
         <div className="drone-clearance-confirmed"><strong>Déjà contrôlé</strong>{readiness.confirmed.slice(0, 5).map((item) => <span key={item}>✓ {item}</span>)}<div><a href={RTBA_ACTIVATION_URL} target="_blank" rel="noreferrer">Ouvrir l’AZBA officiel ↗</a><a href="https://sofia-briefing.aviation-civile.gouv.fr/sofia/pages/notamsearcharea.html" target="_blank" rel="noreferrer">Ouvrir SOFIA ↗</a></div></div>
@@ -843,13 +866,14 @@ export default function DronePanel() {
         <article className="panel drone-map-card-v4">
           <div className="panel-title rtba-panel-title-v51">
             <div>
-              <span className="eyebrow">ESPACE AÉRIEN FRANCE</span>
-              <h3>Ma position et zones RTBA</h3>
-              <p className="muted">Ouverture directe sur votre position avec les contours RTBA publiés, le trafic et les aérodromes proches.</p>
+              <span className="eyebrow">CARTOGRAPHIE ESPACE AÉRIEN</span>
+              <h3>Voir les zones plutôt que lire des avertissements</h3>
+              <p className="muted">Choisissez la carte adaptée : situation locale XavPac, activation AZBA nationale ou restrictions UAS officielles.</p>
             </div>
-            <div className="rtba-mode-switch">
-              <button type="button" className={mapMode === "official" ? "active" : ""} onClick={() => setMapMode("official")}>AZBA officiel live</button>
-              <button type="button" className={mapMode === "map" ? "active" : ""} onClick={() => setMapMode("map")}>Carte locale</button>
+            <div className="rtba-mode-switch airspace-map-tabs">
+              <button type="button" className={mapMode === "map" ? "active" : ""} onClick={() => setMapMode("map")}><span>📍</span><strong>XavPac local</strong><small>Mission, trafic & LF-R45</small></button>
+              <button type="button" className={mapMode === "official" ? "active" : ""} onClick={() => setMapMode("official")}><span>🛩️</span><strong>AZBA France</strong><small>Activation RTBA officielle</small></button>
+              <button type="button" className={mapMode === "uas" ? "active" : ""} onClick={() => setMapMode("uas")}><span>🗺️</span><strong>Zones UAS</strong><small>Carte officielle Géoportail</small></button>
             </div>
             <div className="drone-map-actions">
               <button type="button" disabled={!position} onClick={() => { setManualPoint(null); setMissionReference("moi"); setMapMode("map"); }}>MISSION = MOI</button>
@@ -863,20 +887,37 @@ export default function DronePanel() {
           {!selectedPosition && <div className="drone-location-warning"><span>📍</span><div><strong>La carte montre la France, pas votre position.</strong><small>Relancez le GPS, recherchez votre commune, saisissez vos coordonnées ou cliquez directement sur votre point exact.</small></div><button type="button" onClick={retryGeolocation}>Relancer le GPS</button></div>}
 
           {mapMode === "official" ? (
-            <div className="azba-live-shell">
-              <div className="azba-live-banner">
-                <span><b>● OFFICIEL EN DIRECT</b> — rouge : active • bleu : inactive</span>
-                <a href={RTBA_ACTIVATION_URL} target="_blank" rel="noreferrer">Ouvrir en plein écran ↗</a>
+            <div className="azba-live-shell airspace-official-shell">
+              <div className="azba-live-banner airspace-map-banner">
+                <span><b>● AZBA / RTBA FRANCE</b><small>Activation prévisionnelle officielle SIA • rouge : active • bleu : inactive</small></span>
+                <a href={RTBA_ACTIVATION_URL} target="_blank" rel="noreferrer">Plein écran ↗</a>
               </div>
               <iframe
                 className="azba-live-frame"
                 src={RTBA_ACTIVATION_URL}
                 title="Carte officielle AZBA du SIA"
-                loading="lazy"
+                loading="eager"
                 referrerPolicy="no-referrer-when-downgrade"
               />
               <div className="azba-frame-fallback">
-                Si la carte officielle est bloquée par le navigateur, utilisez le bouton « Ouvrir en plein écran ».
+                L’AZBA complète la préparation mais ne remplace pas NOTAM, SUP AIP et AIP.
+              </div>
+            </div>
+          ) : mapMode === "uas" ? (
+            <div className="azba-live-shell airspace-official-shell uas-official-shell">
+              <div className="azba-live-banner airspace-map-banner">
+                <span><b>● RESTRICTIONS UAS OFFICIELLES</b><small>Géoportail • catégorie Ouverte & aéromodélisme</small></span>
+                <a href={UAS_OFFICIAL_MAP_URL} target="_blank" rel="noreferrer">Plein écran ↗</a>
+              </div>
+              <iframe
+                className="azba-live-frame uas-live-frame"
+                src={UAS_OFFICIAL_MAP_URL}
+                title="Carte officielle des restrictions UAS Géoportail"
+                loading="eager"
+                referrerPolicy="no-referrer-when-downgrade"
+              />
+              <div className="azba-frame-fallback uas-map-note">
+                Cette carte ne couvre pas toutes les restrictions temporaires : contrôlez aussi les NOTAM et SUP AIP pour le créneau de mission.
               </div>
             </div>
           ) : (
@@ -902,7 +943,11 @@ export default function DronePanel() {
             </>
           )}
 
-          <div className="rtba-zone-list-v5"><article><span>📐</span><div><strong>RTBA LF-R45 AU POINT</strong><small>{rtbaSummary}. La géométrie et l’activation sont affichées séparément.</small></div></article><article><span>⚠️</span><div><strong>NOTAM</strong><small>Lecture française disponible plus haut après récupération du texte officiel sur SOFIA.</small></div></article><article><span>🛩️</span><div><strong>AUTRES ESPACES</strong><small>CTR, TMA, R, P, D, zones UAS et temporaires restent à contrôler sur les publications officielles.</small></div></article></div>
+          <div className="rtba-zone-list-v5 airspace-map-shortcuts">
+            <button type="button" onClick={() => showAirspaceMap("map")}><span>📍</span><div><strong>CARTE LOCALE</strong><small>{rtbaSummary} • mission, trafic et contours LF-R45.</small></div></button>
+            <button type="button" onClick={() => showAirspaceMap("official")}><span>🛩️</span><div><strong>AZBA FRANCE</strong><small>Voir directement les activations RTBA nationales.</small></div></button>
+            <button type="button" onClick={() => showAirspaceMap("uas")}><span>🗺️</span><div><strong>ZONES UAS</strong><small>Voir la carte officielle des restrictions drone.</small></div></button>
+          </div>
         </article>
 
         <aside className="drone-side-v4">
