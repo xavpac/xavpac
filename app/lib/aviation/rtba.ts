@@ -20,9 +20,9 @@ export type RtbaAssessment = {
 
 export type RtbaMapDisplayStatus = "intersects-height" | "below-floor" | "nearby" | "unknown";
 
-export const RTBA_SOURCE_URL = "https://www.sia.aviation-civile.gouv.fr/media/dvd/eAIP_09_JUL_2026/FRANCE/AIRAC-2026-07-09/html/eAIP/FR-ENR-5.1-fr-FR.html";
+export const RTBA_SOURCE_URL = "https://www.sia.aviation-civile.gouv.fr/media/dvd/eAIP_01_OCT_2026/FRANCE/AIRAC-2026-10-01/html/eAIP/FR-ENR-5.1-fr-FR.html";
 export const RTBA_ACTIVATION_URL = "https://www.sia.aviation-civile.gouv.fr/azbaEx/";
-export const RTBA_SOURCE_LABEL = "AIP France ENR 5.1 — AIRAC du 9 juillet 2026";
+export const RTBA_SOURCE_LABEL = "AIP France ENR 5.1 — AIRAC du 1er octobre 2026";
 
 function dms(value: string) {
   const match = value.match(/^(\d{2,3})°(\d{2})'(\d{2})\"([NSEW])$/);
