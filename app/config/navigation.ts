@@ -6,6 +6,7 @@ export type ModuleId =
   | "spotting"
   | "weather"
   | "lightning"
+  | "webcams"
   | "astronomy"
   | "drone"
   | "risks"
@@ -14,7 +15,7 @@ export type ModuleId =
 
 export type NavigationModule = {
   id: ModuleId;
-  icon: "aircraft" | "rescue" | "weather" | "moon" | "drone" | "operations" | "fire";
+  icon: "aircraft" | "rescue" | "weather" | "camera" | "moon" | "drone" | "operations" | "fire";
   title: string;
   shortTitle: string;
   subtitle: string;
@@ -40,6 +41,7 @@ export const NAVIGATION: Record<Universe, UniverseNavigation> = {
       { id: "spotting", icon: "operations", title: "Carnet de spotting", shortTitle: "Carnet", subtitle: "Observations" },
       { id: "lightning", icon: "weather", title: "Orage / Foudre", shortTitle: "Orage", subtitle: "Impacts live" },
       { id: "weather", icon: "weather", title: "Météo", shortTitle: "Météo", subtitle: "Prévisions" },
+      { id: "webcams", icon: "camera", title: "Webcams", shortTitle: "Cams", subtitle: "Terrains en direct" },
       { id: "astronomy", icon: "moon", title: "Ciel", shortTitle: "Ciel", subtitle: "ISS & astronomie" }
     ]
   },
