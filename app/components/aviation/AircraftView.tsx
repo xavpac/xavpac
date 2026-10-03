@@ -222,7 +222,15 @@ export default function AircraftView({ open, rootRef, aircraft, enriched, operat
     ...(observerPosition ? [{ id: "aircraft-view-observer", lat: observerPosition[0], lon: observerPosition[1], name: "Point d’observation", detail: "Référence utilisée pour la distance", category: "location" }] : []),
     { id: aircraft.id, lat: aircraft.latitude, lon: aircraft.longitude, name: flightLabel, detail: `${aircraft.distance.toFixed(1)} km • ${directionLabel}`, category: enriched?.aircraftCategory === "helicopter" ? "helicopter" : "commercial", heading: aircraft.trueTrack }
   ];
-  const mapTrails = trail ? [{ ...trail, id: "aircraft-view-observed-track", color: "#00a8ff", selected: true }] : [];
+  const mapTrails = trail ? [{
+    ...trail,
+    id: "aircraft-view-observed-track",
+    color: "#00a8ff",
+    selected: true,
+    weight: 2.5,
+    haloWeight: 5,
+    opacity: .82
+  }] : [];
 
   return <div ref={rootRef} className={`aircraft-view aircraft-family-${family.key}${open ? " open" : ""}`} aria-hidden={!open} aria-label="Vue plein écran de l’avion sélectionné">
     <div className="aircraft-view-hero">
