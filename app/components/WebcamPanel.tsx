@@ -110,6 +110,30 @@ export default function WebcamPanel() {
     [selectedId]
   );
 
+  const placeKey = (camera: CameraItem) => {
+    if (camera.id.startsWith("macon")) return "Mâcon";
+    if (camera.id.startsWith("cluny")) return "Cluny";
+    if (camera.id.startsWith("galtur")) return "Galtür";
+    if (camera.id.startsWith("carroz")) return "Les Carroz";
+    return camera.name;
+  };
+
+  const places = useMemo(() => {
+    const seen = new Set<string>();
+    return cameras.filter((camera) => {
+      const key = placeKey(camera);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [cameras]);
+
+  const selectedPlace = placeKey(selected);
+  const samePlaceCameras = useMemo(
+    () => cameras.filter((camera) => placeKey(camera) === selectedPlace),
+    [cameras, selectedPlace]
+  );
+
   useEffect(() => {
     if (selected.group !== activeGroup) {
       const first = CAMERAS.find((camera) => camera.group === activeGroup);
@@ -242,6 +266,27 @@ export default function WebcamPanel() {
           </div>
 
           <div className="webcam-stage">
+            {samePlaceCameras.length > 1 && (
+              <div className="webcam-camera-switcher" aria-label={`Caméras disponibles à ${selectedPlace}`}>
+                <span>{selectedPlace}</span>
+                <div>
+                  {samePlaceCameras.map((camera, index) => (
+                    <button
+                      key={camera.id}
+                      type="button"
+                      className={camera.id === selected.id ? "active" : ""}
+                      onClick={() => setSelectedId(camera.id)}
+                      title={camera.area}
+                      aria-label={`Caméra ${index + 1} · ${camera.area}`}
+                    >
+                      <b>📷</b>
+                      <small>{index + 1}</small>
+                    </button>
+                  ))}
+                </div>
+                <em>{selected.area}</em>
+              </div>
+            )}
             {selected.mode === "image" && selected.imageUrl ? (
               !imageError ? (
                 <img
@@ -294,26 +339,31 @@ export default function WebcamPanel() {
           <div className="panel-title webcam-list-title">
             <div>
               <div className="eyebrow">{GROUPS.find((group) => group.id === activeGroup)?.title}</div>
-              <h3>{cameras.length} caméra{cameras.length > 1 ? "s" : ""}</h3>
+              <h3>{places.length} lieu{places.length > 1 ? "x" : ""} · {cameras.length} caméra{cameras.length > 1 ? "s" : ""}</h3>
             </div>
           </div>
 
           <div className="webcam-buttons">
-            {cameras.map((camera) => (
-              <button
-                key={camera.id}
-                type="button"
-                className={camera.id === selected.id ? "active" : ""}
-                onClick={() => setSelectedId(camera.id)}
-              >
-                <b>{camera.code ?? "CAM"}</b>
-                <span>
-                  <strong>{camera.name}</strong>
-                  <small>{camera.area}</small>
-                </span>
-                <i>›</i>
-              </button>
-            ))}
+            {places.map((camera) => {
+              const key = placeKey(camera);
+              const placeCameras = cameras.filter((item) => placeKey(item) === key);
+              const active = key === selectedPlace;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  className={active ? "active" : ""}
+                  onClick={() => setSelectedId(placeCameras[0].id)}
+                >
+                  <b>{camera.code ?? "📍"}</b>
+                  <span>
+                    <strong>{key}</strong>
+                    <small>{placeCameras.length > 1 ? `${placeCameras.length} caméras · ${camera.area}` : camera.area}</small>
+                  </span>
+                  <i>›</i>
+                </button>
+              );
+            })}
           </div>
 
           <p className="webcam-note">
@@ -339,16 +389,23 @@ export default function WebcamPanel() {
         .weather-strip{display:grid;grid-template-columns:1.2fr repeat(3,minmax(0,1fr));gap:6px;margin-bottom:8px}
         .weather-strip>div{min-width:0;padding:10px 11px;border:1px solid rgba(88,212,255,.14);border-radius:11px;background:rgba(88,212,255,.045)}
         .weather-strip span,.weather-strip strong,.weather-strip small{display:block}.weather-strip span{color:#7891a5;font-size:7px;text-transform:uppercase;letter-spacing:.06em}.weather-strip strong{margin-top:4px;font-size:15px}.weather-strip small{margin-top:3px;color:#90a7b9;font-size:8px}.weather-primary strong{color:var(--cyan);font-size:22px}
-        .webcam-stage{min-height:520px;display:grid;place-items:center;overflow:hidden;border:1px solid var(--line);border-radius:14px;background:#02090f}
+        .webcam-stage{position:relative;min-height:520px;display:grid;place-items:center;overflow:hidden;border:1px solid var(--line);border-radius:14px;background:#02090f}
         .webcam-stage>img{width:100%;height:100%;max-height:720px;display:block;object-fit:contain}
         .webcam-unavailable{max-width:620px;display:grid;gap:14px;padding:26px;text-align:center;color:var(--muted)}
         .webcam-unavailable strong{color:#fff}.webcam-unavailable a{color:var(--cyan);text-decoration:none}
         .webcam-frame-wrap{position:relative;width:100%;height:100%;min-height:520px}.webcam-frame-wrap iframe{width:100%;height:100%;min-height:520px;border:0;background:#071522}.webcam-frame-badge{position:absolute;right:10px;bottom:10px;left:10px;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 10px;border:1px solid rgba(88,212,255,.22);border-radius:10px;color:#dff8ff;background:rgba(4,17,30,.88);backdrop-filter:blur(10px);font-size:8px;font-weight:900}.webcam-frame-badge span{color:#8cf0be}.webcam-frame-badge a{color:#7edfff;text-decoration:none}
+        .webcam-camera-switcher{position:absolute;z-index:20;left:12px;bottom:52px;display:grid;gap:6px;max-width:min(82%,520px);padding:8px 10px;border:1px solid rgba(255,255,255,.22);border-radius:15px;color:#fff;background:rgba(2,14,27,.84);box-shadow:0 10px 28px rgba(0,0,0,.34);backdrop-filter:blur(14px)}
+        .webcam-camera-switcher>span{color:#74dcff;font-size:8px;font-weight:950;letter-spacing:.1em;text-transform:uppercase}
+        .webcam-camera-switcher>div{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+        .webcam-camera-switcher button{width:38px;height:38px;display:grid;grid-template-columns:auto auto;place-content:center;gap:2px;border:1px solid rgba(100,197,242,.3);border-radius:50%;color:#dff7ff;background:rgba(14,71,108,.75);cursor:pointer;box-shadow:0 4px 10px rgba(0,0,0,.22)}
+        .webcam-camera-switcher button:hover,.webcam-camera-switcher button.active{border-color:#7de1ff;color:#071523;background:#7de1ff;transform:translateY(-1px)}
+        .webcam-camera-switcher button b{font-size:13px;line-height:1}.webcam-camera-switcher button small{font-size:7px;font-weight:950;line-height:1}
+        .webcam-camera-switcher>em{overflow:hidden;color:#d8e7f2;font-size:8px;font-style:normal;text-overflow:ellipsis;white-space:nowrap}
         .webcam-meta{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin-top:8px}.webcam-meta>div{padding:9px 10px;border:1px solid var(--line);border-radius:10px;background:rgba(255,255,255,.025)}.webcam-meta span,.webcam-meta strong{display:block}.webcam-meta span{color:#7891a5;font-size:7px;text-transform:uppercase}.webcam-meta strong{margin-top:3px;font-size:10px}
         .webcam-metar{margin-top:8px;padding:11px;border:1px solid var(--line);border-radius:12px;background:rgba(88,212,255,.05)}.webcam-metar code{display:block;margin-top:7px;color:#e9f8ff;line-height:1.5;white-space:normal}.webcam-metar p{margin:7px 0 0}
         .webcam-list{padding:10px}.webcam-list-title{margin:0;padding:4px 4px 8px}.webcam-list-title h3{margin:4px 0 0}.webcam-buttons{display:grid;gap:4px}.webcam-buttons button{width:100%;display:grid;grid-template-columns:50px minmax(0,1fr) 18px;align-items:center;gap:9px;padding:10px;border:1px solid transparent;border-radius:11px;color:inherit;background:transparent;text-align:left;cursor:pointer}.webcam-buttons button:hover,.webcam-buttons button.active{border-color:rgba(88,212,255,.38);background:rgba(88,212,255,.08)}.webcam-buttons button>b{color:var(--cyan);font-size:9px}.webcam-buttons strong,.webcam-buttons small{display:block}.webcam-buttons small{margin-top:2px;color:var(--muted)}.webcam-buttons i{color:var(--cyan);font-size:18px;font-style:normal}.webcam-note{margin:10px 5px 3px;padding-top:9px;border-top:1px solid var(--line);color:var(--muted);font-size:10px;line-height:1.5}
         @media(max-width:900px){.webcam-grid{grid-template-columns:1fr}.webcam-stage,.webcam-frame-wrap,.webcam-frame-wrap iframe{min-height:440px}}
-        @media(max-width:620px){.webcam-hero{flex-direction:column;padding:14px}.webcam-tabs{grid-template-columns:1fr}.weather-strip{grid-template-columns:1fr 1fr}.webcam-meta{grid-template-columns:1fr}.webcam-main{padding:8px}.webcam-stage,.webcam-frame-wrap,.webcam-frame-wrap iframe{min-height:360px}}
+        @media(max-width:620px){.webcam-hero{flex-direction:column;padding:14px}.webcam-tabs{grid-template-columns:1fr}.weather-strip{grid-template-columns:1fr 1fr}.webcam-meta{grid-template-columns:1fr}.webcam-main{padding:8px}.webcam-stage,.webcam-frame-wrap,.webcam-frame-wrap iframe{min-height:360px}.webcam-camera-switcher{left:7px;right:7px;bottom:48px;max-width:none}.webcam-camera-switcher button{width:34px;height:34px}}
       `}</style>
     </div>
   );
