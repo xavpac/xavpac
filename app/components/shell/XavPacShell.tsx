@@ -37,12 +37,15 @@ function ActivePanel({ module }: { module: ModuleId }) {
 export default function XavPacShell({ universe }: { universe: Universe }) {
   const navigation = NAVIGATION[universe];
   const [activeModule, setActiveModule] = useState<ModuleId>(navigation.defaultModule);
+  const [embeddedHome, setEmbeddedHome] = useState(false);
   const activeNavigation = activeModule === "technical"
     ? { title: "Informations techniques", shortTitle: "Technique", icon: "info" as const }
     : navigation.modules.find((module) => module.id === activeModule) ?? navigation.modules[0];
 
   useEffect(() => {
     initializeBrowserStorage();
+    const params = new URLSearchParams(window.location.search);
+    setEmbeddedHome(params.get("embed") === "home" || params.get("embed") === "homekit");
   }, []);
 
   function selectModule(module: ModuleId) {
@@ -51,7 +54,7 @@ export default function XavPacShell({ universe }: { universe: Universe }) {
     window.requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: "auto" }));
   }
 
-  return <main className={`v2-shell v2-${universe}`}>
+  return <main className={`v2-shell v2-${universe}${embeddedHome ? " v2-embedded-home" : ""}`}>
     <AppHeader technicalActive={activeModule === "technical"} onOpenTechnical={() => selectModule("technical")} />
     <div className="v2-control-deck">
       <UniverseSwitcher activeUniverse={universe} />
