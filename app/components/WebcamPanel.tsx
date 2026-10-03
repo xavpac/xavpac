@@ -58,12 +58,10 @@ const CAMERAS: CameraItem[] = [
   { id: "lfmh", group: "aero", name: "Saint-Étienne", area: "Loire", country: "France", latitude: 45.534, longitude: 4.297, sourceName: "Cam-Aéro", sourceUrl: "https://cam-aero.eu/raspicamaero/LFMH_AeroClubSaintEtienne", mode: "image", imageUrl: "https://cam-aero.eu/raspicamaero/LFMH_AeroClubSaintEtienne", code: "LFMH" },
 
   { id: "macon", group: "cities71", name: "Mâcon", area: "Panorama ville", country: "France", latitude: 46.307, longitude: 4.829, sourceName: "Skaping", sourceUrl: "https://www.skaping.com/macon/ville", frameUrl: "https://www.skaping.com/macon/ville", mode: "frame" },
-  { id: "macon-airport", group: "cities71", name: "Mâcon / Charnay", area: "Aérodrome · piste 17/35", country: "France", latitude: 46.295, longitude: 4.795, sourceName: "Traffic-Cams", sourceUrl: "https://www.traffic-cams.com/world/webcam/feed1578229136didkey34610", frameUrl: "https://www.traffic-cams.com/world/webcam/feed1578229136didkey34610", mode: "frame" },
-  { id: "cluny-tour", group: "cities71", name: "Cluny", area: "Carrière de la Tour Ronde", country: "France", latitude: 46.434, longitude: 4.659, sourceName: "Cluny Sud Bourgogne", sourceUrl: "https://www.cluny-tourisme.com/webcam/carriere-de-la-tour-ronde/", frameUrl: "https://www.cluny-tourisme.com/webcam/carriere-de-la-tour-ronde/", mode: "frame" },
-  { id: "cluny-abbaye", group: "cities71", name: "Cluny", area: "Carrière de l’Abbaye", country: "France", latitude: 46.434, longitude: 4.659, sourceName: "Cluny Sud Bourgogne", sourceUrl: "https://www.cluny-tourisme.com/webcam/carriere-de-labbaye/", frameUrl: "https://www.cluny-tourisme.com/webcam/carriere-de-labbaye/", mode: "frame" },
-  { id: "tournus", group: "cities71", name: "Tournus", area: "Quais de Saône", country: "France", latitude: 46.562, longitude: 4.911, sourceName: "Tournus Sud Bourgogne", sourceUrl: "https://www.tournus-tourisme.com/webcam/tournus-en-direct/", frameUrl: "https://www.tournus-tourisme.com/webcam/tournus-en-direct/", mode: "frame" },
-  { id: "autun", group: "cities71", name: "Autun", area: "Panorama ville", country: "France", latitude: 46.934, longitude: 4.287, sourceName: "Grand Autunois Morvan", sourceUrl: "https://www.grandautunoismorvan.fr/webcam", frameUrl: "https://www.grandautunoismorvan.fr/webcam", mode: "frame" },
-  { id: "digoin", group: "cities71", name: "Digoin", area: "Pont-canal · panoramique", country: "France", latitude: 46.482, longitude: 3.979, sourceName: "Skaping", sourceUrl: "https://www.skaping.com/digoin", frameUrl: "https://www.skaping.com/digoin", mode: "frame" },
+  { id: "tournus", group: "cities71", name: "Tournus", area: "Panorama Saône", country: "France", latitude: 46.562, longitude: 4.911, sourceName: "Skaping", sourceUrl: "https://www.skaping.com/tournus", frameUrl: "https://www.skaping.com/tournus", mode: "frame" },
+  { id: "autun", group: "cities71", name: "Autun", area: "Panorama ville", country: "France", latitude: 46.951, longitude: 4.299, sourceName: "Skaping", sourceUrl: "https://www.skaping.com/autun/panorama", frameUrl: "https://www.skaping.com/autun/panorama", mode: "frame" },
+  { id: "givry", group: "cities71", name: "Givry", area: "Panorama ville & vignoble", country: "France", latitude: 46.782, longitude: 4.742, sourceName: "Skaping", sourceUrl: "https://www.skaping.com/givry", frameUrl: "https://www.skaping.com/givry", mode: "frame" },
+  { id: "digoin", group: "cities71", name: "Digoin", area: "Pont-canal · panoramique", country: "France", latitude: 46.482, longitude: 3.979, sourceName: "Skaping", sourceUrl: "https://www.skaping.com/digoin", frameUrl: "https://www.skaping.com/digoin", mode: "frame" }
 
   { id: "galtur-breit", group: "holidays", name: "Galtür", area: "Breitspitzbahn · 2120 m", country: "Autriche", latitude: 46.967, longitude: 10.187, sourceName: "Feratel", sourceUrl: "https://www.feratel.com/fr/webcams/autriche/tyrol/galtur-breitspitzbahn", frameUrl: "https://webtvfc.feratel.com/webtv/?cam=5547&design=v5&lg=fr&pg=DA7D2F22-8600-464D-9D4F-CDB04014A6C5&sound=muted", mode: "frame" },
   { id: "galtur-dorf", group: "holidays", name: "Galtür", area: "Village · 1600 m", country: "Autriche", latitude: 46.967, longitude: 10.187, sourceName: "Feratel", sourceUrl: "https://www.feratel.com/fr/webcams/autriche/tyrol/galtur-dorf", frameUrl: "https://webtvfc.feratel.com/webtv/?cam=5548&design=v5&lg=fr&pg=DA7D2F22-8600-464D-9D4F-CDB04014A6C5&sound=muted", mode: "frame" },
@@ -111,8 +109,6 @@ export default function WebcamPanel() {
   );
 
   const placeKey = (camera: CameraItem) => {
-    if (camera.id.startsWith("macon")) return "Mâcon";
-    if (camera.id.startsWith("cluny")) return "Cluny";
     if (camera.id.startsWith("galtur")) return "Galtür";
     if (camera.id.startsWith("carroz")) return "Les Carroz";
     return camera.name;
@@ -208,7 +204,7 @@ export default function WebcamPanel() {
           <div className="eyebrow">XAVPAC · CAMÉRAS & MÉTÉO</div>
           <h1>Webcams en direct</h1>
           <p className="muted">
-            Un même espace pour l’aéronautique, la Saône-et-Loire et tes destinations de vacances.
+            Une vue simple : choisissez un lieu, la caméra et la météo s’affichent immédiatement.
           </p>
         </div>
         <div className="system-live">● MÉTÉO LIVE</div>
@@ -367,7 +363,7 @@ export default function WebcamPanel() {
           </div>
 
           <p className="webcam-note">
-            Les lecteurs sont chargés automatiquement dans XavPac. Plusieurs vues sont proposées pour les lieux qui disposent de plusieurs caméras.
+            Les villes 71 utilisent maintenant une sélection de lecteurs homogènes pour limiter les cadres vides. Les destinations disposant de plusieurs vues gardent les petits boutons 📷 directement sur l’image.
           </p>
         </aside>
       </section>
