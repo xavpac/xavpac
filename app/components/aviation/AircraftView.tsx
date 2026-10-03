@@ -219,7 +219,7 @@ export default function AircraftView({ open, rootRef, aircraft, enriched, operat
   const identityQuality = enriched?.identityStatus === "complete" ? "Confirmée" : enriched?.identityStatus === "partial" ? "Probable" : "Inconnue";
   const operationalEvidence = remarkable[0]?.evidence ?? "Type et service déterminés à partir des données disponibles";
   const mapPoints = [
-    ...(observerPosition ? [{ id: "aircraft-view-observer", lat: observerPosition[0], lon: observerPosition[1], name: "Point d’observation", detail: "Référence utilisée pour la distance", category: "location" }] : []),
+    ...(observerPosition ? [{ id: "aircraft-view-observer", lat: observerPosition[0], lon: observerPosition[1], name: "VOUS", detail: "Position utilisée pour la distance", category: "location" }] : []),
     { id: aircraft.id, lat: aircraft.latitude, lon: aircraft.longitude, name: flightLabel, detail: `${aircraft.distance.toFixed(1)} km • ${directionLabel}`, category: enriched?.aircraftCategory === "helicopter" ? "helicopter" : "commercial", heading: aircraft.trueTrack }
   ];
   const mapTrails = trail ? [{
