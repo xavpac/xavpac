@@ -50,10 +50,10 @@ G) 1500FT AMSL`);
   assert.equal(reading.location, "LFBB");
   assert.equal(reading.startsAt, "27/07/2026 à 08:00 UTC");
   assert.equal(reading.endsAt, "27/07/2026 à 16:00 UTC");
-  assert.match(reading.schedule ?? "", /chaque jour/i);
-  assert.match(reading.frenchText ?? "", /aéronefs sans équipage/i);
-  assert.equal(reading.lowerLimit, "surface");
-  assert.match(reading.upperLimit ?? "", /niveau moyen de la mer/i);
+  assert.equal(reading.schedule, "Chaque jour de 08:00 à 16:00 UTC");
+  assert.match(reading.frenchText ?? "", /activité de drones/i);
+  assert.equal(reading.lowerLimit, "Surface \/ sol");
+  assert.match(reading.upperLimit ?? "", /1[\u202f ]500 pieds AMSL/i);
 });
 
 test("traduit les abréviations opérationnelles courantes d’un NOTAM", () => {
@@ -65,7 +65,25 @@ E) RWY 18/36 CLSD DUE TO WIP. CRANE PSN 1NM FM THR.
 F) SFC
 G) 500FT AGL`);
   assert.ok(reading);
-  assert.match(reading.frenchText ?? "", /piste 18\/36 fermé en raison de travaux en cours/i);
-  assert.match(reading.frenchText ?? "", /grue position/i);
-  assert.match(reading.upperLimit ?? "", /500 pieds au-dessus du sol/i);
+  assert.match(reading.frenchText ?? "", /piste 18\/36 fermée en raison de travaux en cours/i);
+  assert.match(reading.frenchText ?? "", /grue positionnée à 1 NM du seuil/i);
+  assert.match(reading.upperLimit ?? "", /500 pieds AGL \(au-dessus du sol\)/i);
+});
+
+
+test("rend les horaires et limites d’un NOTAM lisibles en français", () => {
+  const reading = readNotamInFrench(`C3456/26 NOTAMN
+A) LFXX
+B) 2610030600
+C) 2610031800
+D) MON-FRI 0700-1700
+E) TEMPO RESTRICTED AREA ACT DUE TO MIL EXER
+F) SFC
+G) FL095`);
+  assert.ok(reading);
+  assert.equal(reading.schedule, "Du lundi au vendredi, de 07:00 à 17:00 UTC");
+  assert.match(reading.frenchText ?? "", /zone réglementée temporaire/i);
+  assert.match(reading.frenchText ?? "", /exercice militaire/i);
+  assert.equal(reading.lowerLimit, "Surface / sol");
+  assert.equal(reading.upperLimit, "Niveau de vol FL095");
 });
