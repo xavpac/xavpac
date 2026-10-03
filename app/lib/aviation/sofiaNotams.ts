@@ -1,5 +1,5 @@
 import { distanceKm } from "./geometry.ts";
-import { readNotamInFrench } from "./notam.ts";
+import { readNotamInFrench, translateNotamLimit, translateNotamSchedule } from "./notam.ts";
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -208,9 +208,9 @@ export function extractSofiaNotams(payload: unknown, point: [number, number], no
       startsAtIso: isoDate(item.startValidity),
       endsAtIso: isoDate(item.endValidity),
       isPermanent: permanent,
-      schedule: textValue(item.itemD),
-      lowerLimit: textValue(item.itemF),
-      upperLimit: textValue(item.itemG),
+      schedule: translateNotamSchedule(textValue(item.itemD)),
+      lowerLimit: translateNotamLimit(textValue(item.itemF)),
+      upperLimit: translateNotamLimit(textValue(item.itemG)),
       lowerFl: finiteNumber(qLine.lower),
       upperFl: finiteNumber(qLine.upper),
       coordinates,
