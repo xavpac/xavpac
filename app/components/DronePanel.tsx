@@ -686,7 +686,7 @@ export default function DronePanel() {
         <div className="drone-decision-why">
           <header><strong>À faire maintenant</strong><span>{readiness.actions.length} action{readiness.actions.length === 1 ? "" : "s"}</span></header>
           {readiness.actions.map((action, index) => {
-            const mapTarget = action.id === "rtba" ? "official" as const : action.id === "local" ? "uas" as const : null;
+            const mapTarget: "official" | "uas" | null = action.id === "rtba" ? "official" : action.id === "local" ? "uas" : null;
             if (mapTarget) {
               return <button
                 type="button"
