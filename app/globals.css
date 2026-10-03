@@ -3639,3 +3639,125 @@ a { color: inherit; }
   .aircraft-view-title h2{font-size:34px}
   .aircraft-view-company .operator-brand strong{display:none}
 }
+
+
+/* =========================================================
+   XavPac — NOTAM français, lecture confortable
+   ========================================================= */
+.notam-translation-v65{
+  position:relative;
+  overflow:hidden;
+  margin-top:10px!important;
+  padding:12px!important;
+  border:1px solid rgba(94,210,255,.32)!important;
+  border-radius:14px!important;
+  background:
+    radial-gradient(circle at 92% 14%,rgba(65,199,255,.11),transparent 28%),
+    linear-gradient(145deg,rgba(11,62,91,.22),rgba(4,27,46,.72))!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.035);
+}
+.notam-translation-v65::before{
+  content:"FR";
+  position:absolute;
+  right:-8px;
+  top:-22px;
+  color:rgba(93,217,255,.05);
+  font-size:82px;
+  font-weight:1000;
+  letter-spacing:-.08em;
+  pointer-events:none;
+}
+.notam-translation-v65>header{
+  position:relative;
+  z-index:1;
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:10px;
+}
+.notam-translation-v65>header span,
+.notam-translation-v65>header strong{
+  display:block;
+}
+.notam-translation-v65>header span{
+  color:#77ddff;
+  font-size:7px;
+  font-weight:950;
+  letter-spacing:.11em;
+}
+.notam-translation-v65>header strong{
+  margin-top:3px;
+  color:#f4fbff;
+  font-size:10px;
+}
+.notam-translation-v65>header>b{
+  flex:0 0 auto;
+  padding:5px 7px;
+  border:1px solid rgba(114,221,255,.28);
+  border-radius:999px;
+  color:#9eeaff;
+  background:rgba(69,179,221,.09);
+  font-size:6px;
+  font-weight:950;
+  letter-spacing:.07em;
+}
+.notam-french-main{
+  position:relative;
+  z-index:1;
+  max-height:none!important;
+  margin:12px 0 10px!important;
+  overflow:visible!important;
+  color:#f6fbff!important;
+  font-size:10px!important;
+  font-weight:760;
+  line-height:1.65!important;
+}
+.notam-french-facts{
+  position:relative;
+  z-index:1;
+  display:grid;
+  grid-template-columns:1.35fr 1fr 1fr;
+  gap:6px;
+}
+.notam-french-facts>span{
+  min-width:0;
+  padding:8px 9px;
+  border:1px solid rgba(107,196,232,.15);
+  border-radius:9px;
+  color:#d9e8f1;
+  background:rgba(255,255,255,.035);
+  font-size:7px;
+  line-height:1.4;
+}
+.notam-french-facts b{
+  display:block;
+  margin-bottom:3px;
+  color:#72d9ff;
+  font-size:6px;
+  text-transform:uppercase;
+  letter-spacing:.07em;
+}
+.notam-translation-v65>small{
+  position:relative;
+  z-index:1;
+  display:block;
+  margin-top:8px;
+  color:#8faabd;
+  font-size:6px;
+  line-height:1.45;
+}
+.notam-original-v65{
+  background:rgba(1,13,23,.55);
+}
+.notam-original-v65>summary{
+  font-weight:850;
+}
+.notam-mission-explanation-v65{
+  border-radius:12px!important;
+}
+@media(max-width:620px){
+  .notam-translation-v65>header{align-items:stretch;flex-direction:column}
+  .notam-translation-v65>header>b{width:fit-content}
+  .notam-french-facts{grid-template-columns:1fr}
+  .notam-french-main{font-size:9px!important}
+}
