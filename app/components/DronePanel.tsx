@@ -8,7 +8,7 @@ import { reportDataUpdate } from "../lib/buildInfo";
 import { detectRemarkable } from "../lib/aviation/remarkable";
 import { distanceKm } from "../lib/aviation/geometry";
 import type { LiveAircraft } from "../lib/aviation/liveAircraft";
-import type { SofiaNotam } from "../lib/aviation/sofiaNotams";
+import { parseSofiaCoordinate, type SofiaNotam } from "../lib/aviation/sofiaNotams";
 import { readNotamInFrench } from "../lib/aviation/notam";
 import {
   assessRtba,
@@ -58,8 +58,11 @@ type MissionReference = "moi" | "home" | "manual";
 type OfficialNotam = SofiaNotam;
 
 const FRANCE_OVERVIEW_CENTER: [number, number] = [46.603354, 1.888334];
-const UAS_OFFICIAL_MAP_URL = "https://www.geoportail.gouv.fr/donnees/restrictions-pour-drones-de-loisir%20";
-const OFFICIAL_NOTAM_LIMIT = 2;
+const UAS_OFFICIAL_MAP_URL = "https://www.geoportail.gouv.fr/donnees/restrictions-uas-categorie-ouverte-et-aeromodelisme";
+const OACI_WMTS_URL = "https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=GEOGRAPHICALGRIDSYSTEMS.MAPS.SCAN-OACI&STYLE=normal&TILEMATRIXSET=PM&FORMAT=image/jpeg&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}";
+const OACI_LEGEND_URL = "https://data.geopf.fr/annexes/ressources/documentation/Legende2026.pdf";
+const SUP_AIP_OFFICIAL_URL = "https://www.sia.aviation-civile.gouv.fr/documents/supaip/aip/";
+const OFFICIAL_NOTAM_RADIUS_NM = 30;
 const RTBA_UNAVAILABLE_FEED: RtbaActivationFeed = {
   state: "unavailable",
   source: "SIA/AZBA officiel",
@@ -171,6 +174,11 @@ function freshnessText(seconds: number | null) {
 
 export default function DronePanel() {
   const [mapMode, setMapMode] = useState<"official" | "map" | "uas">("map");
+  const [showOaciLayer, setShowOaciLayer] = useState(true);
+  const [showNotamLayer, setShowNotamLayer] = useState(true);
+  const [showRtbaLayer, setShowRtbaLayer] = useState(true);
+  const [showAerodromesLayer, setShowAerodromesLayer] = useState(true);
+  const [showTrafficLayer, setShowTrafficLayer] = useState(true);
   const { position, status: positionStatus, accuracy, altitude, timestamp, quality: gpsQuality, usableForPreciseCalculations, isLive, trackingEnabled, setTrackingEnabled, retryGeolocation, error: gpsError } = useLiveGeolocation();
   const [metar, setMetar] = useState<MetarReport | null>(null);
   const [metarStatus, setMetarStatus] = useState("Chargement de la météo locale…");
@@ -420,7 +428,7 @@ export default function DronePanel() {
         setOfficialNotams(nextNotams);
         setOfficialNotamStatus("success");
         setOfficialNotamMessage(nextNotams.length
-          ? `${nextNotams.length} NOTAM officiel${nextNotams.length === 1 ? "" : "s"} reçu${nextNotams.length === 1 ? "" : "s"} — les ${Math.min(OFFICIAL_NOTAM_LIMIT, nextNotams.length)} plus proche${Math.min(OFFICIAL_NOTAM_LIMIT, nextNotams.length) === 1 ? "" : "s"} sont affiché${Math.min(OFFICIAL_NOTAM_LIMIT, nextNotams.length) === 1 ? "" : "s"}.`
+          ? `${nextNotams.length} NOTAM officiel${nextNotams.length === 1 ? "" : "s"} reçu${nextNotams.length === 1 ? "" : "s"} — tous les résultats de la recherche sont affichés et cartographiés quand une géométrie Q-line est disponible.`
           : "Aucun NOTAM retourné par SOFIA pour cette recherche.");
         setOfficialNotamUpdatedAt(typeof payload.queriedAt === "string" ? payload.queriedAt : new Date().toISOString());
       } catch (error) {
@@ -536,6 +544,37 @@ export default function DronePanel() {
     ? assessNotamForMission(notam, missionWindow.startMs, missionWindow.endMs, requestedHeight)
     : null])), [missionWindow, officialNotams, requestedHeight]);
   const directNotams = officialNotams.filter((notam) => notamAssessments.get(notam.id)?.level === "direct");
+  const notamMapHazards = useMemo(() => officialNotams.flatMap((notam) => {
+    if (!notam.coordinates) return [];
+    const center = parseSofiaCoordinate(notam.coordinates);
+    if (!center) return [];
+    const assessment = notamAssessments.get(notam.id);
+    const severity = assessment?.level === "direct"
+      ? "blocking" as const
+      : notam.notamType === "NOTAMC"
+        ? "inactive" as const
+        : notam.activeNow
+          ? "warning" as const
+          : "information" as const;
+    const radiusKm = Math.max(.35, (notam.radiusNm ?? .2) * 1.852);
+    return [{
+      id: `notam-${notam.id}`,
+      center,
+      radiusKm,
+      title: notam.publicationReference,
+      category: `${notam.notamType} • ${notam.category} • ${notam.qCode}`,
+      severity,
+      summary: notam.frenchText,
+      details: [
+        { label: "Zone A)", value: notam.itemA },
+        { label: "Validité", value: `${notam.startsAt} → ${notam.endsAt}` },
+        ...(notam.schedule ? [{ label: "Horaires D)", value: notam.schedule }] : []),
+        { label: "Vertical", value: `${notam.lowerLimit ?? `FL ${notam.lowerFl ?? "—"}`} → ${notam.upperLimit ?? `FL ${notam.upperFl ?? "—"}`}` },
+        { label: "Rayon Q-line", value: `${notam.radiusNm ?? "non indiqué"} NM` },
+        { label: "Source", value: "SOFIA-Briefing • SIA/DSNA" }
+      ]
+    }];
+  }), [notamAssessments, officialNotams]);
   const rtbaDataConfirmed = !["unconfirmed", "outside-local"].includes(rtbaMissionStatus.code);
 
   const decision = useMemo(() => evaluateDroneFlight({
@@ -615,8 +654,8 @@ export default function DronePanel() {
       }] : []),
     ...(position && missionReference !== "moi" ? [{ id: "moi", lat: position[0], lon: position[1], name: "MOI", detail: positionStatus, category: "moi" }] : []),
     ...(savedHome && missionReference !== "home" ? [{ id: "saved-home", lat: savedHome[0], lon: savedHome[1], name: "HOME", detail: "Position fixe enregistrée", category: "home" }] : []),
-    ...nearbyPlaces.map((place) => ({ id: place.id, lat: place.latitude, lon: place.longitude, name: place.icao ?? place.name, detail: `${place.kind === "heliport" ? "Héliport" : "Aérodrome"} • ${place.name} • ${place.distanceKm.toFixed(1)} km`, category: "aerodrome" })),
-    ...nearbyTraffic.map((item) => ({ id:`traffic-${item.id}`, lat:item.latitude, lon:item.longitude, name:item.callsign, detail:`${dronePassageLabel(item.passage)} • ${item.distance.toFixed(1)} km • Alt. ${item.barometricAltitude === null ? "Non déterminée" : `${Math.round(item.barometricAltitude)} m`} • donnée ${freshnessText(item.passage.freshnessSeconds)}`, category:item.isHelicopter ? "helicopter" : "aircraft", heading:item.trueTrack }))
+    ...(showAerodromesLayer ? nearbyPlaces.map((place) => ({ id: place.id, lat: place.latitude, lon: place.longitude, name: place.icao ?? place.name, detail: `${place.kind === "heliport" ? "Héliport" : "Aérodrome"} • ${place.name} • ${place.distanceKm.toFixed(1)} km`, category: "aerodrome" })) : []),
+    ...(showTrafficLayer ? nearbyTraffic.map((item) => ({ id:`traffic-${item.id}`, lat:item.latitude, lon:item.longitude, name:item.callsign, detail:`${dronePassageLabel(item.passage)} • ${item.distance.toFixed(1)} km • Alt. ${item.barometricAltitude === null ? "Non déterminée" : `${Math.round(item.barometricAltitude)} m`} • donnée ${freshnessText(item.passage.freshnessSeconds)}`, category:item.isHelicopter ? "helicopter" : "aircraft", heading:item.trueTrack })) : [])
   ];
 
   function applyCoordinates() {
@@ -703,7 +742,7 @@ export default function DronePanel() {
           })}
           {!readiness.actions.length && <p className="positive"><b>✓</b><span>Aucune action complémentaire signalée par les données disponibles.</span></p>}
         </div>
-        <div className="drone-clearance-confirmed"><strong>Déjà contrôlé</strong>{readiness.confirmed.slice(0, 5).map((item) => <span key={item}>✓ {item}</span>)}<div><a href={RTBA_ACTIVATION_URL} target="_blank" rel="noreferrer">Ouvrir l’AZBA officiel ↗</a><a href="https://sofia-briefing.aviation-civile.gouv.fr/sofia/pages/notamsearcharea.html" target="_blank" rel="noreferrer">Ouvrir SOFIA ↗</a></div></div>
+        <div className="drone-clearance-confirmed"><strong>Déjà contrôlé</strong>{readiness.confirmed.slice(0, 5).map((item) => <span key={item}>✓ {item}</span>)}<div><a href={RTBA_ACTIVATION_URL} target="_blank" rel="noreferrer">AZBA officiel ↗</a><a href="https://sofia-briefing.aviation-civile.gouv.fr/sofia/pages/notamsearcharea.html" target="_blank" rel="noreferrer">SOFIA / NOTAM ↗</a><a href={SUP_AIP_OFFICIAL_URL} target="_blank" rel="noreferrer">SUP AIP ↗</a></div></div>
         <footer>Cette synthèse est une aide opérationnelle. Elle ne remplace pas la vérification réglementaire du télépilote (AZBA, NOTAM, SUP AIP, AIP et restrictions locales).</footer>
       </section>
 
@@ -760,7 +799,7 @@ export default function DronePanel() {
             <button type="button" disabled={!selectedPosition || officialNotamStatus === "loading"} onClick={() => setNotamRefreshVersion((value) => value + 1)}>Actualiser</button>
           </div>
           {officialNotams.length > 0 && <div className="official-notam-list">
-            {officialNotams.slice(0, OFFICIAL_NOTAM_LIMIT).map((notam, index) => {
+            {officialNotams.map((notam, index) => {
               const assessment = notamAssessments.get(notam.id);
               return <article key={notam.id} className={`mission-${assessment?.level ?? "information"}`}>
                 <header><div><span>{notam.notamType} • {notam.category} • {notam.qCode}</span><strong>{notam.publicationReference}</strong></div><b>{assessment?.level === "direct" ? "🔴 IMPACT DIRECT MISSION" : assessment?.level === "relevant" ? "🟠 PERTINENT / PROCHE" : "⚪ INFORMATION"}</b></header>
@@ -788,7 +827,6 @@ export default function DronePanel() {
                 <section className={`notam-mission-explanation-v65 ${assessment?.level ?? "information"}`}><span>3 — EXPLICATION POUR LA MISSION</span>{assessment?.explanation.map((line) => <p key={line}>{line}</p>) ?? <p>Analyse impossible sans créneau MISSION valide.</p>}</section>
               </article>;
             })}
-            {officialNotams.length > OFFICIAL_NOTAM_LIMIT && <small className="official-notam-more">Les deux NOTAM les plus proches sont affichés • ouvrez SOFIA pour consulter les {officialNotams.length - OFFICIAL_NOTAM_LIMIT} autre{officialNotams.length - OFFICIAL_NOTAM_LIMIT === 1 ? "" : "s"} dans le briefing officiel complet.</small>}
           </div>}
           {officialNotamStatus === "success" && officialNotams.length === 0 && <div className="notam-empty">Aucun NOTAM retourné par cette recherche officielle. Vérifiez néanmoins les SUP AIP, l’AZBA et les autres restrictions applicables.</div>}
           {officialNotamStatus === "error" && <div className="notam-source-error">SOFIA est indisponible depuis XavPac. Utilisez le lien officiel ci-dessus avant toute décision de vol.</div>}
@@ -871,7 +909,7 @@ export default function DronePanel() {
               <p className="muted">Choisissez la carte adaptée : situation locale XavPac, activation AZBA nationale ou restrictions UAS officielles.</p>
             </div>
             <div className="rtba-mode-switch airspace-map-tabs">
-              <button type="button" className={mapMode === "map" ? "active" : ""} onClick={() => setMapMode("map")}><span>📍</span><strong>XavPac local</strong><small>Mission, trafic & LF-R45</small></button>
+              <button type="button" className={mapMode === "map" ? "active" : ""} onClick={() => setMapMode("map")}><span>⚠️</span><strong>Tous les dangers</strong><small>OACI + NOTAM + RTBA + trafic</small></button>
               <button type="button" className={mapMode === "official" ? "active" : ""} onClick={() => setMapMode("official")}><span>🛩️</span><strong>AZBA France</strong><small>Activation RTBA officielle</small></button>
               <button type="button" className={mapMode === "uas" ? "active" : ""} onClick={() => setMapMode("uas")}><span>🗺️</span><strong>Zones UAS</strong><small>Carte officielle Géoportail</small></button>
             </div>
@@ -922,10 +960,28 @@ export default function DronePanel() {
             </div>
           ) : (
             <>
+              <div className="drone-danger-layerbar">
+                <button type="button" className={showOaciLayer ? "active oaci" : ""} onClick={() => setShowOaciLayer((value) => !value)}><span>🗺️</span><strong>OACI / AIP</strong><small>{showOaciLayer ? "affiché" : "masqué"}</small></button>
+                <button type="button" className={showNotamLayer ? "active notam" : ""} onClick={() => setShowNotamLayer((value) => !value)}><span>⚠️</span><strong>NOTAM</strong><small>{officialNotams.length} reçu{officialNotams.length === 1 ? "" : "s"}</small></button>
+                <button type="button" className={showRtbaLayer ? "active rtba" : ""} onClick={() => setShowRtbaLayer((value) => !value)}><span>🛩️</span><strong>RTBA</strong><small>{showRtbaLayer ? "contours affichés" : "masqué"}</small></button>
+                <button type="button" className={showAerodromesLayer ? "active aerodrome" : ""} onClick={() => setShowAerodromesLayer((value) => !value)}><span>✚</span><strong>Aérodromes</strong><small>{nearbyPlaces.length} proche{nearbyPlaces.length === 1 ? "" : "s"}</small></button>
+                <button type="button" className={showTrafficLayer ? "active traffic" : ""} onClick={() => setShowTrafficLayer((value) => !value)}><span>✈️</span><strong>Trafic</strong><small>{nearbyTraffic.length} piste{nearbyTraffic.length === 1 ? "" : "s"}</small></button>
+              </div>
+              <div className="drone-map-source-strip">
+                <span><b>Carte OACI-VFR 2026 DSNA</b> + données XavPac autour de la mission</span>
+                <div><a href={OACI_LEGEND_URL} target="_blank" rel="noreferrer">Légende OACI ↗</a><a href={SUP_AIP_OFFICIAL_URL} target="_blank" rel="noreferrer">SUP AIP officiels ↗</a><a href="https://sofia-briefing.aviation-civile.gouv.fr/sofia/pages/notamsearcharea.html" target="_blank" rel="noreferrer">SOFIA ↗</a></div>
+              </div>
               <div className="drone-map-v4 drone-map-locked-v5">
                 <StableMap
                   points={mapPoints}
-                  zones={rtbaMapZones}
+                  zones={showRtbaLayer ? rtbaMapZones : []}
+                  hazardAreas={showNotamLayer ? notamMapHazards : []}
+                  tileOverlays={showOaciLayer ? [{
+                    id: "oaci-2026",
+                    url: OACI_WMTS_URL,
+                    attribution: "Carte OACI-VFR 2026 • DSNA / IGN",
+                    opacity: .72
+                  }] : []}
                   center={mapCenter}
                   zoom={selectedPosition ? 10 : 6}
                   mapVariant="layers"
@@ -934,19 +990,19 @@ export default function DronePanel() {
                 />
               </div>
               <div className="rtba-legend-v4">
-                <span className="intersects-height">Rouge : votre point intersecte le volume à la hauteur demandée</span>
+                <span className="intersects-height">Rouge : danger/NOTAM ou volume RTBA concernant la mission</span>
                 <span className="below-floor">Bleu : votre point est sous le plancher publié</span>
                 <span className="nearby">Jaune : zones les plus proches</span>
                 <span className="unknown">Gris : autres contours publiés</span>
-                <span className="official">Activation réelle et horaires : AZBA officiel live</span>
+                <span className="official">Fond OACI 2026 + NOTAM SOFIA : cliquez les zones pour les détails</span>
               </div>
             </>
           )}
 
           <div className="rtba-zone-list-v5 airspace-map-shortcuts">
-            <button type="button" onClick={() => showAirspaceMap("map")}><span>📍</span><div><strong>CARTE LOCALE</strong><small>{rtbaSummary} • mission, trafic et contours LF-R45.</small></div></button>
+            <button type="button" onClick={() => showAirspaceMap("map")}><span>⚠️</span><div><strong>TOUS LES DANGERS</strong><small>OACI, NOTAM, RTBA, aérodromes et trafic autour de la mission.</small></div></button>
             <button type="button" onClick={() => showAirspaceMap("official")}><span>🛩️</span><div><strong>AZBA FRANCE</strong><small>Voir directement les activations RTBA nationales.</small></div></button>
-            <button type="button" onClick={() => showAirspaceMap("uas")}><span>🗺️</span><div><strong>ZONES UAS</strong><small>Voir la carte officielle des restrictions drone.</small></div></button>
+            <button type="button" onClick={() => showAirspaceMap("uas")}><span>🗺️</span><div><strong>ZONES UAS</strong><small>Voir la carte officielle des restrictions drone.</small></div></button><a href={SUP_AIP_OFFICIAL_URL} target="_blank" rel="noreferrer"><span>📄</span><div><strong>SUP AIP</strong><small>Consulter tous les suppléments AIP publiés par le SIA.</small></div></a>
           </div>
         </article>
 
