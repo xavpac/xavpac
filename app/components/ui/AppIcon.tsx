@@ -3,6 +3,7 @@ export type AppIconName =
   | "drone"
   | "rescue"
   | "weather"
+  | "camera"
   | "moon"
   | "operations"
   | "fire"
@@ -14,6 +15,7 @@ const paths: Record<AppIconName, React.ReactNode> = {
   drone: <><path d="M8.2 8.2h7.6v7.6H8.2z" /><path d="m8.8 9-4-3m10.4 3 4-3M8.8 15l-4 3m10.4-3 4 3" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /><circle cx="4" cy="5.3" r="2.2" fill="none" stroke="currentColor" strokeWidth="1.5" /><circle cx="20" cy="5.3" r="2.2" fill="none" stroke="currentColor" strokeWidth="1.5" /><circle cx="4" cy="18.7" r="2.2" fill="none" stroke="currentColor" strokeWidth="1.5" /><circle cx="20" cy="18.7" r="2.2" fill="none" stroke="currentColor" strokeWidth="1.5" /></>,
   rescue: <><path d="M4 13.5h10.2c2.9 0 4.7 1.5 5.8 4H10c-2.6 0-4.6-1.3-6-4Z" /><path d="M13.5 7.5h1.5v6h-1.5zM5 8.8h15v1.4H5z" /><circle cx="9" cy="19.2" r="1.3" /><circle cx="16" cy="19.2" r="1.3" /></>,
   weather: <><path d="M8.8 17.5h9.1a3.6 3.6 0 0 0 .2-7.2A5.5 5.5 0 0 0 7.7 8.9a4.3 4.3 0 0 0 1.1 8.6Z" /><path d="M12 1.8v2.1M4.8 4.8l1.5 1.5M19.2 4.8l-1.5 1.5M2 12h2.1" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></>,
+  camera: <><path d="M4 7.5h3l1.4-2h7.2l1.4 2h3a2 2 0 0 1 2 2v8.5a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9.5a2 2 0 0 1 2-2Z" /><circle cx="12" cy="13.4" r="4" fill="none" stroke="currentColor" strokeWidth="1.7" /></>,
   moon: <path d="M18.9 15.2A7.5 7.5 0 0 1 8.8 5.1 8.2 8.2 0 1 0 18.9 15.2Z" />,
   operations: <><circle cx="12" cy="12" r="3.2" /><path d="M12 2.4v3M12 18.6v3M2.4 12h3M18.6 12h3M5.2 5.2l2.1 2.1M16.7 16.7l2.1 2.1M18.8 5.2l-2.1 2.1M7.3 16.7l-2.1 2.1" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></>,
   fire: <path d="M13.2 2.2c.7 3.7-1.7 5-2.9 7.1-.7 1.2-.7 2.3-.1 3.2.3-1.6 1.4-2.5 2.7-3.6.2 2.3 2.4 3.4 2.4 6.2 0 1.6-.9 3-2.2 3.7.2-1.9-.8-3.1-2-4.1 0 1.8-2.4 2.8-2.4 5.1 0 .5.1 1 .3 1.5-3.1-1.1-5.2-3.9-5.2-7.4 0-5.1 4.1-7 5.8-11.3.8 1.4 1.2 2.8 1 4.2 1.6-1.2 2.2-2.6 2.6-4.6Z" />,
