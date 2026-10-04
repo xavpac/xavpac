@@ -72,7 +72,9 @@ const CAMERAS: CameraItem[] = [
   { id: "carroz-telecabine", group: "holidays", name: "Les Carroz", area: "Arrivée télécabine", country: "France", latitude: 46.02558, longitude: 6.64339, sourceName: "Webcam-HD / Les Carroz", sourceUrl: "https://app.webcam-hd.com/lescarroz/arrivee-telecabine", frameUrl: "https://app.webcam-hd.com/lescarroz/arrivee-telecabine", mode: "frame" },
   { id: "carroz-2100", group: "holidays", name: "Les Carroz", area: "Carroz 2100", country: "France", latitude: 46.02558, longitude: 6.64339, sourceName: "Webcam-HD / Les Carroz", sourceUrl: "https://app.webcam-hd.com/lescarroz/carroz-2100", frameUrl: "https://app.webcam-hd.com/lescarroz/carroz-2100", mode: "frame" },
   { id: "carroz-cupoire", group: "holidays", name: "Les Carroz", area: "Pointe de Cupoire", country: "France", latitude: 46.02558, longitude: 6.64339, sourceName: "Webcam-HD / Les Carroz", sourceUrl: "https://app.webcam-hd.com/lescarroz/pointe-de-cupoire", frameUrl: "https://app.webcam-hd.com/lescarroz/pointe-de-cupoire", mode: "frame" },
-  { id: "carroz-molliets", group: "holidays", name: "Les Carroz", area: "Les Molliets 1500", country: "France", latitude: 46.02558, longitude: 6.64339, sourceName: "Webcam-HD / Les Carroz", sourceUrl: "https://app.webcam-hd.com/lescarroz/les-molliets-1500", frameUrl: "https://app.webcam-hd.com/lescarroz/les-molliets-1500", mode: "frame" }
+  { id: "carroz-molliets", group: "holidays", name: "Les Carroz", area: "Les Molliets 1500", country: "France", latitude: 46.02558, longitude: 6.64339, sourceName: "Webcam-HD / Les Carroz", sourceUrl: "https://app.webcam-hd.com/lescarroz/les-molliets-1500", frameUrl: "https://app.webcam-hd.com/lescarroz/les-molliets-1500", mode: "frame" },
+
+  { id: "tromso-fjellheisen", group: "holidays", name: "Tromsø", area: "Fjellheisen · panorama 360°", country: "Norvège", latitude: 69.6492, longitude: 18.9553, sourceName: "Fjellheisen / Panomax", sourceUrl: "https://webcam.fjellheisen.no/?cu=fr-FR", frameUrl: "https://webcam.fjellheisen.no/?cu=fr-FR", mode: "frame" }
 ];
 
 function formatWindDirection(value: number | null) {
