@@ -102,6 +102,20 @@ export default function TechnicalInformationPanel() {
           <div><dt>Environnement</dt><dd>{BUILD_INFO.environment}</dd></div>
         </dl></article>
         <article className="panel technical-card"><span className="eyebrow">ACTUALISATION DES MODULES</span><div className="technical-update-list">{modules.map(([key, label]) => <div key={key}><strong>{label}</strong><span>{displayDate(updates[key])}</span></div>)}</div></article>
+        <article className="panel technical-card technical-home-card">
+          <span className="eyebrow">MAISON / HOMEKIT</span>
+          <h2>Préparation intégration</h2>
+          <div className="technical-home-grid">
+            <span><b>✓</b><strong>iPhone / iPad</strong><small>Installation XavPac comme une app</small></span>
+            <span><b>✓</b><strong>Home Assistant</strong><small>Mode iframe compact prêt</small></span>
+            <span><b>✓</b><strong>Mode tablette</strong><small>Safe-area et plein écran préparés</small></span>
+            <span className="pending"><b>↗</b><strong>HomeKit natif</strong><small>Pont local à connecter ensuite</small></span>
+          </div>
+          <div className="technical-home-actions">
+            <a href="/spotter?embed=home">Tester le mode Maison</a>
+            <a href="/api/home-integration" target="_blank" rel="noreferrer">Voir l’API d’intégration ↗</a>
+          </div>
+        </article>
       </div>
 
       <div className="technical-summary panel">
