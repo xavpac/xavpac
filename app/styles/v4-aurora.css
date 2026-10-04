@@ -612,3 +612,5 @@ html:not([data-theme="dark"]) .aircraft-view {
     grid-template-columns: 1fr;
   }
 }
+
+/* Deployment recheck: 2026-10-04 */
