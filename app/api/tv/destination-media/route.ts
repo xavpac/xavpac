@@ -203,7 +203,7 @@ function mergeMedia(videos: DestinationMediaItem[], images: DestinationMediaItem
   return [...unique.values()].slice(0, 70);
 }
 
-async function fetchPexels(city: string, iata: string, page: number, theme: string) {
+async function fetchPexels(city: string, _iata: string, page: number, _theme: string) {
   const key = process.env.PEXELS_API_KEY?.trim();
   if (!key) return null;
 
@@ -296,7 +296,7 @@ function pickPixabayVideo(video: PixabayVideo) {
   return candidates[0]?.url ?? null;
 }
 
-async function fetchPixabay(city: string, iata: string, page: number, theme: string) {
+async function fetchPixabay(city: string, _iata: string, page: number, _theme: string) {
   const key = process.env.PIXABAY_API_KEY?.trim();
   if (!key) return null;
 
@@ -399,7 +399,7 @@ function pickCommonsVideoDerivative(derivatives?: CommonsVideoDerivative[]) {
   return candidates[0] ?? null;
 }
 
-async function fetchCommonsVideos(city: string, iata: string, page: number, theme: string) {
+async function fetchCommonsVideos(city: string, _iata: string, _page: number, _theme: string) {
   const query = city + " filetype:video";
 
   const url = new URL("https://commons.wikimedia.org/w/api.php");
@@ -452,7 +452,7 @@ async function fetchCommonsVideos(city: string, iata: string, page: number, them
     .slice(0, 12);
 }
 
-async function fetchCommons(city: string, iata: string, page: number, theme: string) {
+async function fetchCommons(city: string, _iata: string, _page: number, _theme: string) {
   const query = city;
   const url = new URL("https://commons.wikimedia.org/w/api.php");
   url.searchParams.set("action", "query");
