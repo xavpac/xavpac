@@ -284,6 +284,15 @@ final class DestinationMediaService: ObservableObject {
         await fetch(city: airport.city, iata: airport.iata ?? airport.icao)
     }
 
+    func preferVideo() {
+        guard !items.isEmpty,
+              let videoIndex = items.firstIndex(where: { $0.isVideo }) else {
+            return
+        }
+
+        currentIndex = videoIndex
+    }
+
     func advance() async {
         guard !items.isEmpty else { return }
         remember(items[currentIndex].id)

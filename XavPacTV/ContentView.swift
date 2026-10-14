@@ -8,8 +8,9 @@ struct ContentView: View {
     @StateObject private var mediaService = DestinationMediaService()
     @StateObject private var soundscape = AmbientSoundscape()
 
-    private let navy = Color(red: 0.025, green: 0.12, blue: 0.23)
-    private let ink = Color(red: 0.035, green: 0.12, blue: 0.22)
+    private let navy = Color(red: 0.018, green: 0.075, blue: 0.16)
+    private let deepBlue = Color(red: 0.02, green: 0.16, blue: 0.31)
+    private let ink = Color(red: 0.025, green: 0.09, blue: 0.18)
 
     private var featuredAircraft: Aircraft? {
         service.featuredAircraft
@@ -30,75 +31,63 @@ struct ContentView: View {
         })
     }
 
+    private var isPriorityActive: Bool {
+        guard let aircraft = featuredAircraft,
+              let profile = featuredProfile else { return false }
+        return profile.isPriorityTraffic
+            && aircraft.distanceKilometers(from: service.center) <= 40
+    }
+
+    private var isOverheadPass: Bool {
+        guard let aircraft = featuredAircraft else { return false }
+        return aircraft.distanceKilometers(from: service.center) <= 8
+    }
+
     private var destinationTaskKey: String {
         let modeS = featuredEnrichment?.modeS ?? featuredAircraft?.id ?? "none"
         let destination = featuredEnrichment?.arrivalAirport?.code ?? "none"
-        return "\(modeS)-\(destination)"
+        return "\(modeS)-\(destination)-\(isOverheadPass)"
+    }
+
+    private var priorityAlertKey: String {
+        isPriorityActive ? (featuredAircraft?.id ?? "priority") : "none"
     }
 
     var body: some View {
         ZStack {
-            Color(red: 0.90, green: 0.95, blue: 0.97)
-                .ignoresSafeArea()
+            LinearGradient(
+                colors: [
+                    Color(red: 0.90, green: 0.96, blue: 0.99),
+                    Color(red: 0.80, green: 0.90, blue: 0.96)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
 
-            HStack(spacing: 18) {
-                ZStack(alignment: .topLeading) {
-                    AircraftMapView(
-                        aircraft: service.aircraft,
-                        center: service.center,
-                        trails: service.trails,
-                        selectedID: featuredAircraft?.id,
-                        profiles: trafficProfiles
-                    )
+            VStack(spacing: 14) {
+                headerBar
 
-                    GeometryReader { proxy in
-                        let size = min(proxy.size.width, proxy.size.height) * 0.54
-                        RadarSweepOverlay()
-                            .frame(width: size, height: size)
-                            .position(
-                                x: proxy.size.width / 2,
-                                y: proxy.size.height / 2
-                            )
-                    }
-                    .allowsHitTesting(false)
+                HStack(spacing: 16) {
+                    mapPanel
 
-                    VStack(alignment: .leading, spacing: 12) {
-                        statusCard
+                    VStack(spacing: 12) {
+                        featuredCard
 
-                        if let aircraft = featuredAircraft,
-                           let profile = featuredProfile,
-                           profile.isPriorityTraffic,
-                           aircraft.distanceKilometers(from: service.center) <= 40 {
-                            priorityBanner(aircraft: aircraft, profile: profile)
+                        if featuredEnrichment?.arrivalAirport != nil {
+                            destinationCard
+                        } else {
+                            noDestinationCard
                         }
 
-                        Spacer()
+                        nearbyCard
                     }
-                    .padding(18)
+                    .frame(width: 600)
                 }
-                .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 28, style: .continuous)
-                        .stroke(Color.white.opacity(0.95), lineWidth: 3)
-                }
-                .shadow(color: .black.opacity(0.13), radius: 14, y: 6)
-
-                VStack(spacing: 12) {
-                    featuredCard
-
-                    if featuredEnrichment?.arrivalAirport != nil {
-                        destinationCard
-                    } else {
-                        noDestinationCard
-                    }
-
-                    nearbyCard
-                }
-                .frame(width: 600)
             }
-            .padding(.horizontal, 30)
-            .padding(.top, 48)
-            .padding(.bottom, 34)
+            .padding(.horizontal, 24)
+            .padding(.top, 22)
+            .padding(.bottom, 24)
         }
         .onAppear {
             UIApplication.shared.isIdleTimerDisabled = true
@@ -112,214 +101,334 @@ struct ContentView: View {
         }
         .task(id: destinationTaskKey) {
             await mediaService.load(for: featuredEnrichment)
+            if isOverheadPass {
+                mediaService.preferVideo()
+            }
         }
         .task(id: mediaService.current?.id) {
             guard let media = mediaService.current else { return }
-            let seconds: UInt64 = media.isVideo ? 11 : 8
+            let seconds: UInt64 = media.isVideo ? 12 : 9
             try? await Task.sleep(nanoseconds: seconds * 1_000_000_000)
             guard !Task.isCancelled else { return }
             await mediaService.advance()
         }
+        .task(id: priorityAlertKey) {
+            guard priorityAlertKey != "none" else { return }
+            soundscape.playPriorityAlert()
+        }
     }
 
-    private var statusCard: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 12) {
-                Image(systemName: "airplane.circle.fill")
-                    .font(.system(size: 38, weight: .bold))
-                    .foregroundStyle(.cyan)
-
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("XavPac TV")
-                        .font(.title2.bold())
-                        .foregroundStyle(.white)
-                    Text("TRAFIC AÉRIEN EN DIRECT")
-                        .font(.caption.bold())
-                        .foregroundStyle(.white.opacity(0.75))
-                }
+    private var headerBar: some View {
+        HStack(spacing: 18) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 17, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [.cyan.opacity(0.95), .blue.opacity(0.90)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                Image(systemName: "airplane")
+                    .font(.system(size: 34, weight: .heavy))
+                    .foregroundStyle(.white)
             }
+            .frame(width: 66, height: 66)
+            .shadow(color: .cyan.opacity(0.42), radius: 12)
 
-            HStack(spacing: 20) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("\(service.aircraft.count)")
-                        .font(.system(size: 34, weight: .heavy, design: .rounded))
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 5) {
+                    Text("XavPac")
+                        .font(.system(size: 35, weight: .heavy, design: .rounded))
+                        .foregroundStyle(.white)
+                    Text("TV")
+                        .font(.system(size: 35, weight: .heavy, design: .rounded))
                         .foregroundStyle(.cyan)
-                    Text("aéronefs détectés")
-                        .font(.callout.bold())
-                        .foregroundStyle(.white)
                 }
-
-                Divider()
-                    .overlay(Color.white.opacity(0.25))
-                    .frame(height: 45)
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(updateLabel)
-                        .font(.headline.bold().monospacedDigit())
-                        .foregroundStyle(.white)
-                    HStack(spacing: 7) {
-                        Circle()
-                            .fill(service.errorMessage == nil ? Color.green : Color.orange)
-                            .frame(width: 9, height: 9)
-                        Text(service.errorMessage == nil ? "EN DIRECT" : "DERNIÈRES DONNÉES")
-                            .font(.caption2.bold())
-                            .foregroundStyle(.white.opacity(0.74))
-                    }
-                }
+                Text("TRAFIC AÉRIEN EN DIRECT")
+                    .font(.caption.bold())
+                    .foregroundStyle(.white.opacity(0.72))
             }
 
-            Text(service.errorMessage ?? service.source)
-                .font(.caption)
-                .foregroundStyle(.white.opacity(0.68))
-                .lineLimit(1)
+            Spacer()
+
+            headerStat(
+                icon: "airplane",
+                value: "\(service.aircraft.count)",
+                label: "aéronefs",
+                color: .cyan
+            )
+
+            headerStat(
+                icon: "exclamationmark.triangle.fill",
+                value: "\(service.priorityAircraftWithin40.count)",
+                label: "alertes",
+                color: service.priorityAircraftWithin40.isEmpty ? .green : .red
+            )
+
+            HStack(spacing: 11) {
+                Image(systemName: "music.note")
+                    .font(.title3.bold())
+                    .foregroundStyle(.cyan)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Ambiance aérienne")
+                        .font(.headline.bold())
+                        .foregroundStyle(.white)
+                    Text("Piste sonore active")
+                        .font(.caption2)
+                        .foregroundStyle(.white.opacity(0.65))
+                }
+            }
+            .padding(.horizontal, 16)
+            .frame(height: 56)
+            .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
-        .padding(20)
-        .frame(width: 400, alignment: .leading)
-        .background(navy.opacity(0.96), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .padding(.horizontal, 18)
+        .frame(height: 86)
+        .background(
+            LinearGradient(
+                colors: [navy, deepBlue],
+                startPoint: .leading,
+                endPoint: .trailing
+            ),
+            in: RoundedRectangle(cornerRadius: 23, style: .continuous)
+        )
         .overlay {
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(Color.cyan.opacity(0.28), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 23, style: .continuous)
+                .stroke(Color.cyan.opacity(0.34), lineWidth: 1.4)
         }
-        .shadow(color: .black.opacity(0.16), radius: 12, y: 5)
+        .shadow(color: .black.opacity(0.18), radius: 12, y: 5)
+    }
+
+    private func headerStat(
+        icon: String,
+        value: String,
+        label: String,
+        color: Color
+    ) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.title3.bold())
+                .foregroundStyle(color)
+            Text(value)
+                .font(.title2.bold().monospacedDigit())
+                .foregroundStyle(.white)
+            Text(label)
+                .font(.caption.bold())
+                .foregroundStyle(.white.opacity(0.62))
+        }
+        .padding(.horizontal, 15)
+        .frame(height: 56)
+        .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private var mapPanel: some View {
+        ZStack(alignment: .topLeading) {
+            AircraftMapView(
+                aircraft: service.aircraft,
+                center: service.center,
+                trails: service.trails,
+                selectedID: featuredAircraft?.id,
+                profiles: trafficProfiles
+            )
+
+            GeometryReader { proxy in
+                let size = min(proxy.size.width, proxy.size.height) * 0.64
+                RadarSweepOverlay()
+                    .frame(width: size, height: size)
+                    .position(
+                        x: proxy.size.width / 2,
+                        y: proxy.size.height / 2
+                    )
+            }
+            .allowsHitTesting(false)
+
+            HStack {
+                compactStatus
+                Spacer()
+
+                if let aircraft = featuredAircraft,
+                   let profile = featuredProfile,
+                   isPriorityActive {
+                    PriorityAlertBanner(
+                        title: profile.kind == .civilSecurity ? "SÉCURITÉ CIVILE" : "ARMÉE",
+                        subtitle: "\(profile.label) · \(distanceText(aircraft))",
+                        symbolName: profile.symbolName
+                    )
+                }
+            }
+            .padding(16)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 26, style: .continuous)
+                .stroke(Color.white.opacity(0.95), lineWidth: 3)
+        }
+        .shadow(color: .black.opacity(0.16), radius: 14, y: 6)
+    }
+
+    private var compactStatus: some View {
+        HStack(spacing: 10) {
+            Circle()
+                .fill(service.errorMessage == nil ? Color.green : Color.orange)
+                .frame(width: 10, height: 10)
+            Text(service.errorMessage == nil ? "DIRECT" : "DERNIÈRES DONNÉES")
+                .font(.caption.bold())
+            Text("·")
+                .foregroundStyle(.white.opacity(0.45))
+            Text(updateLabel)
+                .font(.caption.bold().monospacedDigit())
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 13)
+        .padding(.vertical, 9)
+        .background(navy.opacity(0.88), in: Capsule())
+        .overlay {
+            Capsule().stroke(Color.cyan.opacity(0.28), lineWidth: 1)
+        }
     }
 
     private var featuredCard: some View {
-        VStack(spacing: 0) {
+        Group {
             if let aircraft = featuredAircraft {
-                ZStack(alignment: .bottomLeading) {
-                    aircraftPhoto(enrichment: featuredEnrichment)
-                        .frame(height: 155)
-                        .clipped()
+                VStack(spacing: 0) {
+                    ZStack(alignment: .bottomLeading) {
+                        aircraftPhoto(enrichment: featuredEnrichment)
+                            .frame(height: 205)
+                            .clipped()
 
-                    LinearGradient(
-                        colors: [.clear, navy.opacity(0.98)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
+                        LinearGradient(
+                            colors: [.clear, .black.opacity(0.15), navy.opacity(0.96)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
 
-                    VStack(spacing: 12) {
-                        HStack(alignment: .bottom, spacing: 12) {
-                            operatorLogo(enrichment: featuredEnrichment)
-                                .frame(width: 54, height: 54)
+                        VStack(spacing: 10) {
+                            HStack(alignment: .top) {
+                                HStack(spacing: 10) {
+                                    ZStack {
+                                        Circle()
+                                            .fill(trafficColor(featuredProfile?.kind).opacity(0.94))
+                                        Image(systemName: featuredProfile?.symbolName ?? "airplane")
+                                            .font(.system(size: 28, weight: .heavy))
+                                            .foregroundStyle(.white)
+                                    }
+                                    .frame(width: 52, height: 52)
 
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(featuredHeader)
-                                    .font(.caption2.bold())
-                                    .foregroundStyle(featuredProfile?.isPriorityTraffic == true ? Color.orange : Color.green)
-                                Text(aircraft.displayName)
-                                    .font(.title2.bold())
-                                    .foregroundStyle(.white)
-                                Text(aircraftIdentity(aircraft, enrichment: featuredEnrichment))
-                                    .font(.caption)
-                                    .foregroundStyle(.white.opacity(0.78))
-                                    .lineLimit(1)
+                                    VStack(alignment: .leading, spacing: 1) {
+                                        Text(featuredHeader)
+                                            .font(.caption2.weight(.heavy))
+                                            .foregroundStyle(
+                                                isPriorityActive
+                                                    ? Color.red
+                                                    : trafficColor(featuredProfile?.kind)
+                                            )
+                                        Text(featuredTitle(aircraft))
+                                            .font(.title2.bold())
+                                            .foregroundStyle(.white)
+                                            .lineLimit(1)
+                                        Text(aircraftIdentity(aircraft, enrichment: featuredEnrichment))
+                                            .font(.caption)
+                                            .foregroundStyle(.white.opacity(0.76))
+                                            .lineLimit(1)
+                                    }
+                                }
+
+                                Spacer()
+
+                                VStack(alignment: .trailing, spacing: 2) {
+                                    Text(distanceText(aircraft))
+                                        .font(.system(size: 31, weight: .heavy, design: .rounded))
+                                        .foregroundStyle(.cyan)
+                                        .monospacedDigit()
+                                    Text(sizeLabel(featuredProfile))
+                                        .font(.caption2.bold())
+                                        .foregroundStyle(.white.opacity(0.72))
+                                }
                             }
 
-                            Spacer()
-
-                            VStack(alignment: .trailing, spacing: 0) {
-                                Text(distanceText(aircraft))
-                                    .font(.system(size: 34, weight: .heavy, design: .rounded))
-                                    .foregroundStyle(.cyan)
-                                    .monospacedDigit()
-                                Text("du centre radar")
-                                    .font(.caption2)
-                                    .foregroundStyle(.white.opacity(0.68))
+                            if hasCompleteRoute(featuredEnrichment) {
+                                cityRouteLine(enrichment: featuredEnrichment)
                             }
                         }
-                    }
-                    .padding(16)
-                }
-
-                VStack(spacing: 13) {
-                    if hasCompleteRoute(featuredEnrichment) {
-                        routeLine(enrichment: featuredEnrichment)
-                    } else {
-                        unavailableRouteLine(aircraft: aircraft, enrichment: featuredEnrichment)
+                        .padding(15)
                     }
 
-                    HStack(spacing: 10) {
+                    HStack(spacing: 8) {
                         metric(title: "ALTITUDE", value: aircraft.altitudeLabel, icon: "mountain.2")
                         metric(title: "VITESSE", value: aircraft.speedLabel, icon: "gauge.with.dots.needle.67percent")
                         metric(title: "CAP", value: aircraft.headingLabel, icon: "location.north.fill")
                     }
+                    .padding(12)
+                    .background(navy)
                 }
-                .padding(15)
                 .background(navy)
+                .clipShape(RoundedRectangle(cornerRadius: 23, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 23, style: .continuous)
+                        .stroke(
+                            isPriorityActive ? Color.red.opacity(0.88) : Color.cyan.opacity(0.28),
+                            lineWidth: isPriorityActive ? 2.5 : 1.2
+                        )
+                }
+                .shadow(
+                    color: isPriorityActive ? Color.red.opacity(0.34) : Color.black.opacity(0.18),
+                    radius: isPriorityActive ? 14 : 9,
+                    y: 4
+                )
             } else {
                 VStack(spacing: 12) {
-                    ProgressView()
-                        .tint(.cyan)
+                    ProgressView().tint(.cyan)
                     Text("Recherche du trafic…")
                         .font(.headline)
                         .foregroundStyle(.white)
                 }
-                .frame(maxWidth: .infinity, minHeight: 315)
-                .background(navy)
+                .frame(maxWidth: .infinity, minHeight: 300)
+                .background(navy, in: RoundedRectangle(cornerRadius: 23, style: .continuous))
             }
         }
-        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(Color.white.opacity(0.22), lineWidth: 1)
-        }
-        .shadow(color: .black.opacity(0.17), radius: 12, y: 5)
     }
 
     private var destinationCard: some View {
         ZStack(alignment: .bottomLeading) {
-            Group {
-                if let media = mediaService.current {
-                    if media.isVideo, let url = media.mediaURL {
-                        LoopingVideoView(url: url)
-                    } else if let url = media.mediaURL {
-                        CinematicDestinationImage(
-                            url: url,
-                            fallback: AnyView(destinationFallback)
-                        )
-                    } else {
-                        destinationFallback
-                    }
-                } else {
-                    destinationFallback
-                }
-            }
-            .id(mediaService.current?.id ?? "destination-fallback")
-            .frame(height: 245)
-            .clipped()
-            .animation(.easeInOut(duration: 0.9), value: mediaService.current?.id)
+            destinationMediaView
+                .id(mediaService.current?.id ?? "destination-fallback")
+                .frame(height: 220)
+                .clipped()
+                .animation(.easeInOut(duration: 0.8), value: mediaService.current?.id)
 
             LinearGradient(
-                colors: [.clear, .black.opacity(0.78)],
+                colors: [.clear, .black.opacity(0.76)],
                 startPoint: .center,
                 endPoint: .bottom
             )
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
-                    Label("VILLE D’ARRIVÉE", systemImage: mediaService.current?.isVideo == true ? "play.rectangle.fill" : "photo.fill")
-                        .font(.caption.bold())
-                        .foregroundStyle(.white.opacity(0.92))
+                    Label(
+                        isOverheadPass ? "VILLE D’ARRIVÉE · LECTURE AUTO" : "VILLE D’ARRIVÉE",
+                        systemImage: isOverheadPass ? "play.rectangle.fill" : "photo.on.rectangle"
+                    )
+                    .font(.caption.bold())
+                    .foregroundStyle(.white)
 
                     Spacer()
 
-                    if mediaService.current?.isVideo == true {
-                        Text("VIDÉO")
-                            .font(.caption2.bold())
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 9)
-                            .padding(.vertical, 4)
-                            .background(Color.cyan.opacity(0.78), in: Capsule())
-                    }
+                    Text(isOverheadPass ? "PASSAGE PROCHE" : "VUES AÉRIENNES · AÉROPORT")
+                        .font(.caption2.bold())
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 4)
+                        .background(Color.cyan.opacity(0.74), in: Capsule())
                 }
 
                 Text(featuredEnrichment?.arrivalAirport?.city ?? "Destination")
-                    .font(.system(size: 36, weight: .heavy, design: .rounded))
+                    .font(.system(size: 34, weight: .heavy, design: .rounded))
                     .foregroundStyle(.white)
                     .lineLimit(1)
 
                 if let airport = featuredEnrichment?.arrivalAirport {
-                    Text("\(airport.name ?? airport.city) · \(airport.code)")
+                    Text(airport.name ?? airport.city)
                         .font(.callout.bold())
                         .foregroundStyle(.white.opacity(0.84))
                         .lineLimit(1)
@@ -328,132 +437,145 @@ struct ContentView: View {
                 if let media = mediaService.current {
                     Text(attribution(media))
                         .font(.caption2)
-                        .foregroundStyle(.white.opacity(0.65))
+                        .foregroundStyle(.white.opacity(0.58))
                         .lineLimit(1)
-                } else if mediaService.isLoading {
-                    Text("Chargement automatique du média…")
-                        .font(.caption)
-                        .foregroundStyle(.white.opacity(0.70))
                 }
             }
-            .padding(16)
+            .padding(14)
         }
         .background(Color.white)
-        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 23, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(Color.white.opacity(0.88), lineWidth: 3)
+            RoundedRectangle(cornerRadius: 23, style: .continuous)
+                .stroke(Color.cyan.opacity(0.42), lineWidth: 2)
         }
-        .shadow(color: .black.opacity(0.14), radius: 10, y: 4)
+        .shadow(color: .black.opacity(0.13), radius: 9, y: 4)
+    }
+
+    @ViewBuilder
+    private var destinationMediaView: some View {
+        if let media = mediaService.current {
+            if media.isVideo,
+               isOverheadPass,
+               let url = media.mediaURL {
+                LoopingVideoView(url: url)
+            } else if media.isVideo,
+                      let preview = media.previewURL {
+                CinematicDestinationImage(
+                    url: preview,
+                    fallback: AnyView(destinationFallback)
+                )
+            } else if let url = media.mediaURL {
+                CinematicDestinationImage(
+                    url: url,
+                    fallback: AnyView(destinationFallback)
+                )
+            } else {
+                destinationFallback
+            }
+        } else {
+            destinationFallback
+        }
     }
 
     private var noDestinationCard: some View {
-        HStack(spacing: 16) {
-            Image(systemName: "airplane.departure")
-                .font(.system(size: 32, weight: .bold))
-                .foregroundStyle(.cyan)
-                .frame(width: 58, height: 58)
-                .background(navy, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+        HStack(spacing: 15) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(deepBlue)
+                Image(systemName: featuredProfile?.symbolName ?? "airplane")
+                    .font(.system(size: 30, weight: .heavy))
+                    .foregroundStyle(trafficColor(featuredProfile?.kind))
+            }
+            .frame(width: 58, height: 58)
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text("Trajet non disponible")
                     .font(.title3.bold())
                     .foregroundStyle(ink)
-                Text("La position, l’altitude, la vitesse et le cap restent affichés en direct.")
+                Text("Suivi direct maintenu : position, altitude, vitesse et cap.")
                     .font(.callout)
-                    .foregroundStyle(ink.opacity(0.70))
-                    .lineLimit(2)
+                    .foregroundStyle(ink.opacity(0.68))
             }
 
             Spacer()
         }
-        .padding(18)
-        .frame(maxWidth: .infinity, minHeight: 110)
-        .background(Color.white.opacity(0.96), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .shadow(color: .black.opacity(0.12), radius: 9, y: 4)
+        .padding(17)
+        .frame(maxWidth: .infinity, minHeight: 100)
+        .background(Color.white.opacity(0.96), in: RoundedRectangle(cornerRadius: 23, style: .continuous))
+        .shadow(color: .black.opacity(0.11), radius: 8, y: 3)
     }
 
     private var nearbyCard: some View {
-        VStack(alignment: .leading, spacing: 9) {
+        VStack(alignment: .leading, spacing: 7) {
             HStack {
-                Label("Trafic à proximité", systemImage: "airplane")
+                Label("Trafic à proximité", systemImage: "scope")
                     .font(.title3.bold())
                     .foregroundStyle(ink)
                 Spacer()
-                Text(service.priorityAircraftWithin40.isEmpty ? "6 plus proches" : "priorité spéciale < 40 km")
-                    .font(.caption.bold())
-                    .foregroundStyle(ink.opacity(0.60))
+                Text(isPriorityActive ? "ALERTE PRIORITAIRE" : "5 plus proches")
+                    .font(.caption2.weight(.heavy))
+                    .foregroundStyle(isPriorityActive ? Color.red : ink.opacity(0.55))
             }
 
-            ForEach(Array(service.displayAircraft.prefix(6).enumerated()), id: \.element.id) { index, aircraft in
+            ForEach(Array(service.displayAircraft.prefix(5).enumerated()), id: \.element.id) { index, aircraft in
                 nearbyRow(aircraft, index: index)
             }
         }
-        .padding(15)
-        .background(Color.white.opacity(0.97), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .padding(13)
+        .background(Color.white.opacity(0.97), in: RoundedRectangle(cornerRadius: 23, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(Color.blue.opacity(0.12), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 23, style: .continuous)
+                .stroke(Color.blue.opacity(0.10), lineWidth: 1)
         }
-        .shadow(color: .black.opacity(0.13), radius: 10, y: 4)
+        .shadow(color: .black.opacity(0.12), radius: 8, y: 3)
     }
 
     private func nearbyRow(_ aircraft: Aircraft, index: Int) -> some View {
         let enrichment = service.enrichment(for: aircraft)
         let profile = service.trafficProfile(for: aircraft)
         let isFeatured = featuredAircraft?.id == aircraft.id
+        let route = routeCities(enrichment)
 
         return HStack(spacing: 10) {
-            nearbyThumbnail(aircraft: aircraft, enrichment: enrichment, profile: profile)
-                .frame(width: 60, height: 42)
+            nearbyThumbnail(
+                aircraft: aircraft,
+                enrichment: enrichment,
+                profile: profile
+            )
+            .frame(width: 54, height: 38)
 
             VStack(alignment: .leading, spacing: 1) {
-                HStack(spacing: 7) {
-                    Text(aircraft.displayName)
-                        .font(.headline.bold())
-                        .foregroundStyle(ink)
-                        .lineLimit(1)
-
-                    if profile.isPriorityTraffic {
-                        Text(profile.label)
-                            .font(.system(size: 10, weight: .heavy))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 3)
-                            .background(Color.orange.opacity(0.90), in: Capsule())
-                    } else if let operatorName = enrichment?.operatorName ?? aircraft.operatorName,
-                              !operatorName.isEmpty {
-                        Text(operatorName)
-                            .font(.caption2.bold())
-                            .foregroundStyle(ink.opacity(0.55))
-                            .lineLimit(1)
-                    }
-                }
-
-                Text(nearbySubtitle(aircraft, enrichment: enrichment))
-                    .font(.caption)
-                    .foregroundStyle(ink.opacity(0.66))
+                Text(route)
+                    .font(.headline.bold())
+                    .foregroundStyle(ink)
                     .lineLimit(1)
+                    .minimumScaleFactor(0.76)
+
+                if route == "Trajet non disponible" {
+                    Text(profile.label)
+                        .font(.caption2.bold())
+                        .foregroundStyle(trafficColor(profile.kind))
+                }
             }
 
             Spacer()
 
             Text(distanceText(aircraft))
-                .font(.title3.bold().monospacedDigit())
+                .font(.headline.bold().monospacedDigit())
                 .foregroundStyle(
                     profile.isPriorityTraffic
-                        ? Color.orange
-                        : (isFeatured ? Color(red: 0.00, green: 0.55, blue: 0.63) : ink)
+                        ? Color.red
+                        : (isFeatured ? Color.cyan : ink)
                 )
-                .lineLimit(1)
         }
-        .padding(.horizontal, 10)
+        .padding(.horizontal, 9)
         .padding(.vertical, 6)
         .background(
             profile.isPriorityTraffic
-                ? Color.orange.opacity(0.10)
-                : (isFeatured ? Color.cyan.opacity(0.13) : Color.clear),
-            in: RoundedRectangle(cornerRadius: 13, style: .continuous)
+                ? Color.red.opacity(0.08)
+                : (isFeatured ? Color.cyan.opacity(0.10) : Color.clear),
+            in: RoundedRectangle(cornerRadius: 12, style: .continuous)
         )
     }
 
@@ -463,7 +585,8 @@ struct ContentView: View {
         enrichment: TVAircraftEnrichment?,
         profile: TVTrafficProfile
     ) -> some View {
-        if let url = enrichment?.photoURL {
+        if let url = enrichment?.photoURL,
+           enrichment?.photo.kind != "generic" {
             AsyncImage(url: url) { phase in
                 if let image = phase.image {
                     image
@@ -482,53 +605,54 @@ struct ContentView: View {
     private func trafficSymbol(_ profile: TVTrafficProfile) -> some View {
         ZStack {
             RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .fill(profile.isPriorityTraffic ? Color.orange.opacity(0.16) : Color.cyan.opacity(0.12))
-
+                .fill(trafficColor(profile.kind).opacity(0.15))
             Image(systemName: profile.symbolName)
-                .font(.system(size: 23, weight: .bold))
-                .foregroundStyle(profile.isPriorityTraffic ? Color.orange : Color.cyan)
+                .font(.system(size: 22 * CGFloat(profile.relativeIconScale), weight: .heavy))
+                .foregroundStyle(trafficColor(profile.kind))
         }
     }
 
     private var featuredHeader: String {
-        guard let featuredAircraft,
-              let featuredProfile else {
+        guard let profile = featuredProfile else {
             return "AÉRONEF LE PLUS PROCHE"
         }
 
-        if featuredProfile.isPriorityTraffic,
-           featuredAircraft.distanceKilometers(from: service.center) <= 40 {
-            return "TRAFIC PRIORITAIRE · \(featuredProfile.label)"
+        if isPriorityActive {
+            return profile.kind == .civilSecurity
+                ? "ALERTE PRIORITAIRE · SÉCURITÉ CIVILE"
+                : "ALERTE PRIORITAIRE · ARMÉE"
         }
 
-        return "AÉRONEF LE PLUS PROCHE"
+        return profile.label
     }
 
-    private func priorityBanner(
-        aircraft: Aircraft,
-        profile: TVTrafficProfile
-    ) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: profile.symbolName)
-                .font(.title3.bold())
-            VStack(alignment: .leading, spacing: 1) {
-                Text("TRAFIC SPÉCIAL PRIORITAIRE")
-                    .font(.caption2.bold())
-                Text("\(profile.label) · \(aircraft.displayName) · \(distanceText(aircraft))")
-                    .font(.headline.bold())
-                    .lineLimit(1)
-            }
+    private func featuredTitle(_ aircraft: Aircraft) -> String {
+        if let model = featuredEnrichment?.aircraftModel,
+           !model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return model
         }
-        .foregroundStyle(.white)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 11)
-        .background(Color.orange.opacity(0.94), in: Capsule())
-        .shadow(color: .black.opacity(0.16), radius: 8, y: 3)
+        if let type = aircraft.description,
+           !type.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return type
+        }
+        if let type = aircraft.aircraftType,
+           !type.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return type
+        }
+        return aircraft.displayName
+    }
+
+    private func sizeLabel(_ profile: TVTrafficProfile?) -> String {
+        guard let scale = profile?.relativeIconScale else { return "Gabarit inconnu" }
+        if scale >= 1.25 { return "Gabarit : grand" }
+        if scale >= 1.02 { return "Gabarit : moyen" }
+        return "Gabarit : léger"
     }
 
     @ViewBuilder
     private func aircraftPhoto(enrichment: TVAircraftEnrichment?) -> some View {
-        if let url = enrichment?.photoURL {
+        if let url = enrichment?.photoURL,
+           enrichment?.photo.kind != "generic" {
             AsyncImage(url: url) { phase in
                 if let image = phase.image {
                     image
@@ -546,121 +670,57 @@ struct ContentView: View {
     private var aircraftPlaceholder: some View {
         ZStack {
             LinearGradient(
-                colors: [Color.blue.opacity(0.72), navy],
+                colors: [
+                    deepBlue,
+                    trafficColor(featuredProfile?.kind).opacity(0.56)
+                ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
+
             Image(systemName: featuredProfile?.symbolName ?? "airplane")
-                .font(.system(size: 80, weight: .bold))
-                .foregroundStyle(
-                    featuredProfile?.isPriorityTraffic == true
-                        ? Color.orange.opacity(0.90)
-                        : Color.white.opacity(0.74)
-                )
+                .font(.system(size: 96 * CGFloat(featuredProfile?.relativeIconScale ?? 1), weight: .heavy))
+                .foregroundStyle(.white.opacity(0.88))
+                .shadow(color: trafficColor(featuredProfile?.kind), radius: 14)
         }
     }
 
-    @ViewBuilder
-    private func operatorLogo(enrichment: TVAircraftEnrichment?) -> some View {
-        if let url = enrichment?.logoURL {
-            AsyncImage(url: url) { phase in
-                if let image = phase.image {
-                    image
-                        .resizable()
-                        .scaledToFit()
-                        .padding(5)
-                } else {
-                    logoPlaceholder
-                }
-            }
-            .background(Color.white, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        } else {
-            logoPlaceholder
-        }
-    }
-
-    private var logoPlaceholder: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.white.opacity(0.96))
-            Image(systemName: "airplane")
-                .foregroundStyle(.cyan)
-        }
-    }
-
-    private func routeLine(enrichment: TVAircraftEnrichment?) -> some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 1) {
-                Text(enrichment?.departureAirport?.code ?? "")
-                    .font(.title2.bold())
-                    .foregroundStyle(.white)
-                Text(enrichment?.departureAirport?.city ?? "")
-                    .font(.caption)
-                    .foregroundStyle(.white.opacity(0.70))
-                    .lineLimit(1)
-            }
+    private func cityRouteLine(enrichment: TVAircraftEnrichment?) -> some View {
+        HStack(spacing: 10) {
+            Text(enrichment?.departureAirport?.city ?? "Départ")
+                .font(.headline.bold())
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
 
             Spacer()
 
-            HStack(spacing: 8) {
-                Rectangle()
-                    .fill(Color.cyan.opacity(0.50))
-                    .frame(height: 2)
-                Image(systemName: "airplane")
-                    .font(.headline.bold())
-                    .foregroundStyle(.cyan)
-                Rectangle()
-                    .fill(Color.cyan.opacity(0.50))
-                    .frame(height: 2)
-            }
-            .frame(maxWidth: 160)
+            Image(systemName: featuredProfile?.symbolName ?? "airplane")
+                .font(.headline.bold())
+                .foregroundStyle(trafficColor(featuredProfile?.kind))
+
+            Image(systemName: "arrow.right")
+                .font(.caption.bold())
+                .foregroundStyle(.white.opacity(0.68))
 
             Spacer()
 
-            VStack(alignment: .trailing, spacing: 1) {
-                Text(enrichment?.arrivalAirport?.code ?? "")
-                    .font(.title2.bold())
-                    .foregroundStyle(.white)
-                Text(enrichment?.arrivalAirport?.city ?? "")
-                    .font(.caption)
-                    .foregroundStyle(.white.opacity(0.70))
-                    .lineLimit(1)
-            }
-        }
-        .padding(.horizontal, 5)
-    }
-
-    private func unavailableRouteLine(
-        aircraft: Aircraft,
-        enrichment: TVAircraftEnrichment?
-    ) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: "questionmark.circle.fill")
-                .font(.title3)
-                .foregroundStyle(.cyan)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Trajet non disponible")
-                    .font(.headline.bold())
-                    .foregroundStyle(.white)
-                Text(aircraftIdentity(aircraft, enrichment: enrichment))
-                    .font(.caption)
-                    .foregroundStyle(.white.opacity(0.68))
-                    .lineLimit(1)
-            }
-
-            Spacer()
+            Text(enrichment?.arrivalAirport?.city ?? "Arrivée")
+                .font(.headline.bold())
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
         }
     }
 
     private func metric(title: String, value: String, icon: String) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 5) {
                 Image(systemName: icon)
                     .foregroundStyle(.cyan)
                 Text(title)
                     .font(.caption2.bold())
-                    .foregroundStyle(.white.opacity(0.63))
+                    .foregroundStyle(.white.opacity(0.58))
             }
 
             Text(value)
@@ -669,30 +729,44 @@ struct ContentView: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
         }
-        .padding(11)
+        .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private var destinationFallback: some View {
         ZStack {
             LinearGradient(
                 colors: [
-                    Color(red: 0.18, green: 0.63, blue: 0.88),
-                    Color(red: 0.98, green: 0.63, blue: 0.38)
+                    Color(red: 0.16, green: 0.62, blue: 0.90),
+                    Color(red: 0.98, green: 0.58, blue: 0.30)
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
 
-            Image(systemName: "building.2.fill")
-                .font(.system(size: 74, weight: .bold))
-                .foregroundStyle(.white.opacity(0.34))
+            VStack(spacing: 10) {
+                Image(systemName: "airplane.arrival")
+                    .font(.system(size: 62, weight: .heavy))
+                Text("Vue destination en préparation")
+                    .font(.headline.bold())
+            }
+            .foregroundStyle(.white.opacity(0.80))
         }
     }
 
     private func hasCompleteRoute(_ enrichment: TVAircraftEnrichment?) -> Bool {
         enrichment?.departureAirport != nil && enrichment?.arrivalAirport != nil
+    }
+
+    private func routeCities(_ enrichment: TVAircraftEnrichment?) -> String {
+        guard let departure = enrichment?.departureAirport?.city,
+              let arrival = enrichment?.arrivalAirport?.city,
+              !departure.isEmpty,
+              !arrival.isEmpty else {
+            return "Trajet non disponible"
+        }
+        return "\(departure)  →  \(arrival)"
     }
 
     private func distanceText(_ aircraft: Aircraft) -> String {
@@ -704,32 +778,46 @@ struct ContentView: View {
         enrichment: TVAircraftEnrichment?
     ) -> String {
         let values = [
-            enrichment?.registration ?? aircraft.registration,
-            enrichment?.aircraftModel ?? enrichment?.aircraftType ?? aircraft.aircraftType,
-            enrichment?.operatorName ?? aircraft.operatorName
+            enrichment?.operatorName ?? aircraft.operatorName,
+            enrichment?.registration ?? aircraft.registration
         ]
 
         let clean = values.compactMap { value -> String? in
-            guard let value, !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            guard let value,
+                  !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 return nil
             }
             return value
         }
 
-        return clean.isEmpty ? "Données ADS-B en direct" : clean.prefix(3).joined(separator: " · ")
+        return clean.isEmpty ? "Données ADS-B en direct" : clean.joined(separator: " · ")
     }
 
-    private func nearbySubtitle(
-        _ aircraft: Aircraft,
-        enrichment: TVAircraftEnrichment?
-    ) -> String {
-        if let route = enrichment?.routeLabel,
-           !route.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return route
+    private func trafficColor(_ kind: TVTrafficKind?) -> Color {
+        switch kind {
+        case .civilSecurity:
+            return Color(red: 1.00, green: 0.62, blue: 0.05)
+        case .military:
+            return Color(red: 0.96, green: 0.12, blue: 0.17)
+        case .helicopter, .medical:
+            return Color(red: 0.04, green: 0.78, blue: 0.38)
+        case .surveillance:
+            return Color(red: 0.61, green: 0.34, blue: 0.96)
+        case .airline:
+            return Color(red: 0.00, green: 0.70, blue: 1.00)
+        case .lightPrivate:
+            return Color(red: 0.70, green: 0.76, blue: 0.83)
+        case .ultralight, .glider:
+            return Color(red: 0.98, green: 0.76, blue: 0.10)
+        case .drone:
+            return Color(red: 0.12, green: 0.86, blue: 0.82)
+        case .balloon:
+            return Color(red: 0.96, green: 0.40, blue: 0.72)
+        case .specialized:
+            return Color(red: 0.40, green: 0.62, blue: 1.00)
+        case .unknown, .none:
+            return Color(red: 0.70, green: 0.77, blue: 0.84)
         }
-
-        let identity = aircraftIdentity(aircraft, enrichment: enrichment)
-        return identity.isEmpty ? "Trajet non disponible" : identity
     }
 
     private func attribution(_ media: DestinationMedia) -> String {
@@ -743,6 +831,57 @@ struct ContentView: View {
         guard let date = service.updatedAt else { return "Connexion…" }
         let seconds = max(0, Int(Date().timeIntervalSince(date)))
         return seconds < 60 ? "MAJ \(seconds) s" : "MAJ \(seconds / 60) min"
+    }
+}
+
+private struct PriorityAlertBanner: View {
+    let title: String
+    let subtitle: String
+    let symbolName: String
+
+    @State private var pulse = false
+
+    var body: some View {
+        HStack(spacing: 11) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.title2.bold())
+            Image(systemName: symbolName)
+                .font(.title3.bold())
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text("ALERTE PRIORITAIRE")
+                    .font(.caption2.weight(.heavy))
+                Text("\(title) · \(subtitle)")
+                    .font(.headline.bold())
+                    .lineLimit(1)
+            }
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 11)
+        .background(
+            LinearGradient(
+                colors: [Color.red, Color.red.opacity(0.76)],
+                startPoint: .leading,
+                endPoint: .trailing
+            ),
+            in: RoundedRectangle(cornerRadius: 15, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 15, style: .continuous)
+                .stroke(Color.white.opacity(pulse ? 1 : 0.28), lineWidth: pulse ? 3 : 1)
+        }
+        .shadow(color: Color.red.opacity(pulse ? 0.78 : 0.20), radius: pulse ? 18 : 5)
+        .scaleEffect(pulse ? 1.02 : 0.99)
+        .onAppear {
+            pulse = false
+            withAnimation(
+                .easeInOut(duration: 0.55)
+                .repeatForever(autoreverses: true)
+            ) {
+                pulse = true
+            }
+        }
     }
 }
 
@@ -895,7 +1034,9 @@ private struct CinematicDestinationImage: View {
 private final class AmbientSoundscape: ObservableObject {
     private let engine = AVAudioEngine()
     private let player = AVAudioPlayerNode()
+    private let alertPlayer = AVAudioPlayerNode()
     private var buffer: AVAudioPCMBuffer?
+    private var audioFormat: AVAudioFormat?
     private var configured = false
 
     func start() {
@@ -908,12 +1049,15 @@ private final class AmbientSoundscape: ObservableObject {
 
             if !configured {
                 engine.attach(player)
+                engine.attach(alertPlayer)
                 guard let format = AVAudioFormat(
                     standardFormatWithSampleRate: 44_100,
                     channels: 2
                 ) else { return }
 
+                audioFormat = format
                 engine.connect(player, to: engine.mainMixerNode, format: format)
+                engine.connect(alertPlayer, to: engine.mainMixerNode, format: format)
                 buffer = makeAmbientBuffer(format: format, duration: 24)
                 configured = true
             }
@@ -935,8 +1079,66 @@ private final class AmbientSoundscape: ObservableObject {
 
     func stop() {
         player.stop()
+        alertPlayer.stop()
         engine.pause()
         try? AVAudioSession.sharedInstance().setActive(false)
+    }
+
+    func playPriorityAlert() {
+        if !configured {
+            start()
+        }
+
+        guard let format = audioFormat,
+              let alertBuffer = makePriorityAlertBuffer(format: format) else {
+            return
+        }
+
+        do {
+            if !engine.isRunning {
+                try engine.start()
+            }
+            alertPlayer.stop()
+            alertPlayer.scheduleBuffer(alertBuffer, at: nil, options: [])
+            alertPlayer.volume = 0.42
+            alertPlayer.play()
+        } catch {
+            // L'alerte visuelle reste active même si la sortie audio est indisponible.
+        }
+    }
+
+    private func makePriorityAlertBuffer(format: AVAudioFormat) -> AVAudioPCMBuffer? {
+        let duration = 0.72
+        let sampleRate = format.sampleRate
+        let frameCount = AVAudioFrameCount(sampleRate * duration)
+
+        guard let buffer = AVAudioPCMBuffer(
+            pcmFormat: format,
+            frameCapacity: frameCount
+        ) else { return nil }
+
+        buffer.frameLength = frameCount
+        guard let channels = buffer.floatChannelData else { return nil }
+
+        let twoPi = Double.pi * 2
+
+        for frame in 0..<Int(frameCount) {
+            let time = Double(frame) / sampleRate
+            let firstTone = time < 0.28
+            let frequency = firstTone ? 880.0 : 1_175.0
+            let phaseTime = firstTone ? time : time - 0.28
+            let attack = min(1.0, phaseTime / 0.025)
+            let releaseStart = firstTone ? 0.22 : 0.62
+            let release = max(0.0, min(1.0, (releaseStart - time) / 0.08))
+            let envelope = max(0.0, attack * release)
+            let tone = sin(twoPi * frequency * time) * envelope * 0.34
+            let sample = Float(tone)
+
+            channels[0][frame] = sample
+            channels[1][frame] = sample
+        }
+
+        return buffer
     }
 
     private func makeAmbientBuffer(
