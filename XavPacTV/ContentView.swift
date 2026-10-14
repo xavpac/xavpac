@@ -243,15 +243,10 @@ struct ContentView: View {
                     if media.isVideo, let url = media.mediaURL {
                         LoopingVideoView(url: url)
                     } else if let url = media.mediaURL {
-                        AsyncImage(url: url) { phase in
-                            if let image = phase.image {
-                                image
-                                    .resizable()
-                                    .scaledToFill()
-                            } else {
-                                destinationFallback
-                            }
-                        }
+                        CinematicDestinationImage(
+                            url: url,
+                            fallback: AnyView(destinationFallback)
+                        )
                     } else {
                         destinationFallback
                     }
@@ -259,8 +254,10 @@ struct ContentView: View {
                     destinationFallback
                 }
             }
+            .id(mediaService.current?.id ?? "destination-fallback")
             .frame(height: 245)
             .clipped()
+            .animation(.easeInOut(duration: 0.9), value: mediaService.current?.id)
 
             LinearGradient(
                 colors: [.clear, .black.opacity(0.78)],
@@ -638,6 +635,38 @@ struct ContentView: View {
     }
 }
 
+private struct CinematicDestinationImage: View {
+    let url: URL
+    let fallback: AnyView
+    @State private var animate = false
+
+    var body: some View {
+        AsyncImage(url: url) { phase in
+            if let image = phase.image {
+                image
+                    .resizable()
+                    .scaledToFill()
+                    .scaleEffect(animate ? 1.13 : 1.02)
+                    .offset(
+                        x: animate ? -10 : 10,
+                        y: animate ? -5 : 5
+                    )
+                    .onAppear {
+                        animate = false
+                        withAnimation(
+                            .easeInOut(duration: 8.5)
+                            .repeatForever(autoreverses: true)
+                        ) {
+                            animate = true
+                        }
+                    }
+            } else {
+                fallback
+            }
+        }
+    }
+}
+
 @MainActor
 private final class AmbientSoundscape: ObservableObject {
     private let engine = AVAudioEngine()
@@ -650,7 +679,7 @@ private final class AmbientSoundscape: ObservableObject {
 
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.ambient, mode: .default, options: [.mixWithOthers])
+            try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
             try session.setActive(true)
 
             if !configured {
@@ -661,7 +690,7 @@ private final class AmbientSoundscape: ObservableObject {
                 ) else { return }
 
                 engine.connect(player, to: engine.mainMixerNode, format: format)
-                buffer = makeAmbientBuffer(format: format, duration: 12)
+                buffer = makeAmbientBuffer(format: format, duration: 24)
                 configured = true
             }
 
@@ -671,7 +700,8 @@ private final class AmbientSoundscape: ObservableObject {
 
             if let buffer {
                 player.scheduleBuffer(buffer, at: nil, options: .loops)
-                player.volume = 0.055
+                engine.mainMixerNode.outputVolume = 0.62
+                player.volume = 0.18
                 player.play()
             }
         } catch {
@@ -701,21 +731,34 @@ private final class AmbientSoundscape: ObservableObject {
         guard let channels = buffer.floatChannelData else { return nil }
 
         let twoPi = Double.pi * 2
-        let frequencies = [128.0, 192.0, 256.0]
+        let chords: [[Double]] = [
+            [130.81, 164.81, 196.00, 246.94], // Cmaj7
+            [110.00, 130.81, 164.81, 196.00], // Am7
+            [87.31, 130.81, 174.61, 220.00],  // Fmaj7
+            [98.00, 146.83, 196.00, 246.94]   // G6
+        ]
+        let chordDuration = duration / Double(chords.count)
 
         for frame in 0..<Int(frameCount) {
             let time = Double(frame) / sampleRate
-            let breathe = 0.72 + 0.28 * sin(twoPi * time / duration)
-            let shimmer = 0.5 + 0.5 * sin(twoPi * time / 6.0)
+            let chordIndex = min(chords.count - 1, Int(time / chordDuration))
+            let localTime = time.truncatingRemainder(dividingBy: chordDuration)
+            let edge = min(1.0, min(localTime / 1.2, (chordDuration - localTime) / 1.2))
+            let breathe = 0.80 + 0.20 * sin(twoPi * time / 8.0)
 
-            let tone =
-                sin(twoPi * frequencies[0] * time) * 0.42
-                + sin(twoPi * frequencies[1] * time) * 0.22
-                + sin(twoPi * frequencies[2] * time) * (0.10 + shimmer * 0.05)
+            var tone = 0.0
+            for (index, frequency) in chords[chordIndex].enumerated() {
+                let weight = index == 0 ? 0.34 : 0.18
+                tone += sin(twoPi * frequency * time) * weight
+                tone += sin(twoPi * frequency * 2.0 * time) * weight * 0.10
+            }
 
-            let sample = Float(tone * breathe * 0.16)
+            let air = sin(twoPi * 523.25 * time) * 0.025
+                * (0.5 + 0.5 * sin(twoPi * time / 12.0))
+            let sample = Float((tone * breathe * max(0.12, edge) + air) * 0.22)
+
             channels[0][frame] = sample
-            channels[1][frame] = sample * 0.94
+            channels[1][frame] = sample * Float(0.94 + 0.03 * sin(twoPi * time / 10.0))
         }
 
         return buffer
