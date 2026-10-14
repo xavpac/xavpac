@@ -47,6 +47,33 @@ type PexelsPhoto = {
   };
 };
 
+
+type PixabayVideoVariant = {
+  url?: string;
+  width?: number;
+  height?: number;
+};
+
+type PixabayVideo = {
+  id: number;
+  pageURL?: string;
+  user?: string;
+  videos?: {
+    large?: PixabayVideoVariant;
+    medium?: PixabayVideoVariant;
+    small?: PixabayVideoVariant;
+    tiny?: PixabayVideoVariant;
+  };
+};
+
+type PixabayImage = {
+  id: number;
+  pageURL?: string;
+  user?: string;
+  largeImageURL?: string;
+  webformatURL?: string;
+};
+
 type CommonsImageInfo = {
   url?: string;
   thumburl?: string;
@@ -214,6 +241,99 @@ async function fetchPexels(city: string, iata: string, page: number) {
   return items.length ? { provider: "Pexels", items } : null;
 }
 
+
+function pickPixabayVideo(video: PixabayVideo) {
+  const candidates = [
+    video.videos?.medium,
+    video.videos?.large,
+    video.videos?.small,
+    video.videos?.tiny
+  ].filter((item): item is PixabayVideoVariant => Boolean(
+    item?.url?.startsWith("https://")
+    && (item.width ?? 0) >= (item.height ?? 0)
+  ));
+
+  return candidates[0]?.url ?? null;
+}
+
+async function fetchPixabay(city: string, iata: string, page: number) {
+  const key = process.env.PIXABAY_API_KEY?.trim();
+  if (!key) return null;
+
+  const query = [city, iata, "city skyline travel landmark"].filter(Boolean).join(" ");
+
+  const videoUrl = new URL("https://pixabay.com/api/videos/");
+  videoUrl.searchParams.set("key", key);
+  videoUrl.searchParams.set("q", query);
+  videoUrl.searchParams.set("category", "travel");
+  videoUrl.searchParams.set("per_page", "30");
+  videoUrl.searchParams.set("page", String(page));
+  videoUrl.searchParams.set("safesearch", "true");
+
+  const imageUrl = new URL("https://pixabay.com/api/");
+  imageUrl.searchParams.set("key", key);
+  imageUrl.searchParams.set("q", query);
+  imageUrl.searchParams.set("category", "travel");
+  imageUrl.searchParams.set("orientation", "horizontal");
+  imageUrl.searchParams.set("image_type", "photo");
+  imageUrl.searchParams.set("per_page", "30");
+  imageUrl.searchParams.set("page", String(page));
+  imageUrl.searchParams.set("safesearch", "true");
+
+  const [videoResponse, imageResponse] = await Promise.all([
+    fetch(videoUrl, {
+      next: { revalidate: 21_600 },
+      signal: AbortSignal.timeout(8500),
+      headers: { Accept: "application/json", "User-Agent": "XavPacTV/2.0" }
+    }),
+    fetch(imageUrl, {
+      next: { revalidate: 21_600 },
+      signal: AbortSignal.timeout(8500),
+      headers: { Accept: "application/json", "User-Agent": "XavPacTV/2.0" }
+    })
+  ]);
+
+  if (!videoResponse.ok && !imageResponse.ok) return null;
+
+  const videoPayload = videoResponse.ok
+    ? await videoResponse.json() as { hits?: PixabayVideo[] }
+    : { hits: [] };
+  const imagePayload = imageResponse.ok
+    ? await imageResponse.json() as { hits?: PixabayImage[] }
+    : { hits: [] };
+
+  const videos = (videoPayload.hits ?? []).flatMap<DestinationMediaItem>((video) => {
+    const url = pickPixabayVideo(video);
+    if (!url) return [];
+    return [{
+      id: `pixabay-video-${video.id}`,
+      type: "video",
+      url,
+      preview: null,
+      author: video.user?.trim() || null,
+      sourceName: "Pixabay",
+      sourceUrl: video.pageURL?.startsWith("https://") ? video.pageURL : "https://pixabay.com/"
+    }];
+  });
+
+  const images = (imagePayload.hits ?? []).flatMap<DestinationMediaItem>((image) => {
+    const url = image.largeImageURL || image.webformatURL;
+    if (!url?.startsWith("https://")) return [];
+    return [{
+      id: `pixabay-photo-${image.id}`,
+      type: "image",
+      url,
+      preview: image.webformatURL?.startsWith("https://") ? image.webformatURL : null,
+      author: image.user?.trim() || null,
+      sourceName: "Pixabay",
+      sourceUrl: image.pageURL?.startsWith("https://") ? image.pageURL : "https://pixabay.com/"
+    }];
+  });
+
+  const items = mergeMedia(videos, images);
+  return items.length ? { provider: "Pixabay", items } : null;
+}
+
 async function fetchCommons(city: string, iata: string, page: number) {
   const query = [city, iata, "skyline landmark city"].filter(Boolean).join(" ");
   const url = new URL("https://commons.wikimedia.org/w/api.php");
@@ -289,7 +409,8 @@ export async function GET(request: NextRequest) {
 
   try {
     const pexels = await fetchPexels(city, iata, page);
-    const result = pexels ?? await fetchCommons(city, iata, page);
+    const pixabay = pexels ? null : await fetchPixabay(city, iata, page);
+    const result = pexels ?? pixabay ?? await fetchCommons(city, iata, page);
 
     return NextResponse.json(
       {
