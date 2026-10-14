@@ -242,8 +242,7 @@ enum TVTrafficKind: String, Hashable {
     // déclenchent la priorité automatique et l'alerte.
     var priorityTier: Int {
         switch self {
-        case .civilSecurity: return 0
-        case .military: return 1
+        case .civilSecurity, .military: return 0
         default: return 9
         }
     }
