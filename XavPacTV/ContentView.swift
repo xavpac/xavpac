@@ -782,21 +782,35 @@ private struct RadarSweepOverlay: View {
                 )
                 .rotationEffect(.degrees(rotation))
 
-            Rectangle()
-                .fill(
+            GeometryReader { proxy in
+                Path { path in
+                    path.move(
+                        to: CGPoint(
+                            x: proxy.size.width / 2,
+                            y: proxy.size.height / 2
+                        )
+                    )
+                    path.addLine(
+                        to: CGPoint(
+                            x: proxy.size.width,
+                            y: proxy.size.height / 2
+                        )
+                    )
+                }
+                .stroke(
                     LinearGradient(
                         colors: [
-                            Color.cyan.opacity(0.05),
+                            Color.cyan.opacity(0.08),
                             Color.cyan.opacity(0.95)
                         ],
                         startPoint: .leading,
                         endPoint: .trailing
-                    )
+                    ),
+                    lineWidth: 2
                 )
-                .frame(height: 2)
-                .padding(.leading, 50%)
                 .rotationEffect(.degrees(rotation))
                 .shadow(color: .cyan.opacity(0.65), radius: 5)
+            }
 
             Circle()
                 .fill(Color.cyan)
