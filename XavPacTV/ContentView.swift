@@ -317,7 +317,7 @@ struct ContentView: View {
 
                                     VStack(alignment: .leading, spacing: 1) {
                                         Text(featuredHeader)
-                                            .font(.caption2.heavy())
+                                            .font(.caption2.weight(.heavy))
                                             .foregroundStyle(
                                                 isPriorityActive
                                                     ? Color.red
@@ -514,7 +514,7 @@ struct ContentView: View {
                     .foregroundStyle(ink)
                 Spacer()
                 Text(isPriorityActive ? "ALERTE PRIORITAIRE" : "5 plus proches")
-                    .font(.caption2.heavy())
+                    .font(.caption2.weight(.heavy))
                     .foregroundStyle(isPriorityActive ? Color.red : ink.opacity(0.55))
             }
 
@@ -850,7 +850,7 @@ private struct PriorityAlertBanner: View {
 
             VStack(alignment: .leading, spacing: 1) {
                 Text("ALERTE PRIORITAIRE")
-                    .font(.caption2.heavy())
+                    .font(.caption2.weight(.heavy))
                 Text("\(title) · \(subtitle)")
                     .font(.headline.bold())
                     .lineLimit(1)
@@ -1034,7 +1034,9 @@ private struct CinematicDestinationImage: View {
 private final class AmbientSoundscape: ObservableObject {
     private let engine = AVAudioEngine()
     private let player = AVAudioPlayerNode()
+    private let alertPlayer = AVAudioPlayerNode()
     private var buffer: AVAudioPCMBuffer?
+    private var audioFormat: AVAudioFormat?
     private var configured = false
 
     func start() {
@@ -1047,12 +1049,15 @@ private final class AmbientSoundscape: ObservableObject {
 
             if !configured {
                 engine.attach(player)
+                engine.attach(alertPlayer)
                 guard let format = AVAudioFormat(
                     standardFormatWithSampleRate: 44_100,
                     channels: 2
                 ) else { return }
 
+                audioFormat = format
                 engine.connect(player, to: engine.mainMixerNode, format: format)
+                engine.connect(alertPlayer, to: engine.mainMixerNode, format: format)
                 buffer = makeAmbientBuffer(format: format, duration: 24)
                 configured = true
             }
@@ -1074,8 +1079,66 @@ private final class AmbientSoundscape: ObservableObject {
 
     func stop() {
         player.stop()
+        alertPlayer.stop()
         engine.pause()
         try? AVAudioSession.sharedInstance().setActive(false)
+    }
+
+    func playPriorityAlert() {
+        if !configured {
+            start()
+        }
+
+        guard let format = audioFormat,
+              let alertBuffer = makePriorityAlertBuffer(format: format) else {
+            return
+        }
+
+        do {
+            if !engine.isRunning {
+                try engine.start()
+            }
+            alertPlayer.stop()
+            alertPlayer.scheduleBuffer(alertBuffer, at: nil, options: [])
+            alertPlayer.volume = 0.42
+            alertPlayer.play()
+        } catch {
+            // L'alerte visuelle reste active même si la sortie audio est indisponible.
+        }
+    }
+
+    private func makePriorityAlertBuffer(format: AVAudioFormat) -> AVAudioPCMBuffer? {
+        let duration = 0.72
+        let sampleRate = format.sampleRate
+        let frameCount = AVAudioFrameCount(sampleRate * duration)
+
+        guard let buffer = AVAudioPCMBuffer(
+            pcmFormat: format,
+            frameCapacity: frameCount
+        ) else { return nil }
+
+        buffer.frameLength = frameCount
+        guard let channels = buffer.floatChannelData else { return nil }
+
+        let twoPi = Double.pi * 2
+
+        for frame in 0..<Int(frameCount) {
+            let time = Double(frame) / sampleRate
+            let firstTone = time < 0.28
+            let frequency = firstTone ? 880.0 : 1_175.0
+            let phaseTime = firstTone ? time : time - 0.28
+            let attack = min(1.0, phaseTime / 0.025)
+            let releaseStart = firstTone ? 0.22 : 0.62
+            let release = max(0.0, min(1.0, (releaseStart - time) / 0.08))
+            let envelope = max(0.0, attack * release)
+            let tone = sin(twoPi * frequency * time) * envelope * 0.34
+            let sample = Float(tone)
+
+            channels[0][frame] = sample
+            channels[1][frame] = sample
+        }
+
+        return buffer
     }
 
     private func makeAmbientBuffer(
