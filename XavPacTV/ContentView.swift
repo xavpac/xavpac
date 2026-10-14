@@ -85,9 +85,29 @@ struct ContentView: View {
                     .frame(width: 600)
                 }
             }
-            .padding(.horizontal, 24)
-            .padding(.top, 22)
-            .padding(.bottom, 24)
+            .padding(12)
+            .background(
+                navy.opacity(0.97),
+                in: RoundedRectangle(cornerRadius: 32, style: .continuous)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 32, style: .continuous)
+                    .stroke(
+                        LinearGradient(
+                            colors: [
+                                Color.cyan.opacity(0.90),
+                                Color.blue.opacity(0.50),
+                                Color.cyan.opacity(0.70)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 2.4
+                    )
+            }
+            .shadow(color: Color.cyan.opacity(0.18), radius: 20)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 16)
         }
         .onAppear {
             UIApplication.shared.isIdleTimerDisabled = true
@@ -292,88 +312,134 @@ struct ContentView: View {
         Group {
             if let aircraft = featuredAircraft {
                 VStack(spacing: 0) {
-                    ZStack(alignment: .bottomLeading) {
+                    ZStack(alignment: .top) {
                         aircraftPhoto(enrichment: featuredEnrichment)
-                            .frame(height: 205)
+                            .frame(height: 220)
                             .clipped()
 
                         LinearGradient(
-                            colors: [.clear, .black.opacity(0.15), navy.opacity(0.96)],
+                            colors: [
+                                Color.black.opacity(0.16),
+                                Color.clear,
+                                navy.opacity(0.38)
+                            ],
                             startPoint: .top,
                             endPoint: .bottom
                         )
 
-                        VStack(spacing: 10) {
-                            HStack(alignment: .top) {
-                                HStack(spacing: 10) {
-                                    ZStack {
-                                        Circle()
-                                            .fill(trafficColor(featuredProfile?.kind).opacity(0.94))
-                                        Image(systemName: featuredProfile?.symbolName ?? "airplane")
-                                            .font(.system(size: 28, weight: .heavy))
-                                            .foregroundStyle(.white)
-                                    }
-                                    .frame(width: 52, height: 52)
-
-                                    VStack(alignment: .leading, spacing: 1) {
-                                        Text(featuredHeader)
-                                            .font(.caption2.weight(.heavy))
-                                            .foregroundStyle(
-                                                isPriorityActive
-                                                    ? Color.red
-                                                    : trafficColor(featuredProfile?.kind)
-                                            )
-                                        Text(featuredTitle(aircraft))
-                                            .font(.title2.bold())
-                                            .foregroundStyle(.white)
-                                            .lineLimit(1)
-                                        Text(aircraftIdentity(aircraft, enrichment: featuredEnrichment))
-                                            .font(.caption)
-                                            .foregroundStyle(.white.opacity(0.76))
-                                            .lineLimit(1)
-                                    }
+                        HStack(alignment: .top) {
+                            HStack(spacing: 9) {
+                                ZStack {
+                                    RoundedRectangle(cornerRadius: 13, style: .continuous)
+                                        .fill(trafficColor(featuredProfile?.kind).opacity(0.96))
+                                    Image(systemName: featuredProfile?.symbolName ?? "airplane")
+                                        .font(.system(size: 28, weight: .heavy))
+                                        .foregroundStyle(.white)
                                 }
+                                .frame(width: 52, height: 52)
+                                .shadow(
+                                    color: trafficColor(featuredProfile?.kind).opacity(0.45),
+                                    radius: 8
+                                )
 
-                                Spacer()
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(featuredHeader)
+                                        .font(.caption2.weight(.heavy))
+                                        .foregroundStyle(.white)
+                                        .padding(.horizontal, 9)
+                                        .padding(.vertical, 5)
+                                        .background(
+                                            isPriorityActive
+                                                ? Color.red.opacity(0.94)
+                                                : navy.opacity(0.82),
+                                            in: Capsule()
+                                        )
 
-                                VStack(alignment: .trailing, spacing: 2) {
-                                    Text(distanceText(aircraft))
-                                        .font(.system(size: 31, weight: .heavy, design: .rounded))
-                                        .foregroundStyle(.cyan)
-                                        .monospacedDigit()
-                                    Text(sizeLabel(featuredProfile))
-                                        .font(.caption2.bold())
-                                        .foregroundStyle(.white.opacity(0.72))
+                                    Text(featuredTitle(aircraft))
+                                        .font(.title2.bold())
+                                        .foregroundStyle(.white)
+                                        .shadow(color: .black.opacity(0.72), radius: 4)
+                                        .lineLimit(1)
                                 }
                             }
 
-                            if hasCompleteRoute(featuredEnrichment) {
-                                cityRouteLine(enrichment: featuredEnrichment)
+                            Spacer()
+
+                            VStack(alignment: .trailing, spacing: 3) {
+                                Text(distanceText(aircraft))
+                                    .font(.system(size: 32, weight: .heavy, design: .rounded))
+                                    .foregroundStyle(.white)
+                                    .monospacedDigit()
+                                Text(sizeLabel(featuredProfile))
+                                    .font(.caption2.bold())
+                                    .foregroundStyle(.white.opacity(0.82))
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(navy.opacity(0.84), in: RoundedRectangle(cornerRadius: 13))
+                        }
+                        .padding(14)
+                    }
+
+                    VStack(spacing: 11) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(aircraftIdentity(aircraft, enrichment: featuredEnrichment))
+                                    .font(.callout.bold())
+                                    .foregroundStyle(.white.opacity(0.82))
+                                    .lineLimit(1)
+                            }
+
+                            Spacer()
+
+                            if isPriorityActive {
+                                HStack(spacing: 6) {
+                                    Circle()
+                                        .fill(Color.red)
+                                        .frame(width: 8, height: 8)
+                                    Text("PRIORITAIRE")
+                                        .font(.caption2.weight(.heavy))
+                                        .foregroundStyle(.red)
+                                }
                             }
                         }
-                        .padding(15)
-                    }
 
-                    HStack(spacing: 8) {
-                        metric(title: "ALTITUDE", value: aircraft.altitudeLabel, icon: "mountain.2")
-                        metric(title: "VITESSE", value: aircraft.speedLabel, icon: "gauge.with.dots.needle.67percent")
-                        metric(title: "CAP", value: aircraft.headingLabel, icon: "location.north.fill")
+                        if hasCompleteRoute(featuredEnrichment) {
+                            cityRouteLine(enrichment: featuredEnrichment)
+                                .padding(.vertical, 3)
+                        }
+
+                        HStack(spacing: 8) {
+                            metric(title: "ALTITUDE", value: aircraft.altitudeLabel, icon: "mountain.2")
+                            metric(title: "VITESSE", value: aircraft.speedLabel, icon: "gauge.with.dots.needle.67percent")
+                            metric(title: "CAP", value: aircraft.headingLabel, icon: "location.north.fill")
+                        }
                     }
-                    .padding(12)
-                    .background(navy)
+                    .padding(13)
+                    .background(
+                        LinearGradient(
+                            colors: [navy, deepBlue.opacity(0.94)],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
                 }
                 .background(navy)
                 .clipShape(RoundedRectangle(cornerRadius: 23, style: .continuous))
                 .overlay {
                     RoundedRectangle(cornerRadius: 23, style: .continuous)
                         .stroke(
-                            isPriorityActive ? Color.red.opacity(0.88) : Color.cyan.opacity(0.28),
-                            lineWidth: isPriorityActive ? 2.5 : 1.2
+                            isPriorityActive
+                                ? Color.red.opacity(0.92)
+                                : trafficColor(featuredProfile?.kind).opacity(0.46),
+                            lineWidth: isPriorityActive ? 2.8 : 1.5
                         )
                 }
                 .shadow(
-                    color: isPriorityActive ? Color.red.opacity(0.34) : Color.black.opacity(0.18),
-                    radius: isPriorityActive ? 14 : 9,
+                    color: isPriorityActive
+                        ? Color.red.opacity(0.38)
+                        : trafficColor(featuredProfile?.kind).opacity(0.16),
+                    radius: isPriorityActive ? 16 : 10,
                     y: 4
                 )
             } else {
@@ -777,20 +843,17 @@ struct ContentView: View {
         _ aircraft: Aircraft,
         enrichment: TVAircraftEnrichment?
     ) -> String {
-        let values = [
-            enrichment?.operatorName ?? aircraft.operatorName,
-            enrichment?.registration ?? aircraft.registration
-        ]
-
-        let clean = values.compactMap { value -> String? in
-            guard let value,
-                  !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                return nil
-            }
-            return value
+        if let operatorName = enrichment?.operatorName ?? aircraft.operatorName,
+           !operatorName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return operatorName
         }
 
-        return clean.isEmpty ? "Données ADS-B en direct" : clean.joined(separator: " · ")
+        if let registration = enrichment?.registration ?? aircraft.registration,
+           !registration.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return registration
+        }
+
+        return "Données ADS-B en direct"
     }
 
     private func trafficColor(_ kind: TVTrafficKind?) -> Color {
