@@ -227,13 +227,13 @@ enum TVTrafficKind: String, Hashable {
 
     var symbolName: String {
         switch self {
-        case .helicopter, .medical, .civilSecurity:
+        case .helicopter, .medical:
             return "helicopter"
         case .drone:
             return "paperplane.fill"
         case .balloon:
             return "balloon.2.fill"
-        case .military, .surveillance:
+        case .civilSecurity, .military, .surveillance:
             return "airplane"
         case .glider, .ultralight, .lightPrivate, .specialized, .airline, .unknown:
             return "airplane"
