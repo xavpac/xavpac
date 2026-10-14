@@ -145,7 +145,11 @@ struct AircraftMapView: UIViewRepresentable {
 
         func mapView(_ mapView: MKMapView, didSelect view: MKAnnotationView) {
             guard let annotation = view.annotation as? AircraftAnnotation else { return }
-            parent.selectedID = annotation.aircraft.id
+            let aircraftID = annotation.aircraft.id
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.parent.selectedID != aircraftID else { return }
+                self.parent.selectedID = aircraftID
+            }
         }
 
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
