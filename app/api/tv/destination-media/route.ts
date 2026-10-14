@@ -207,7 +207,7 @@ async function fetchPexels(city: string, iata: string, page: number, theme: stri
   const key = process.env.PEXELS_API_KEY?.trim();
   if (!key) return null;
 
-  const query = [city, iata, theme].filter(Boolean).join(" ");
+  const query = city;
   const headers = { Authorization: key, Accept: "application/json" };
 
   const videoUrl = new URL("https://api.pexels.com/v1/videos/search");
@@ -400,9 +400,7 @@ function pickCommonsVideoDerivative(derivatives?: CommonsVideoDerivative[]) {
 }
 
 async function fetchCommonsVideos(city: string, iata: string, page: number, theme: string) {
-  const query = [city, iata, theme, "filetype:video"]
-    .filter(Boolean)
-    .join(" ");
+  const query = city + " filetype:video";
 
   const url = new URL("https://commons.wikimedia.org/w/api.php");
   url.searchParams.set("action", "query");
@@ -410,7 +408,7 @@ async function fetchCommonsVideos(city: string, iata: string, page: number, them
   url.searchParams.set("gsrsearch", query);
   url.searchParams.set("gsrnamespace", "6");
   url.searchParams.set("gsrlimit", "12");
-  url.searchParams.set("gsroffset", String((page - 1) * 6));
+  url.searchParams.set("gsroffset", "0");
   url.searchParams.set("prop", "videoinfo");
   url.searchParams.set("viprop", "url|mime|derivatives|extmetadata");
   url.searchParams.set("viurlwidth", "1280");
@@ -455,14 +453,14 @@ async function fetchCommonsVideos(city: string, iata: string, page: number, them
 }
 
 async function fetchCommons(city: string, iata: string, page: number, theme: string) {
-  const query = [city, iata, theme].filter(Boolean).join(" ");
+  const query = city;
   const url = new URL("https://commons.wikimedia.org/w/api.php");
   url.searchParams.set("action", "query");
   url.searchParams.set("generator", "search");
   url.searchParams.set("gsrsearch", query);
   url.searchParams.set("gsrnamespace", "6");
   url.searchParams.set("gsrlimit", "50");
-  url.searchParams.set("gsroffset", String((page - 1) * 20));
+  url.searchParams.set("gsroffset", "0");
   url.searchParams.set("prop", "imageinfo");
   url.searchParams.set("iiprop", "url|mime|extmetadata");
   url.searchParams.set("iiurlwidth", "1600");
@@ -525,25 +523,25 @@ export async function GET(request: NextRequest) {
   }
 
   const sixHourWindow = Math.floor(Date.now() / 21_600_000);
-  const page = ((hashString(city.toLowerCase()) + sixHourWindow + cycle) % 10) + 1;
+  const page = 1;
   const theme = mediaTheme(cycle + sixHourWindow);
 
   try {
     const pexels = await fetchPexels(city, iata, page, theme);
-    const pixabay = pexels ? null : await fetchPixabay(city, iata, page, theme);
+    const pixabay = pexels?.items.some((item) => item.type === "video")
+      ? null : await fetchPixabay(city, iata, page, theme);
 
     let result = pexels ?? pixabay;
-    if (!result) {
+    if (!result?.items.some((item) => item.type === "video")) {
       const [commonsVideos, commonsImages] = await Promise.all([
         fetchCommonsVideos(city, iata, page, theme),
         fetchCommons(city, iata, page, theme)
       ]);
-
-      const items = mergeMedia(commonsVideos, commonsImages.items);
+      const firstPartyVideos = [...(pexels?.items ?? []), ...(pixabay?.items ?? [])].filter((item) => item.type === "video");
+      const firstPartyImages = [...(pexels?.items ?? []), ...(pixabay?.items ?? [])].filter((item) => item.type === "image");
+      const items = mergeMedia([...firstPartyVideos, ...commonsVideos], [...firstPartyImages, ...commonsImages.items]);
       result = {
-        provider: commonsVideos.length
-          ? "Wikimedia Commons vidéo + photo"
-          : commonsImages.provider,
+        provider: [pexels?.provider, pixabay?.provider, commonsVideos.length ? "Wikimedia Commons" : null].filter(Boolean).join(" + ") || commonsImages.provider,
         items
       };
     }
