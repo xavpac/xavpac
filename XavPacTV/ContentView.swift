@@ -11,54 +11,82 @@ struct ContentView: View {
     private let navy = Color(red: 0.025, green: 0.12, blue: 0.23)
     private let ink = Color(red: 0.035, green: 0.12, blue: 0.22)
 
-    private var closestAircraft: Aircraft? {
-        service.aircraft.first
+    private var featuredAircraft: Aircraft? {
+        service.featuredAircraft
     }
 
-    private var closestEnrichment: TVAircraftEnrichment? {
-        service.enrichment(for: closestAircraft)
+    private var featuredEnrichment: TVAircraftEnrichment? {
+        service.enrichment(for: featuredAircraft)
+    }
+
+    private var featuredProfile: TVTrafficProfile? {
+        guard let featuredAircraft else { return nil }
+        return service.trafficProfile(for: featuredAircraft)
+    }
+
+    private var trafficProfiles: [String: TVTrafficProfile] {
+        Dictionary(uniqueKeysWithValues: service.aircraft.map { aircraft in
+            (aircraft.id, service.trafficProfile(for: aircraft))
+        })
     }
 
     private var destinationTaskKey: String {
-        let modeS = closestEnrichment?.modeS ?? closestAircraft?.id ?? "none"
-        let destination = closestEnrichment?.arrivalAirport?.code ?? "none"
+        let modeS = featuredEnrichment?.modeS ?? featuredAircraft?.id ?? "none"
+        let destination = featuredEnrichment?.arrivalAirport?.code ?? "none"
         return "\(modeS)-\(destination)"
     }
 
     var body: some View {
         ZStack {
-            AircraftMapView(
-                aircraft: service.aircraft,
-                center: service.center,
-                trails: service.trails,
-                selectedID: closestAircraft?.id
-            )
-            .ignoresSafeArea()
+            Color(red: 0.90, green: 0.95, blue: 0.97)
+                .ignoresSafeArea()
 
-            LinearGradient(
-                colors: [
-                    Color.white.opacity(0.03),
-                    Color.clear,
-                    Color.white.opacity(0.16)
-                ],
-                startPoint: .leading,
-                endPoint: .trailing
-            )
-            .allowsHitTesting(false)
-            .ignoresSafeArea()
+            HStack(spacing: 18) {
+                ZStack(alignment: .topLeading) {
+                    AircraftMapView(
+                        aircraft: service.aircraft,
+                        center: service.center,
+                        trails: service.trails,
+                        selectedID: featuredAircraft?.id,
+                        profiles: trafficProfiles
+                    )
 
-            HStack(alignment: .top, spacing: 22) {
-                VStack(alignment: .leading) {
-                    statusCard
-                    Spacer()
+                    GeometryReader { proxy in
+                        let size = min(proxy.size.width, proxy.size.height) * 0.54
+                        RadarSweepOverlay()
+                            .frame(width: size, height: size)
+                            .position(
+                                x: proxy.size.width / 2,
+                                y: proxy.size.height / 2
+                            )
+                    }
+                    .allowsHitTesting(false)
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        statusCard
+
+                        if let aircraft = featuredAircraft,
+                           let profile = featuredProfile,
+                           profile.isPriorityTraffic,
+                           aircraft.distanceKilometers(from: service.center) <= 40 {
+                            priorityBanner(aircraft: aircraft, profile: profile)
+                        }
+
+                        Spacer()
+                    }
+                    .padding(18)
                 }
+                .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 28, style: .continuous)
+                        .stroke(Color.white.opacity(0.95), lineWidth: 3)
+                }
+                .shadow(color: .black.opacity(0.13), radius: 14, y: 6)
 
-                Spacer(minLength: 30)
-
-                VStack(spacing: 14) {
+                VStack(spacing: 12) {
                     featuredCard
 
-                    if closestEnrichment?.arrivalAirport != nil {
+                    if featuredEnrichment?.arrivalAirport != nil {
                         destinationCard
                     } else {
                         noDestinationCard
@@ -66,9 +94,11 @@ struct ContentView: View {
 
                     nearbyCard
                 }
-                .frame(width: 610)
+                .frame(width: 600)
             }
-            .padding(24)
+            .padding(.horizontal, 30)
+            .padding(.top, 48)
+            .padding(.bottom, 34)
         }
         .onAppear {
             UIApplication.shared.isIdleTimerDisabled = true
@@ -81,7 +111,7 @@ struct ContentView: View {
             soundscape.stop()
         }
         .task(id: destinationTaskKey) {
-            await mediaService.load(for: closestEnrichment)
+            await mediaService.load(for: featuredEnrichment)
         }
         .task(id: mediaService.current?.id) {
             guard let media = mediaService.current else { return }
@@ -114,7 +144,7 @@ struct ContentView: View {
                     Text("\(service.aircraft.count)")
                         .font(.system(size: 34, weight: .heavy, design: .rounded))
                         .foregroundStyle(.cyan)
-                    Text("avions à proximité")
+                    Text("aéronefs détectés")
                         .font(.callout.bold())
                         .foregroundStyle(.white)
                 }
@@ -155,9 +185,9 @@ struct ContentView: View {
 
     private var featuredCard: some View {
         VStack(spacing: 0) {
-            if let aircraft = closestAircraft {
+            if let aircraft = featuredAircraft {
                 ZStack(alignment: .bottomLeading) {
-                    aircraftPhoto(enrichment: closestEnrichment)
+                    aircraftPhoto(enrichment: featuredEnrichment)
                         .frame(height: 155)
                         .clipped()
 
@@ -169,17 +199,17 @@ struct ContentView: View {
 
                     VStack(spacing: 12) {
                         HStack(alignment: .bottom, spacing: 12) {
-                            operatorLogo(enrichment: closestEnrichment)
+                            operatorLogo(enrichment: featuredEnrichment)
                                 .frame(width: 54, height: 54)
 
                             VStack(alignment: .leading, spacing: 1) {
-                                Text("AVION LE PLUS PROCHE")
+                                Text(featuredHeader)
                                     .font(.caption2.bold())
-                                    .foregroundStyle(.green)
+                                    .foregroundStyle(featuredProfile?.isPriorityTraffic == true ? Color.orange : Color.green)
                                 Text(aircraft.displayName)
                                     .font(.title2.bold())
                                     .foregroundStyle(.white)
-                                Text(aircraftIdentity(aircraft, enrichment: closestEnrichment))
+                                Text(aircraftIdentity(aircraft, enrichment: featuredEnrichment))
                                     .font(.caption)
                                     .foregroundStyle(.white.opacity(0.78))
                                     .lineLimit(1)
@@ -202,10 +232,10 @@ struct ContentView: View {
                 }
 
                 VStack(spacing: 13) {
-                    if hasCompleteRoute(closestEnrichment) {
-                        routeLine(enrichment: closestEnrichment)
+                    if hasCompleteRoute(featuredEnrichment) {
+                        routeLine(enrichment: featuredEnrichment)
                     } else {
-                        unavailableRouteLine(aircraft: aircraft, enrichment: closestEnrichment)
+                        unavailableRouteLine(aircraft: aircraft, enrichment: featuredEnrichment)
                     }
 
                     HStack(spacing: 10) {
@@ -283,12 +313,12 @@ struct ContentView: View {
                     }
                 }
 
-                Text(closestEnrichment?.arrivalAirport?.city ?? "Destination")
+                Text(featuredEnrichment?.arrivalAirport?.city ?? "Destination")
                     .font(.system(size: 36, weight: .heavy, design: .rounded))
                     .foregroundStyle(.white)
                     .lineLimit(1)
 
-                if let airport = closestEnrichment?.arrivalAirport {
+                if let airport = featuredEnrichment?.arrivalAirport {
                     Text("\(airport.name ?? airport.city) · \(airport.code)")
                         .font(.callout.bold())
                         .foregroundStyle(.white.opacity(0.84))
@@ -346,16 +376,16 @@ struct ContentView: View {
     private var nearbyCard: some View {
         VStack(alignment: .leading, spacing: 9) {
             HStack {
-                Label("Avions proches", systemImage: "airplane")
+                Label("Trafic à proximité", systemImage: "airplane")
                     .font(.title3.bold())
                     .foregroundStyle(ink)
                 Spacer()
-                Text("5 plus proches")
+                Text(service.priorityAircraftWithin40.isEmpty ? "6 plus proches" : "priorité spéciale < 40 km")
                     .font(.caption.bold())
                     .foregroundStyle(ink.opacity(0.60))
             }
 
-            ForEach(Array(service.aircraft.prefix(5).enumerated()), id: \.element.id) { index, aircraft in
+            ForEach(Array(service.displayAircraft.prefix(6).enumerated()), id: \.element.id) { index, aircraft in
                 nearbyRow(aircraft, index: index)
             }
         }
@@ -370,17 +400,12 @@ struct ContentView: View {
 
     private func nearbyRow(_ aircraft: Aircraft, index: Int) -> some View {
         let enrichment = service.enrichment(for: aircraft)
-        let isClosest = index == 0
+        let profile = service.trafficProfile(for: aircraft)
+        let isFeatured = featuredAircraft?.id == aircraft.id
 
-        return HStack(spacing: 11) {
-            Image(systemName: "airplane")
-                .font(.system(size: 20, weight: .bold))
-                .foregroundStyle(isClosest ? Color.cyan : Color.blue.opacity(0.72))
-                .frame(width: 34, height: 34)
-                .background(
-                    isClosest ? Color.cyan.opacity(0.15) : Color.blue.opacity(0.07),
-                    in: RoundedRectangle(cornerRadius: 9, style: .continuous)
-                )
+        return HStack(spacing: 10) {
+            nearbyThumbnail(aircraft: aircraft, enrichment: enrichment, profile: profile)
+                .frame(width: 60, height: 42)
 
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 7) {
@@ -389,8 +414,15 @@ struct ContentView: View {
                         .foregroundStyle(ink)
                         .lineLimit(1)
 
-                    if let operatorName = enrichment?.operatorName ?? aircraft.operatorName,
-                       !operatorName.isEmpty {
+                    if profile.isPriorityTraffic {
+                        Text(profile.label)
+                            .font(.system(size: 10, weight: .heavy))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(Color.orange.opacity(0.90), in: Capsule())
+                    } else if let operatorName = enrichment?.operatorName ?? aircraft.operatorName,
+                              !operatorName.isEmpty {
                         Text(operatorName)
                             .font(.caption2.bold())
                             .foregroundStyle(ink.opacity(0.55))
@@ -408,15 +440,90 @@ struct ContentView: View {
 
             Text(distanceText(aircraft))
                 .font(.title3.bold().monospacedDigit())
-                .foregroundStyle(isClosest ? Color(red: 0.00, green: 0.55, blue: 0.63) : ink)
+                .foregroundStyle(
+                    profile.isPriorityTraffic
+                        ? Color.orange
+                        : (isFeatured ? Color(red: 0.00, green: 0.55, blue: 0.63) : ink)
+                )
                 .lineLimit(1)
         }
-        .padding(.horizontal, 11)
-        .padding(.vertical, 7)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
         .background(
-            isClosest ? Color.cyan.opacity(0.13) : Color.clear,
+            profile.isPriorityTraffic
+                ? Color.orange.opacity(0.10)
+                : (isFeatured ? Color.cyan.opacity(0.13) : Color.clear),
             in: RoundedRectangle(cornerRadius: 13, style: .continuous)
         )
+    }
+
+    @ViewBuilder
+    private func nearbyThumbnail(
+        aircraft: Aircraft,
+        enrichment: TVAircraftEnrichment?,
+        profile: TVTrafficProfile
+    ) -> some View {
+        if let url = enrichment?.photoURL {
+            AsyncImage(url: url) { phase in
+                if let image = phase.image {
+                    image
+                        .resizable()
+                        .scaledToFill()
+                } else {
+                    trafficSymbol(profile)
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+        } else {
+            trafficSymbol(profile)
+        }
+    }
+
+    private func trafficSymbol(_ profile: TVTrafficProfile) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .fill(profile.isPriorityTraffic ? Color.orange.opacity(0.16) : Color.cyan.opacity(0.12))
+
+            Image(systemName: profile.symbolName)
+                .font(.system(size: 23, weight: .bold))
+                .foregroundStyle(profile.isPriorityTraffic ? Color.orange : Color.cyan)
+        }
+    }
+
+    private var featuredHeader: String {
+        guard let featuredAircraft,
+              let featuredProfile else {
+            return "AÉRONEF LE PLUS PROCHE"
+        }
+
+        if featuredProfile.isPriorityTraffic,
+           featuredAircraft.distanceKilometers(from: service.center) <= 40 {
+            return "TRAFIC PRIORITAIRE · \(featuredProfile.label)"
+        }
+
+        return "AÉRONEF LE PLUS PROCHE"
+    }
+
+    private func priorityBanner(
+        aircraft: Aircraft,
+        profile: TVTrafficProfile
+    ) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: profile.symbolName)
+                .font(.title3.bold())
+            VStack(alignment: .leading, spacing: 1) {
+                Text("TRAFIC SPÉCIAL PRIORITAIRE")
+                    .font(.caption2.bold())
+                Text("\(profile.label) · \(aircraft.displayName) · \(distanceText(aircraft))")
+                    .font(.headline.bold())
+                    .lineLimit(1)
+            }
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 11)
+        .background(Color.orange.opacity(0.94), in: Capsule())
+        .shadow(color: .black.opacity(0.16), radius: 8, y: 3)
     }
 
     @ViewBuilder
@@ -443,9 +550,13 @@ struct ContentView: View {
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
-            Image(systemName: "airplane")
+            Image(systemName: featuredProfile?.symbolName ?? "airplane")
                 .font(.system(size: 80, weight: .bold))
-                .foregroundStyle(.white.opacity(0.74))
+                .foregroundStyle(
+                    featuredProfile?.isPriorityTraffic == true
+                        ? Color.orange.opacity(0.90)
+                        : Color.white.opacity(0.74)
+                )
         }
     }
 
@@ -632,6 +743,105 @@ struct ContentView: View {
         guard let date = service.updatedAt else { return "Connexion…" }
         let seconds = max(0, Int(Date().timeIntervalSince(date)))
         return seconds < 60 ? "MAJ \(seconds) s" : "MAJ \(seconds / 60) min"
+    }
+}
+
+private struct RadarSweepOverlay: View {
+    @State private var rotation = 0.0
+
+    var body: some View {
+        ZStack {
+            ForEach(1...4, id: \.self) { index in
+                Circle()
+                    .stroke(
+                        Color.cyan.opacity(index == 4 ? 0.34 : 0.21),
+                        style: StrokeStyle(
+                            lineWidth: index == 4 ? 2 : 1,
+                            dash: [8, 8]
+                        )
+                    )
+                    .scaleEffect(Double(index) / 4.0)
+            }
+
+            Path { path in
+                path.move(to: CGPoint(x: 0, y: 0))
+                path.addLine(to: CGPoint(x: 0, y: -14))
+            }
+            .stroke(Color.cyan.opacity(0.01))
+
+            RadarSector()
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color.cyan.opacity(0.02),
+                            Color.cyan.opacity(0.24)
+                        ],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+                .rotationEffect(.degrees(rotation))
+
+            Rectangle()
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color.cyan.opacity(0.05),
+                            Color.cyan.opacity(0.95)
+                        ],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+                .frame(height: 2)
+                .padding(.leading, 50%)
+                .rotationEffect(.degrees(rotation))
+                .shadow(color: .cyan.opacity(0.65), radius: 5)
+
+            Circle()
+                .fill(Color.cyan)
+                .frame(width: 9, height: 9)
+                .shadow(color: .cyan, radius: 7)
+        }
+        .compositingGroup()
+        .blendMode(.plusLighter)
+        .opacity(0.88)
+        .onAppear {
+            rotation = 0
+            withAnimation(
+                .linear(duration: 4.2)
+                .repeatForever(autoreverses: false)
+            ) {
+                rotation = 360
+            }
+        }
+    }
+}
+
+private struct RadarSector: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let center = CGPoint(x: rect.midX, y: rect.midY)
+        let radius = min(rect.width, rect.height) / 2
+        let start = Angle.degrees(-28)
+        let end = Angle.degrees(0)
+
+        path.move(to: center)
+        path.addLine(
+            to: CGPoint(
+                x: center.x + CGFloat(cos(start.radians)) * radius,
+                y: center.y + CGFloat(sin(start.radians)) * radius
+            )
+        )
+        path.addArc(
+            center: center,
+            radius: radius,
+            startAngle: start,
+            endAngle: end,
+            clockwise: false
+        )
+        path.closeSubpath()
+        return path
     }
 }
 
