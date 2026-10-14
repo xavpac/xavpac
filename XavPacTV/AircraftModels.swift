@@ -242,19 +242,17 @@ enum TVTrafficKind: String, Hashable {
 
     var priorityTier: Int {
         switch self {
-        case .civilSecurity, .medical, .military:
+        case .civilSecurity, .military:
             return 0
-        case .surveillance, .helicopter, .drone:
-            return 1
-        case .glider, .balloon, .ultralight, .lightPrivate, .specialized:
-            return 2
-        case .airline, .unknown:
+        case .medical, .surveillance, .helicopter, .drone,
+             .glider, .balloon, .ultralight, .lightPrivate,
+             .specialized, .airline, .unknown:
             return 9
         }
     }
 
     var isPriorityTraffic: Bool {
-        priorityTier < 9
+        self == .civilSecurity || self == .military
     }
 }
 
@@ -263,6 +261,7 @@ struct TVTrafficProfile: Hashable {
     let label: String
     let symbolName: String
     let priorityTier: Int
+    let relativeIconScale: Double
 
     var isPriorityTraffic: Bool { kind.isPriorityTraffic }
 }
@@ -328,11 +327,38 @@ extension Aircraft {
             kind = .unknown
         }
 
+        let relativeIconScale: Double = {
+            switch kind {
+            case .airline:
+                if joined.range(of: #"a38|a350|b74|b77|b78|widebody|heavy"#, options: .regularExpression) != nil {
+                    return 1.35
+                }
+                return 1.15
+            case .military:
+                return 1.18
+            case .civilSecurity:
+                return joined.contains("helic") || joined.contains("h145") || adsbCategory == "a7" ? 1.02 : 1.16
+            case .helicopter, .medical:
+                return 0.98
+            case .surveillance, .specialized:
+                return 1.02
+            case .lightPrivate:
+                return 0.88
+            case .ultralight, .glider, .drone:
+                return 0.74
+            case .balloon:
+                return 0.86
+            case .unknown:
+                return 0.94
+            }
+        }()
+
         return TVTrafficProfile(
             kind: kind,
             label: kind.label,
             symbolName: kind.symbolName,
-            priorityTier: kind.priorityTier
+            priorityTier: kind.priorityTier,
+            relativeIconScale: relativeIconScale
         )
     }
 }
