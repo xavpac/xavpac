@@ -28,9 +28,6 @@ struct AircraftMapView: UIViewRepresentable {
         let map = MKMapView(frame: .zero)
         map.delegate = context.coordinator
         map.mapType = .mutedStandard
-        map.showsCompass = true
-        map.showsScale = true
-        map.isPitchEnabled = false
         map.pointOfInterestFilter = .excludingAll
 
         let region = MKCoordinateRegion(
