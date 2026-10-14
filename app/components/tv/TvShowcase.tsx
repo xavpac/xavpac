@@ -283,9 +283,9 @@ export default function TvShowcase() {
             <div className="tv-flight-card-main"><small>{priority || info?.operator || item.operator || "TRAFIC AÉRIEN"}</small><strong>{info?.flightNumberIata || item.callsign || item.registration || "ADS-B"}</strong><span>{info?.departureAirport && info?.arrivalAirport ? code(info.departureAirport) + " → " + code(info.arrivalAirport) : info?.aircraftType || item.aircraftType || "Trajet en cours d'identification"}</span></div>
             <div className="tv-flight-card-distance">{item.distance.toFixed(1)} <small>KM</small></div>
           </article>;
-        })}{!traffic.length && <div className="tv-empty-cards">Le radar est à l'écoute… les prochains aéronefs apparaîtront ici automatiquement.</div>}</div>
+        })}{!traffic.length && <div className="tv-empty-cards">Le radar est à l&apos;écoute… les prochains aéronefs apparaîtront ici automatiquement.</div>}</div>
       </section>
-      <footer className="tv-footer"><span>✦ XAVPAC TV · LE MONDE VU DU CIEL</span><span>Destination affichée uniquement lorsqu'elle est identifiée · photographies et vidéos selon disponibilité</span></footer>
+      <footer className="tv-footer"><span>✦ XAVPAC TV · LE MONDE VU DU CIEL</span><span>Destination affichée uniquement lorsqu&apos;elle est identifiée · photographies et vidéos selon disponibilité</span></footer>
     </main>
   );
 }
