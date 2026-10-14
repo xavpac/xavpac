@@ -6,24 +6,22 @@ import UIKit
 struct ContentView: View {
     @StateObject private var service = AircraftService()
     @StateObject private var mediaService = DestinationMediaService()
-    @State private var selectedID: String?
-    @FocusState private var focusedAircraftID: String?
+    @StateObject private var soundscape = AmbientSoundscape()
 
-    private var selectedAircraft: Aircraft? {
-        if let selectedID,
-           let selected = service.aircraft.first(where: { $0.id == selectedID }) {
-            return selected
-        }
-        return service.aircraft.first
+    private let navy = Color(red: 0.025, green: 0.12, blue: 0.23)
+    private let ink = Color(red: 0.035, green: 0.12, blue: 0.22)
+
+    private var closestAircraft: Aircraft? {
+        service.aircraft.first
     }
 
-    private var selectedEnrichment: TVAircraftEnrichment? {
-        service.enrichment(for: selectedAircraft)
+    private var closestEnrichment: TVAircraftEnrichment? {
+        service.enrichment(for: closestAircraft)
     }
 
     private var destinationTaskKey: String {
-        let modeS = selectedEnrichment?.modeS ?? "none"
-        let destination = selectedEnrichment?.arrivalAirport?.code ?? "none"
+        let modeS = closestEnrichment?.modeS ?? closestAircraft?.id ?? "none"
+        let destination = closestEnrichment?.arrivalAirport?.code ?? "none"
         return "\(modeS)-\(destination)"
     }
 
@@ -33,56 +31,57 @@ struct ContentView: View {
                 aircraft: service.aircraft,
                 center: service.center,
                 trails: service.trails,
-                selectedID: $selectedID
+                selectedID: closestAircraft?.id
             )
             .ignoresSafeArea()
 
             LinearGradient(
-                colors: [.black.opacity(0.56), .clear, .black.opacity(0.38)],
-                startPoint: .top,
-                endPoint: .bottom
+                colors: [
+                    Color.white.opacity(0.03),
+                    Color.clear,
+                    Color.white.opacity(0.16)
+                ],
+                startPoint: .leading,
+                endPoint: .trailing
             )
             .allowsHitTesting(false)
             .ignoresSafeArea()
 
-            HStack(alignment: .top, spacing: 24) {
+            HStack(alignment: .top, spacing: 22) {
                 VStack(alignment: .leading) {
                     statusCard
                     Spacer()
-                    radarLegend
                 }
 
-                Spacer(minLength: 40)
+                Spacer(minLength: 30)
 
-                VStack(spacing: 16) {
+                VStack(spacing: 14) {
                     featuredCard
-                    destinationCard
+
+                    if closestEnrichment?.arrivalAirport != nil {
+                        destinationCard
+                    } else {
+                        noDestinationCard
+                    }
+
                     nearbyCard
                 }
-                .frame(width: 560)
+                .frame(width: 610)
             }
-            .padding(30)
+            .padding(24)
         }
         .onAppear {
             UIApplication.shared.isIdleTimerDisabled = true
             service.start()
+            soundscape.start()
         }
         .onDisappear {
             UIApplication.shared.isIdleTimerDisabled = false
             service.stop()
-        }
-        .onChange(of: focusedAircraftID) { _, newValue in
-            guard let newValue else { return }
-            selectedID = newValue
-        }
-        .onChange(of: service.aircraft.first?.id) { _, newValue in
-            guard let newValue else { return }
-            if selectedID == nil || !service.aircraft.contains(where: { $0.id == selectedID }) {
-                selectedID = newValue
-            }
+            soundscape.stop()
         }
         .task(id: destinationTaskKey) {
-            await mediaService.load(for: selectedEnrichment)
+            await mediaService.load(for: closestEnrichment)
         }
         .task(id: mediaService.current?.id) {
             guard let media = mediaService.current else { return }
@@ -94,121 +93,147 @@ struct ContentView: View {
     }
 
     private var statusCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 12) {
                 Image(systemName: "airplane.circle.fill")
-                    .font(.system(size: 38))
+                    .font(.system(size: 38, weight: .bold))
                     .foregroundStyle(.cyan)
 
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 1) {
                     Text("XavPac TV")
                         .font(.title2.bold())
-                    Text("RADAR · TRAFIC EN DIRECT")
+                        .foregroundStyle(.white)
+                    Text("TRAFIC AÉRIEN EN DIRECT")
                         .font(.caption.bold())
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.white.opacity(0.75))
                 }
             }
 
-            HStack(spacing: 18) {
-                Label("\(service.aircraft.count) avions", systemImage: "airplane")
-                Label(updateLabel, systemImage: "clock")
-            }
-            .font(.callout.bold())
+            HStack(spacing: 20) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(service.aircraft.count)")
+                        .font(.system(size: 34, weight: .heavy, design: .rounded))
+                        .foregroundStyle(.cyan)
+                    Text("avions à proximité")
+                        .font(.callout.bold())
+                        .foregroundStyle(.white)
+                }
 
-            HStack(spacing: 7) {
-                Circle()
-                    .fill(service.errorMessage == nil ? Color.green : Color.orange)
-                    .frame(width: 9, height: 9)
-                Text(service.errorMessage ?? service.source)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-        }
-        .padding(18)
-        .frame(width: 380, alignment: .leading)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-    }
-
-    private var radarLegend: some View {
-        HStack(spacing: 14) {
-            Label("10 km", systemImage: "circle")
-            Text("25 km")
-            Text("50 km")
-            if let selectedAircraft {
                 Divider()
-                    .frame(height: 22)
-                Text("\(selectedAircraft.distanceKilometers(from: service.center), specifier: "%.1f") km")
-                    .fontWeight(.bold)
-                    .foregroundStyle(.orange)
+                    .overlay(Color.white.opacity(0.25))
+                    .frame(height: 45)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(updateLabel)
+                        .font(.headline.bold().monospacedDigit())
+                        .foregroundStyle(.white)
+                    HStack(spacing: 7) {
+                        Circle()
+                            .fill(service.errorMessage == nil ? Color.green : Color.orange)
+                            .frame(width: 9, height: 9)
+                        Text(service.errorMessage == nil ? "EN DIRECT" : "DERNIÈRES DONNÉES")
+                            .font(.caption2.bold())
+                            .foregroundStyle(.white.opacity(0.74))
+                    }
+                }
             }
+
+            Text(service.errorMessage ?? service.source)
+                .font(.caption)
+                .foregroundStyle(.white.opacity(0.68))
+                .lineLimit(1)
         }
-        .font(.caption.bold())
-        .padding(.horizontal, 16)
-        .padding(.vertical, 11)
-        .background(.ultraThinMaterial, in: Capsule())
+        .padding(20)
+        .frame(width: 400, alignment: .leading)
+        .background(navy.opacity(0.96), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(Color.cyan.opacity(0.28), lineWidth: 1)
+        }
+        .shadow(color: .black.opacity(0.16), radius: 12, y: 5)
     }
 
     private var featuredCard: some View {
         VStack(spacing: 0) {
-            if let aircraft = selectedAircraft {
+            if let aircraft = closestAircraft {
                 ZStack(alignment: .bottomLeading) {
-                    aircraftPhoto(enrichment: selectedEnrichment)
-                        .frame(height: 190)
+                    aircraftPhoto(enrichment: closestEnrichment)
+                        .frame(height: 155)
                         .clipped()
 
                     LinearGradient(
-                        colors: [.clear, .black.opacity(0.85)],
+                        colors: [.clear, navy.opacity(0.98)],
                         startPoint: .top,
                         endPoint: .bottom
                     )
 
-                    HStack(alignment: .bottom, spacing: 14) {
-                        operatorLogo(enrichment: selectedEnrichment)
-                            .frame(width: 58, height: 58)
+                    VStack(spacing: 12) {
+                        HStack(alignment: .bottom, spacing: 12) {
+                            operatorLogo(enrichment: closestEnrichment)
+                                .frame(width: 54, height: 54)
 
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text("AVION LE PLUS PROCHE")
-                                .font(.caption.bold())
-                                .foregroundStyle(.green)
-                            Text(aircraft.displayName)
-                                .font(.title.bold())
-                            Text(selectedEnrichment?.operatorName ?? aircraft.operatorName ?? aircraft.subtitle)
-                                .font(.callout)
-                                .foregroundStyle(.white.opacity(0.82))
-                                .lineLimit(1)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text("AVION LE PLUS PROCHE")
+                                    .font(.caption2.bold())
+                                    .foregroundStyle(.green)
+                                Text(aircraft.displayName)
+                                    .font(.title2.bold())
+                                    .foregroundStyle(.white)
+                                Text(aircraftIdentity(aircraft, enrichment: closestEnrichment))
+                                    .font(.caption)
+                                    .foregroundStyle(.white.opacity(0.78))
+                                    .lineLimit(1)
+                            }
+
+                            Spacer()
+
+                            VStack(alignment: .trailing, spacing: 0) {
+                                Text(distanceText(aircraft))
+                                    .font(.system(size: 34, weight: .heavy, design: .rounded))
+                                    .foregroundStyle(.cyan)
+                                    .monospacedDigit()
+                                Text("du centre radar")
+                                    .font(.caption2)
+                                    .foregroundStyle(.white.opacity(0.68))
+                            }
                         }
-
-                        Spacer()
-
-                        Text("\(aircraft.distanceKilometers(from: service.center), specifier: "%.1f") km")
-                            .font(.title2.bold().monospacedDigit())
-                            .foregroundStyle(.green)
                     }
                     .padding(16)
                 }
 
                 VStack(spacing: 13) {
-                    routeLine(enrichment: selectedEnrichment)
+                    if hasCompleteRoute(closestEnrichment) {
+                        routeLine(enrichment: closestEnrichment)
+                    } else {
+                        unavailableRouteLine(aircraft: aircraft, enrichment: closestEnrichment)
+                    }
 
                     HStack(spacing: 10) {
-                        metric(title: "Altitude", value: aircraft.altitudeLabel, icon: "mountain.2")
-                        metric(title: "Vitesse", value: aircraft.speedLabel, icon: "gauge.with.dots.needle.67percent")
-                        metric(title: "Cap", value: aircraft.headingLabel, icon: "location.north.fill")
+                        metric(title: "ALTITUDE", value: aircraft.altitudeLabel, icon: "mountain.2")
+                        metric(title: "VITESSE", value: aircraft.speedLabel, icon: "gauge.with.dots.needle.67percent")
+                        metric(title: "CAP", value: aircraft.headingLabel, icon: "location.north.fill")
                     }
                 }
-                .padding(16)
+                .padding(15)
+                .background(navy)
             } else {
                 VStack(spacing: 12) {
                     ProgressView()
+                        .tint(.cyan)
                     Text("Recherche du trafic…")
                         .font(.headline)
+                        .foregroundStyle(.white)
                 }
-                .frame(maxWidth: .infinity, minHeight: 330)
+                .frame(maxWidth: .infinity, minHeight: 315)
+                .background(navy)
             }
         }
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
-        .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(Color.white.opacity(0.22), lineWidth: 1)
+        }
+        .shadow(color: .black.opacity(0.17), radius: 12, y: 5)
     }
 
     private var destinationCard: some View {
@@ -220,7 +245,9 @@ struct ContentView: View {
                     } else if let url = media.mediaURL {
                         AsyncImage(url: url) { phase in
                             if let image = phase.image {
-                                image.resizable().scaledToFill()
+                                image
+                                    .resizable()
+                                    .scaledToFill()
                             } else {
                                 destinationFallback
                             }
@@ -232,124 +259,167 @@ struct ContentView: View {
                     destinationFallback
                 }
             }
-            .frame(height: 270)
+            .frame(height: 245)
             .clipped()
 
             LinearGradient(
-                colors: [.clear, .black.opacity(0.82)],
+                colors: [.clear, .black.opacity(0.78)],
                 startPoint: .center,
                 endPoint: .bottom
             )
 
-            VStack(alignment: .leading, spacing: 5) {
+            VStack(alignment: .leading, spacing: 4) {
                 HStack {
-                    Label("VILLE D’ARRIVÉE", systemImage: "play.rectangle.fill")
+                    Label("VILLE D’ARRIVÉE", systemImage: mediaService.current?.isVideo == true ? "play.rectangle.fill" : "photo.fill")
                         .font(.caption.bold())
-                        .foregroundStyle(.cyan)
+                        .foregroundStyle(.white.opacity(0.92))
+
                     Spacer()
+
                     if mediaService.current?.isVideo == true {
-                        Text("VIDÉO AUTO")
+                        Text("VIDÉO")
                             .font(.caption2.bold())
+                            .foregroundStyle(.white)
                             .padding(.horizontal, 9)
-                            .padding(.vertical, 5)
-                            .background(Color.green.opacity(0.78), in: Capsule())
+                            .padding(.vertical, 4)
+                            .background(Color.cyan.opacity(0.78), in: Capsule())
                     }
                 }
 
-                Text(selectedEnrichment?.destinationLabel ?? "Destination")
-                    .font(.title.bold())
+                Text(closestEnrichment?.arrivalAirport?.city ?? "Destination")
+                    .font(.system(size: 36, weight: .heavy, design: .rounded))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+
+                if let airport = closestEnrichment?.arrivalAirport {
+                    Text("\(airport.name ?? airport.city) · \(airport.code)")
+                        .font(.callout.bold())
+                        .foregroundStyle(.white.opacity(0.84))
+                        .lineLimit(1)
+                }
 
                 if let media = mediaService.current {
                     Text(attribution(media))
                         .font(.caption2)
-                        .foregroundStyle(.white.opacity(0.72))
+                        .foregroundStyle(.white.opacity(0.65))
                         .lineLimit(1)
                 } else if mediaService.isLoading {
-                    Text("Chargement automatique des images…")
+                    Text("Chargement automatique du média…")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else {
-                    Text("Les médias changeront automatiquement avec la destination.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.white.opacity(0.70))
                 }
             }
             .padding(16)
         }
-        .background(Color.black.opacity(0.36))
+        .background(Color.white)
         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(Color.white.opacity(0.10), lineWidth: 1)
+                .stroke(Color.white.opacity(0.88), lineWidth: 3)
         }
+        .shadow(color: .black.opacity(0.14), radius: 10, y: 4)
+    }
+
+    private var noDestinationCard: some View {
+        HStack(spacing: 16) {
+            Image(systemName: "airplane.departure")
+                .font(.system(size: 32, weight: .bold))
+                .foregroundStyle(.cyan)
+                .frame(width: 58, height: 58)
+                .background(navy, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Trajet non disponible")
+                    .font(.title3.bold())
+                    .foregroundStyle(ink)
+                Text("La position, l’altitude, la vitesse et le cap restent affichés en direct.")
+                    .font(.callout)
+                    .foregroundStyle(ink.opacity(0.70))
+                    .lineLimit(2)
+            }
+
+            Spacer()
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, minHeight: 110)
+        .background(Color.white.opacity(0.96), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .shadow(color: .black.opacity(0.12), radius: 9, y: 4)
     }
 
     private var nearbyCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 9) {
             HStack {
                 Label("Avions proches", systemImage: "airplane")
-                    .font(.headline)
+                    .font(.title3.bold())
+                    .foregroundStyle(ink)
                 Spacer()
-                Text("\(service.aircraft.count)")
+                Text("5 plus proches")
                     .font(.caption.bold())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(ink.opacity(0.60))
             }
 
-            ForEach(service.aircraft.prefix(4)) { aircraft in
-                Button {
-                    selectedID = aircraft.id
-                } label: {
-                    nearbyRow(aircraft)
-                }
-                .buttonStyle(.plain)
-                .focused($focusedAircraftID, equals: aircraft.id)
+            ForEach(Array(service.aircraft.prefix(5).enumerated()), id: \.element.id) { index, aircraft in
+                nearbyRow(aircraft, index: index)
             }
         }
-        .padding(16)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .padding(15)
+        .background(Color.white.opacity(0.97), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(Color.blue.opacity(0.12), lineWidth: 1)
+        }
+        .shadow(color: .black.opacity(0.13), radius: 10, y: 4)
     }
 
-    private func nearbyRow(_ aircraft: Aircraft) -> some View {
+    private func nearbyRow(_ aircraft: Aircraft, index: Int) -> some View {
         let enrichment = service.enrichment(for: aircraft)
-        let focused = focusedAircraftID == aircraft.id
-        let selected = selectedAircraft?.id == aircraft.id
+        let isClosest = index == 0
 
-        return HStack(spacing: 12) {
-            operatorLogo(enrichment: enrichment)
-                .frame(width: 40, height: 40)
+        return HStack(spacing: 11) {
+            Image(systemName: "airplane")
+                .font(.system(size: 20, weight: .bold))
+                .foregroundStyle(isClosest ? Color.cyan : Color.blue.opacity(0.72))
+                .frame(width: 34, height: 34)
+                .background(
+                    isClosest ? Color.cyan.opacity(0.15) : Color.blue.opacity(0.07),
+                    in: RoundedRectangle(cornerRadius: 9, style: .continuous)
+                )
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(aircraft.displayName)
-                    .font(.headline)
-                    .lineLimit(1)
-                Text(enrichment?.routeLabel ?? aircraft.subtitle)
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 7) {
+                    Text(aircraft.displayName)
+                        .font(.headline.bold())
+                        .foregroundStyle(ink)
+                        .lineLimit(1)
+
+                    if let operatorName = enrichment?.operatorName ?? aircraft.operatorName,
+                       !operatorName.isEmpty {
+                        Text(operatorName)
+                            .font(.caption2.bold())
+                            .foregroundStyle(ink.opacity(0.55))
+                            .lineLimit(1)
+                    }
+                }
+
+                Text(nearbySubtitle(aircraft, enrichment: enrichment))
                     .font(.caption)
-                    .foregroundStyle(selected ? .white.opacity(0.82) : .secondary)
+                    .foregroundStyle(ink.opacity(0.66))
                     .lineLimit(1)
             }
 
             Spacer()
 
-            Text("\(aircraft.distanceKilometers(from: service.center), specifier: "%.1f") km")
-                .font(.headline.monospacedDigit())
-                .foregroundStyle(selected ? .white : .cyan)
+            Text(distanceText(aircraft))
+                .font(.title3.bold().monospacedDigit())
+                .foregroundStyle(isClosest ? Color(red: 0.00, green: 0.55, blue: 0.63) : ink)
+                .lineLimit(1)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 9)
+        .padding(.horizontal, 11)
+        .padding(.vertical, 7)
         .background(
-            selected
-                ? Color.cyan.opacity(0.52)
-                : focused
-                    ? Color.white.opacity(0.14)
-                    : Color.black.opacity(0.10),
-            in: RoundedRectangle(cornerRadius: 15, style: .continuous)
+            isClosest ? Color.cyan.opacity(0.13) : Color.clear,
+            in: RoundedRectangle(cornerRadius: 13, style: .continuous)
         )
-        .overlay {
-            RoundedRectangle(cornerRadius: 15, style: .continuous)
-                .stroke(focused ? Color.white.opacity(0.70) : Color.clear, lineWidth: 2)
-        }
-        .scaleEffect(focused ? 1.02 : 1)
-        .animation(.easeOut(duration: 0.15), value: focused)
     }
 
     @ViewBuilder
@@ -357,7 +427,9 @@ struct ContentView: View {
         if let url = enrichment?.photoURL {
             AsyncImage(url: url) { phase in
                 if let image = phase.image {
-                    image.resizable().scaledToFill()
+                    image
+                        .resizable()
+                        .scaledToFill()
                 } else {
                     aircraftPlaceholder
                 }
@@ -370,13 +442,13 @@ struct ContentView: View {
     private var aircraftPlaceholder: some View {
         ZStack {
             LinearGradient(
-                colors: [Color.blue.opacity(0.48), Color.black.opacity(0.62)],
+                colors: [Color.blue.opacity(0.72), navy],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
             Image(systemName: "airplane")
-                .font(.system(size: 84, weight: .bold))
-                .foregroundStyle(.white.opacity(0.72))
+                .font(.system(size: 80, weight: .bold))
+                .foregroundStyle(.white.opacity(0.74))
         }
     }
 
@@ -393,7 +465,7 @@ struct ContentView: View {
                     logoPlaceholder
                 }
             }
-            .background(Color.white.opacity(0.94), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .background(Color.white, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         } else {
             logoPlaceholder
         }
@@ -402,7 +474,7 @@ struct ContentView: View {
     private var logoPlaceholder: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.white.opacity(0.12))
+                .fill(Color.white.opacity(0.96))
             Image(systemName: "airplane")
                 .foregroundStyle(.cyan)
         }
@@ -410,75 +482,243 @@ struct ContentView: View {
 
     private func routeLine(enrichment: TVAircraftEnrichment?) -> some View {
         HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(enrichment?.departureAirport?.code ?? "—")
+            VStack(alignment: .leading, spacing: 1) {
+                Text(enrichment?.departureAirport?.code ?? "")
                     .font(.title2.bold())
-                Text(enrichment?.departureAirport?.city ?? "Départ")
+                    .foregroundStyle(.white)
+                Text(enrichment?.departureAirport?.city ?? "")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.white.opacity(0.70))
                     .lineLimit(1)
             }
 
             Spacer()
-            Image(systemName: "airplane")
+
+            HStack(spacing: 8) {
+                Rectangle()
+                    .fill(Color.cyan.opacity(0.50))
+                    .frame(height: 2)
+                Image(systemName: "airplane")
+                    .font(.headline.bold())
+                    .foregroundStyle(.cyan)
+                Rectangle()
+                    .fill(Color.cyan.opacity(0.50))
+                    .frame(height: 2)
+            }
+            .frame(maxWidth: 160)
+
+            Spacer()
+
+            VStack(alignment: .trailing, spacing: 1) {
+                Text(enrichment?.arrivalAirport?.code ?? "")
+                    .font(.title2.bold())
+                    .foregroundStyle(.white)
+                Text(enrichment?.arrivalAirport?.city ?? "")
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.70))
+                    .lineLimit(1)
+            }
+        }
+        .padding(.horizontal, 5)
+    }
+
+    private func unavailableRouteLine(
+        aircraft: Aircraft,
+        enrichment: TVAircraftEnrichment?
+    ) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: "questionmark.circle.fill")
+                .font(.title3)
                 .foregroundStyle(.cyan)
-            Image(systemName: "arrow.right")
-                .foregroundStyle(.secondary)
-            Spacer()
 
-            VStack(alignment: .trailing, spacing: 2) {
-                Text(enrichment?.arrivalAirport?.code ?? "—")
-                    .font(.title2.bold())
-                Text(enrichment?.arrivalAirport?.city ?? "Arrivée")
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Trajet non disponible")
+                    .font(.headline.bold())
+                    .foregroundStyle(.white)
+                Text(aircraftIdentity(aircraft, enrichment: enrichment))
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.white.opacity(0.68))
                     .lineLimit(1)
             }
+
+            Spacer()
         }
     }
 
     private func metric(title: String, value: String, icon: String) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: icon)
-                .foregroundStyle(.cyan)
-            VStack(alignment: .leading, spacing: 1) {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .foregroundStyle(.cyan)
                 Text(title)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                Text(value)
-                    .font(.callout.bold().monospacedDigit())
+                    .font(.caption2.bold())
+                    .foregroundStyle(.white.opacity(0.63))
             }
-            Spacer(minLength: 0)
+
+            Text(value)
+                .font(.headline.bold().monospacedDigit())
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
         }
-        .padding(10)
-        .frame(maxWidth: .infinity)
+        .padding(11)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
     }
 
     private var destinationFallback: some View {
         ZStack {
             LinearGradient(
-                colors: [Color.indigo.opacity(0.72), Color.cyan.opacity(0.24), Color.black],
+                colors: [
+                    Color(red: 0.18, green: 0.63, blue: 0.88),
+                    Color(red: 0.98, green: 0.63, blue: 0.38)
+                ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
-            Image(systemName: "building.2.crop.circle")
-                .font(.system(size: 76))
-                .foregroundStyle(.white.opacity(0.45))
+
+            Image(systemName: "building.2.fill")
+                .font(.system(size: 74, weight: .bold))
+                .foregroundStyle(.white.opacity(0.34))
         }
+    }
+
+    private func hasCompleteRoute(_ enrichment: TVAircraftEnrichment?) -> Bool {
+        enrichment?.departureAirport != nil && enrichment?.arrivalAirport != nil
+    }
+
+    private func distanceText(_ aircraft: Aircraft) -> String {
+        String(format: "%.1f km", aircraft.distanceKilometers(from: service.center))
+    }
+
+    private func aircraftIdentity(
+        _ aircraft: Aircraft,
+        enrichment: TVAircraftEnrichment?
+    ) -> String {
+        let values = [
+            enrichment?.registration ?? aircraft.registration,
+            enrichment?.aircraftModel ?? enrichment?.aircraftType ?? aircraft.aircraftType,
+            enrichment?.operatorName ?? aircraft.operatorName
+        ]
+
+        let clean = values.compactMap { value -> String? in
+            guard let value, !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                return nil
+            }
+            return value
+        }
+
+        return clean.isEmpty ? "Données ADS-B en direct" : clean.prefix(3).joined(separator: " · ")
+    }
+
+    private func nearbySubtitle(
+        _ aircraft: Aircraft,
+        enrichment: TVAircraftEnrichment?
+    ) -> String {
+        if let route = enrichment?.routeLabel,
+           !route.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return route
+        }
+
+        let identity = aircraftIdentity(aircraft, enrichment: enrichment)
+        return identity.isEmpty ? "Trajet non disponible" : identity
     }
 
     private func attribution(_ media: DestinationMedia) -> String {
         if let author = media.author, !author.isEmpty {
-            return "Média \(media.sourceName) · \(author)"
+            return "\(media.sourceName) · \(author)"
         }
-        return "Média \(media.sourceName)"
+        return media.sourceName
     }
 
     private var updateLabel: String {
-        guard let date = service.updatedAt else { return "connexion…" }
+        guard let date = service.updatedAt else { return "Connexion…" }
         let seconds = max(0, Int(Date().timeIntervalSince(date)))
         return seconds < 60 ? "MAJ \(seconds) s" : "MAJ \(seconds / 60) min"
+    }
+}
+
+@MainActor
+private final class AmbientSoundscape: ObservableObject {
+    private let engine = AVAudioEngine()
+    private let player = AVAudioPlayerNode()
+    private var buffer: AVAudioPCMBuffer?
+    private var configured = false
+
+    func start() {
+        guard !player.isPlaying else { return }
+
+        do {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.ambient, mode: .default, options: [.mixWithOthers])
+            try session.setActive(true)
+
+            if !configured {
+                engine.attach(player)
+                guard let format = AVAudioFormat(
+                    standardFormatWithSampleRate: 44_100,
+                    channels: 2
+                ) else { return }
+
+                engine.connect(player, to: engine.mainMixerNode, format: format)
+                buffer = makeAmbientBuffer(format: format, duration: 12)
+                configured = true
+            }
+
+            if !engine.isRunning {
+                try engine.start()
+            }
+
+            if let buffer {
+                player.scheduleBuffer(buffer, at: nil, options: .loops)
+                player.volume = 0.055
+                player.play()
+            }
+        } catch {
+            // La musique reste optionnelle : le radar continue même si l'audio n'est pas disponible.
+        }
+    }
+
+    func stop() {
+        player.stop()
+        engine.pause()
+        try? AVAudioSession.sharedInstance().setActive(false)
+    }
+
+    private func makeAmbientBuffer(
+        format: AVAudioFormat,
+        duration: Double
+    ) -> AVAudioPCMBuffer? {
+        let sampleRate = format.sampleRate
+        let frameCount = AVAudioFrameCount(sampleRate * duration)
+
+        guard let buffer = AVAudioPCMBuffer(
+            pcmFormat: format,
+            frameCapacity: frameCount
+        ) else { return nil }
+
+        buffer.frameLength = frameCount
+        guard let channels = buffer.floatChannelData else { return nil }
+
+        let twoPi = Double.pi * 2
+        let frequencies = [128.0, 192.0, 256.0]
+
+        for frame in 0..<Int(frameCount) {
+            let time = Double(frame) / sampleRate
+            let breathe = 0.72 + 0.28 * sin(twoPi * time / duration)
+            let shimmer = 0.5 + 0.5 * sin(twoPi * time / 6.0)
+
+            let tone =
+                sin(twoPi * frequencies[0] * time) * 0.42
+                + sin(twoPi * frequencies[1] * time) * 0.22
+                + sin(twoPi * frequencies[2] * time) * (0.10 + shimmer * 0.05)
+
+            let sample = Float(tone * breathe * 0.16)
+            channels[0][frame] = sample
+            channels[1][frame] = sample * 0.94
+        }
+
+        return buffer
     }
 }
 
@@ -541,6 +781,7 @@ private struct LoopingVideoView: UIViewRepresentable {
             currentURL = url
             player.pause()
             player.removeAllItems()
+
             let item = AVPlayerItem(url: url)
             looper = AVPlayerLooper(player: player, templateItem: item)
             player.play()
