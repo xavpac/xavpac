@@ -196,7 +196,6 @@ struct AircraftMapView: UIViewRepresentable {
         // Cartographie volontairement figée pour l'affichage mural.
         map.isScrollEnabled = false
         map.isZoomEnabled = false
-        map.isRotateEnabled = false
         map.isUserInteractionEnabled = false
 
         let region = MKCoordinateRegion(
