@@ -286,7 +286,7 @@ extension Aircraft {
         let adsbCategory = category?.lowercased()
 
         let kind: TVTrafficKind
-        if joined.range(of: #"sécurité civile|securite civile|civil security|dragons?d{2}|canadair|cl-?415|cl-?215|water bomber|fire boss|at-?802"#, options: .regularExpression) != nil {
+        if joined.range(of: #"sécurité civile|securite civile|civil security|dragon\s?\d{2}|canadair|cl-?415|cl-?215|water bomber|fire boss|at-?802"#, options: .regularExpression) != nil {
             kind = .civilSecurity
         } else if joined.range(of: #"samu|smur|medevac|medical|médical|hems|secours|urgences"#, options: .regularExpression) != nil {
             kind = .medical
@@ -321,7 +321,7 @@ extension Aircraft {
                     || joined.range(of: #"special|experimental|survey|research|calibration"#, options: .regularExpression) != nil {
             kind = .specialized
         } else if enrichment?.aircraftCategory == "airliner"
-                    || joined.range(of: #"airbus|boeing|a3dd|b7dd|embraer|airliner"#, options: .regularExpression) != nil {
+                    || joined.range(of: #"airbus|boeing|a3\d\d|b7\d\d|embraer|airliner"#, options: .regularExpression) != nil {
             kind = .airline
         } else {
             kind = .unknown
@@ -353,10 +353,19 @@ extension Aircraft {
             }
         }()
 
+        let helicopterLike = adsbCategory == "a7"
+            || enrichment?.aircraftCategory == "helicopter"
+            || joined.range(
+                of: #"helic|hélic|rotor|h125|h145|ec145|h135|ec135|as[ .-]?350|as50|écureuil|squirrel|nh90|caracal|cougar|gazelle|dauphin"#,
+                options: .regularExpression
+            ) != nil
+
+        let resolvedSymbolName = helicopterLike ? "helicopter" : kind.symbolName
+
         return TVTrafficProfile(
             kind: kind,
             label: kind.label,
-            symbolName: kind.symbolName,
+            symbolName: resolvedSymbolName,
             priorityTier: kind.priorityTier,
             relativeIconScale: relativeIconScale
         )
