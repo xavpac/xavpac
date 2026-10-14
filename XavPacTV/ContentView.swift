@@ -588,7 +588,7 @@ struct ContentView: View {
     }
 
     private func distanceText(_ aircraft: Aircraft) -> String {
-        "\(aircraft.distanceKilometers(from: service.center), specifier: "%.1f") km"
+        String(format: "%.1f km", aircraft.distanceKilometers(from: service.center))
     }
 
     private func aircraftIdentity(
