@@ -1,68 +1,56 @@
-# XavPac TV — fonctionnement sans Mac
+# XavPac TV — fonctionnement sans Mac au quotidien
 
-Objectif : ne plus avoir besoin d'ouvrir Xcode ni de laisser le Mac allumé pour utiliser ou mettre à jour XavPac TV.
+Objectif : ne plus avoir besoin d’ouvrir Xcode ni de laisser le Mac allumé pour utiliser ou mettre à jour XavPac TV.
 
-## Architecture retenue
+## Solution retenue : Xcode Cloud + App Store / TestFlight
 
-1. L'Apple TV exécute XavPac TV de manière autonome.
-2. Le trafic, l'enrichissement des vols et les médias de destination viennent de XavPac/Vercel.
-3. Les futures versions tvOS sont construites dans le cloud par GitHub Actions.
-4. GitHub envoie automatiquement les builds signés vers App Store Connect avec une clé API Apple.
-5. La distribution cible est l'App Store (éventuellement en mode non répertorié) afin de profiter des mises à jour automatiques de l'Apple TV.
+Apple fournit Xcode Cloud pour compiler, signer et distribuer automatiquement une app tvOS depuis le dépôt Git. C’est la solution la plus fiable pour éviter les réinstallations manuelles via Xcode.
 
-TestFlight peut servir pendant la phase de mise au point, mais ses builds expirent après 90 jours. Pour un panneau permanent, l'App Store est la solution finale recommandée.
+### Important
 
-## Pré-requis Apple — une seule fois
+Avec un compte **Personal Team** gratuit, ce mode n’est pas disponible : les profils de développement expirent au bout de 7 jours et l’app doit être reconstruite/réinstallée périodiquement.
 
-Il faut être membre de l'Apple Developer Program.
+Pour ne plus dépendre du Mac ensuite, il faut rejoindre l’**Apple Developer Program**.
 
-Créer ensuite dans App Store Connect :
+## Après l’inscription Apple Developer
 
-- une app tvOS nommée XavPac TV ;
-- bundle identifier : `fr.xavpac.XavPacTV` ;
-- une clé App Store Connect API autorisée à gérer les apps.
+Une seule configuration initiale est nécessaire :
 
-Dans GitHub > Settings > Secrets and variables > Actions, créer quatre secrets :
+1. Créer l’app **XavPac TV** dans App Store Connect.
+2. Utiliser le bundle identifier `fr.xavpac.XavPacTV`.
+3. Dans Xcode, configurer une première fois **Xcode Cloud** pour le projet XavPacTV.
+4. Choisir le scheme partagé **XavPacTV**.
+5. Créer un workflow qui se déclenche sur les changements du dossier XavPacTV.
+6. Ajouter une action **Archive** pour tvOS.
+7. Ajouter une post-action de distribution vers **TestFlight** pendant la phase de test.
+8. Après validation, distribuer l’app via l’App Store pour bénéficier des mises à jour automatiques natives de l’Apple TV.
 
-- `APPLE_TEAM_ID`
-- `ASC_KEY_ID`
-- `ASC_ISSUER_ID`
-- `ASC_PRIVATE_KEY_BASE64`
+Après le premier workflow Xcode Cloud réussi, les workflows peuvent être modifiés et gérés depuis App Store Connect sans retourner dans Xcode.
 
-Pour `ASC_PRIVATE_KEY_BASE64`, encoder le fichier `.p8` téléchargé depuis App Store Connect en Base64 avant de le coller dans GitHub.
+## Résultat
 
-Le workflow `.github/workflows/xavpac-tv-appstore.yml` utilise ensuite la signature automatique Xcode et la clé App Store Connect. Aucun compte Apple n'est mémorisé dans le dépôt.
+Une fois cette configuration faite :
 
-## Après cette configuration
+- le Mac n’a pas besoin d’être allumé ;
+- les builds sont faits sur les serveurs Apple ;
+- la signature est gérée par Apple ;
+- les futures versions sont envoyées automatiquement ;
+- l’Apple TV fonctionne seule avec XavPac TV ;
+- via l’App Store, les mises à jour peuvent s’installer automatiquement si l’option **Réglages > Apps > Mise à jour automatique** est activée.
 
-Toute modification de :
+TestFlight reste excellent pour tester, mais chaque build de test expire après 90 jours. Pour un panneau permanent, la distribution App Store est préférable.
 
-- `XavPacTV/**`
-- `XavPacTV.xcodeproj/**`
+## Médias de destination
 
-fusionnée sur `main` déclenche automatiquement :
-
-1. archive tvOS Release ;
-2. signature Apple automatique ;
-3. incrément du numéro de build ;
-4. envoi vers App Store Connect.
-
-Aucun lancement de Xcode local n'est requis.
-
-## Sur l'Apple TV
-
-Pour une app distribuée sur l'App Store, activer :
-
-Réglages > Apps > Mise à jour automatique.
-
-Une fois l'app installée depuis l'App Store, les nouvelles versions peuvent ainsi arriver automatiquement.
-
-## Vidéos de destination
-
-XavPac TV essaie les fournisseurs dans cet ordre :
+Le backend XavPac essaie les sources dans cet ordre :
 
 1. Pexels si `PEXELS_API_KEY` est configurée ;
 2. Pixabay si `PIXABAY_API_KEY` est configurée ;
 3. Wikimedia Commons pour les images de secours.
 
-Les clés média restent côté Vercel et ne sont jamais embarquées dans l'application Apple TV.
+Les clés média restent côté Vercel et ne sont jamais embarquées dans l’app Apple TV.
+
+## État du projet
+
+Le scheme XavPacTV est partagé dans le dépôt pour être détecté par Xcode Cloud.
+La version tvOS est actuellement **2.0**.
