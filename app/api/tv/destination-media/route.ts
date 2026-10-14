@@ -154,6 +154,19 @@ function stripHtml(value?: string) {
   return cleaned ? cleaned.slice(0, 120) : null;
 }
 
+
+function mediaTheme(cycle: number) {
+  const themes = [
+    "aerial drone city skyline",
+    "airport runway terminal aviation",
+    "cockpit approach landing airport",
+    "city river skyline landmark",
+    "aerial night city lights",
+    "airport aerial view runway"
+  ];
+  return themes[cycle % themes.length];
+}
+
 function pickPexelsVideoFile(files?: PexelsVideoFile[]) {
   const candidates = (files ?? [])
     .filter((file) =>
@@ -190,11 +203,11 @@ function mergeMedia(videos: DestinationMediaItem[], images: DestinationMediaItem
   return [...unique.values()].slice(0, 70);
 }
 
-async function fetchPexels(city: string, iata: string, page: number) {
+async function fetchPexels(city: string, iata: string, page: number, theme: string) {
   const key = process.env.PEXELS_API_KEY?.trim();
   if (!key) return null;
 
-  const query = [city, iata, "city skyline travel landmark"].filter(Boolean).join(" ");
+  const query = [city, iata, theme].filter(Boolean).join(" ");
   const headers = { Authorization: key, Accept: "application/json" };
 
   const videoUrl = new URL("https://api.pexels.com/v1/videos/search");
@@ -283,11 +296,11 @@ function pickPixabayVideo(video: PixabayVideo) {
   return candidates[0]?.url ?? null;
 }
 
-async function fetchPixabay(city: string, iata: string, page: number) {
+async function fetchPixabay(city: string, iata: string, page: number, theme: string) {
   const key = process.env.PIXABAY_API_KEY?.trim();
   if (!key) return null;
 
-  const query = [city, iata, "city skyline travel landmark"].filter(Boolean).join(" ");
+  const query = [city, iata, theme].filter(Boolean).join(" ");
 
   const videoUrl = new URL("https://pixabay.com/api/videos/");
   videoUrl.searchParams.set("key", key);
@@ -386,8 +399,8 @@ function pickCommonsVideoDerivative(derivatives?: CommonsVideoDerivative[]) {
   return candidates[0] ?? null;
 }
 
-async function fetchCommonsVideos(city: string, iata: string, page: number) {
-  const query = [city, iata, "city skyline travel", "filetype:video"]
+async function fetchCommonsVideos(city: string, iata: string, page: number, theme: string) {
+  const query = [city, iata, theme, "filetype:video"]
     .filter(Boolean)
     .join(" ");
 
@@ -441,8 +454,8 @@ async function fetchCommonsVideos(city: string, iata: string, page: number) {
     .slice(0, 12);
 }
 
-async function fetchCommons(city: string, iata: string, page: number) {
-  const query = [city, iata, "skyline landmark city"].filter(Boolean).join(" ");
+async function fetchCommons(city: string, iata: string, page: number, theme: string) {
+  const query = [city, iata, theme].filter(Boolean).join(" ");
   const url = new URL("https://commons.wikimedia.org/w/api.php");
   url.searchParams.set("action", "query");
   url.searchParams.set("generator", "search");
@@ -513,16 +526,17 @@ export async function GET(request: NextRequest) {
 
   const sixHourWindow = Math.floor(Date.now() / 21_600_000);
   const page = ((hashString(city.toLowerCase()) + sixHourWindow + cycle) % 10) + 1;
+  const theme = mediaTheme(cycle + sixHourWindow);
 
   try {
-    const pexels = await fetchPexels(city, iata, page);
-    const pixabay = pexels ? null : await fetchPixabay(city, iata, page);
+    const pexels = await fetchPexels(city, iata, page, theme);
+    const pixabay = pexels ? null : await fetchPixabay(city, iata, page, theme);
 
     let result = pexels ?? pixabay;
     if (!result) {
       const [commonsVideos, commonsImages] = await Promise.all([
-        fetchCommonsVideos(city, iata, page),
-        fetchCommons(city, iata, page)
+        fetchCommonsVideos(city, iata, page, theme),
+        fetchCommons(city, iata, page, theme)
       ]);
 
       const items = mergeMedia(commonsVideos, commonsImages.items);
@@ -541,6 +555,7 @@ export async function GET(request: NextRequest) {
         city,
         country: null,
         page,
+        theme,
         items: result.items
       },
       {
