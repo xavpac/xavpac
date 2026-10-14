@@ -74,6 +74,33 @@ type PixabayImage = {
   webformatURL?: string;
 };
 
+
+type CommonsVideoDerivative = {
+  src?: string;
+  type?: string;
+  width?: number;
+  height?: number;
+  transcodekey?: string;
+};
+
+type CommonsVideoInfo = {
+  url?: string;
+  thumburl?: string;
+  mime?: string;
+  descriptionurl?: string;
+  derivatives?: CommonsVideoDerivative[];
+  extmetadata?: {
+    Artist?: { value?: string };
+    Credit?: { value?: string };
+  };
+};
+
+type CommonsVideoPage = {
+  pageid?: number;
+  title?: string;
+  videoinfo?: CommonsVideoInfo[];
+};
+
 type CommonsImageInfo = {
   url?: string;
   thumburl?: string;
@@ -334,6 +361,86 @@ async function fetchPixabay(city: string, iata: string, page: number) {
   return items.length ? { provider: "Pixabay", items } : null;
 }
 
+
+function pickCommonsVideoDerivative(derivatives?: CommonsVideoDerivative[]) {
+  const candidates = (derivatives ?? [])
+    .filter((item) => {
+      const src = item.src ?? "";
+      const type = (item.type ?? "").toLowerCase();
+      const key = (item.transcodekey ?? "").toLowerCase();
+      const isAppleFriendly = type.includes("video/mp4") || src.toLowerCase().includes(".mp4");
+      const isLandscape = (item.width ?? 0) >= (item.height ?? 0);
+      return src.startsWith("https://")
+        && isAppleFriendly
+        && isLandscape
+        && !key.includes("vp9");
+    })
+    .sort((left, right) => {
+      const leftWidth = left.width ?? 0;
+      const rightWidth = right.width ?? 0;
+      const leftPreferred = leftWidth >= 720 && leftWidth <= 1920 ? 1 : 0;
+      const rightPreferred = rightWidth >= 720 && rightWidth <= 1920 ? 1 : 0;
+      return rightPreferred - leftPreferred || rightWidth - leftWidth;
+    });
+
+  return candidates[0] ?? null;
+}
+
+async function fetchCommonsVideos(city: string, iata: string, page: number) {
+  const query = [city, iata, "city skyline travel", "filetype:video"]
+    .filter(Boolean)
+    .join(" ");
+
+  const url = new URL("https://commons.wikimedia.org/w/api.php");
+  url.searchParams.set("action", "query");
+  url.searchParams.set("generator", "search");
+  url.searchParams.set("gsrsearch", query);
+  url.searchParams.set("gsrnamespace", "6");
+  url.searchParams.set("gsrlimit", "12");
+  url.searchParams.set("gsroffset", String((page - 1) * 6));
+  url.searchParams.set("prop", "videoinfo");
+  url.searchParams.set("viprop", "url|mime|derivatives|extmetadata");
+  url.searchParams.set("viurlwidth", "1280");
+  url.searchParams.set("format", "json");
+  url.searchParams.set("origin", "*");
+
+  const response = await fetch(url, {
+    next: { revalidate: 21_600 },
+    signal: AbortSignal.timeout(8500),
+    headers: {
+      Accept: "application/json",
+      "User-Agent": "XavPacTV/4.0 (https://github.com/xavpac/xavpac)"
+    }
+  });
+
+  if (!response.ok) return [] as DestinationMediaItem[];
+
+  const payload = await response.json() as {
+    query?: { pages?: Record<string, CommonsVideoPage> };
+  };
+
+  return Object.values(payload.query?.pages ?? {})
+    .flatMap<DestinationMediaItem>((pageItem) => {
+      const info = pageItem.videoinfo?.[0];
+      const derivative = pickCommonsVideoDerivative(info?.derivatives);
+      if (!derivative?.src) return [];
+
+      return [{
+        id: `commons-video-${pageItem.pageid ?? hashString(derivative.src)}`,
+        type: "video",
+        url: derivative.src,
+        preview: info?.thumburl?.startsWith("https://") ? info.thumburl : null,
+        author: stripHtml(info?.extmetadata?.Artist?.value)
+          || stripHtml(info?.extmetadata?.Credit?.value),
+        sourceName: "Wikimedia Commons",
+        sourceUrl: info?.descriptionurl?.startsWith("https://")
+          ? info.descriptionurl
+          : "https://commons.wikimedia.org/"
+      }];
+    })
+    .slice(0, 12);
+}
+
 async function fetchCommons(city: string, iata: string, page: number) {
   const query = [city, iata, "skyline landmark city"].filter(Boolean).join(" ");
   const url = new URL("https://commons.wikimedia.org/w/api.php");
@@ -410,7 +517,22 @@ export async function GET(request: NextRequest) {
   try {
     const pexels = await fetchPexels(city, iata, page);
     const pixabay = pexels ? null : await fetchPixabay(city, iata, page);
-    const result = pexels ?? pixabay ?? await fetchCommons(city, iata, page);
+
+    let result = pexels ?? pixabay;
+    if (!result) {
+      const [commonsVideos, commonsImages] = await Promise.all([
+        fetchCommonsVideos(city, iata, page),
+        fetchCommons(city, iata, page)
+      ]);
+
+      const items = mergeMedia(commonsVideos, commonsImages.items);
+      result = {
+        provider: commonsVideos.length
+          ? "Wikimedia Commons vidéo + photo"
+          : commonsImages.provider,
+        items
+      };
+    }
 
     return NextResponse.json(
       {
