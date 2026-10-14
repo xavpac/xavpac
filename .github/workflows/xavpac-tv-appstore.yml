@@ -1,0 +1,118 @@
+name: XavPac TV — distribution automatique
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "XavPacTV/**"
+      - "XavPacTV.xcodeproj/**"
+      - ".github/workflows/xavpac-tv-appstore.yml"
+
+concurrency:
+  group: xavpac-tv-appstore
+  cancel-in-progress: false
+
+jobs:
+  distribute:
+    runs-on: macos-latest
+    timeout-minutes: 35
+    env:
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_PRIVATE_KEY_BASE64: ${{ secrets.ASC_PRIVATE_KEY_BASE64 }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Vérifie la configuration Apple
+        id: apple
+        shell: bash
+        run: |
+          if [[ -n "$ASC_KEY_ID" && -n "$ASC_ISSUER_ID" && -n "$ASC_PRIVATE_KEY_BASE64" && -n "$APPLE_TEAM_ID" ]]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+            echo "Distribution Apple configurée."
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "Distribution Apple non configurée : build d'upload ignoré."
+          fi
+
+      - name: Prépare la clé App Store Connect
+        if: steps.apple.outputs.ready == 'true'
+        shell: bash
+        run: |
+          KEY_DIR="$RUNNER_TEMP/private_keys"
+          mkdir -p "$KEY_DIR"
+          KEY_PATH="$KEY_DIR/AuthKey_${ASC_KEY_ID}.p8"
+          printf '%s' "$ASC_PRIVATE_KEY_BASE64" | base64 --decode > "$KEY_PATH"
+          chmod 600 "$KEY_PATH"
+          echo "ASC_KEY_PATH=$KEY_PATH" >> "$GITHUB_ENV"
+
+      - name: Archive tvOS
+        if: steps.apple.outputs.ready == 'true'
+        shell: bash
+        run: |
+          xcodebuild \
+            -project XavPacTV.xcodeproj \
+            -scheme XavPacTV \
+            -configuration Release \
+            -destination "generic/platform=tvOS" \
+            -archivePath "$RUNNER_TEMP/XavPacTV.xcarchive" \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            CODE_SIGN_STYLE=Automatic \
+            CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            archive
+
+      - name: Prépare l'export App Store Connect
+        if: steps.apple.outputs.ready == 'true'
+        shell: bash
+        run: |
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>app-store-connect</string>
+            <key>destination</key>
+            <string>upload</string>
+            <key>signingStyle</key>
+            <string>automatic</string>
+            <key>teamID</key>
+            <string>$APPLE_TEAM_ID</string>
+            <key>manageAppVersionAndBuildNumber</key>
+            <false/>
+            <key>uploadSymbols</key>
+            <true/>
+          </dict>
+          </plist>
+          PLIST
+
+      - name: Envoie automatiquement vers App Store Connect
+        if: steps.apple.outputs.ready == 'true'
+        shell: bash
+        run: |
+          xcodebuild \
+            -exportArchive \
+            -archivePath "$RUNNER_TEMP/XavPacTV.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
+            -exportPath "$RUNNER_TEMP/XavPacTV-export" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+
+      - name: Résumé
+        shell: bash
+        run: |
+          if [[ "${{ steps.apple.outputs.ready }}" == "true" ]]; then
+            echo "XavPac TV a été envoyé vers App Store Connect sans utiliser le Mac." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Le workflow est prêt. Il commencera les envois automatiques dès que les 4 secrets Apple seront configurés." >> "$GITHUB_STEP_SUMMARY"
+          fi
