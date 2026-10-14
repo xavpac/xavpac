@@ -46,6 +46,60 @@ final class AircraftService: ObservableObject {
             ?? enrichedByID[aircraft.id.uppercased()]
     }
 
+    func trafficProfile(for aircraft: Aircraft) -> TVTrafficProfile {
+        aircraft.trafficProfile(enrichment: enrichment(for: aircraft))
+    }
+
+    var featuredAircraft: Aircraft? {
+        let priority = aircraft
+            .filter { item in
+                item.distanceKilometers(from: center) <= 40
+                    && trafficProfile(for: item).isPriorityTraffic
+            }
+            .sorted { lhs, rhs in
+                let leftProfile = trafficProfile(for: lhs)
+                let rightProfile = trafficProfile(for: rhs)
+
+                if leftProfile.priorityTier != rightProfile.priorityTier {
+                    return leftProfile.priorityTier < rightProfile.priorityTier
+                }
+
+                return lhs.distanceKilometers(from: center)
+                    < rhs.distanceKilometers(from: center)
+            }
+
+        return priority.first ?? aircraft.first
+    }
+
+    var displayAircraft: [Aircraft] {
+        aircraft.sorted { lhs, rhs in
+            let leftDistance = lhs.distanceKilometers(from: center)
+            let rightDistance = rhs.distanceKilometers(from: center)
+            let leftProfile = trafficProfile(for: lhs)
+            let rightProfile = trafficProfile(for: rhs)
+
+            let leftPriority = leftDistance <= 40 && leftProfile.isPriorityTraffic
+            let rightPriority = rightDistance <= 40 && rightProfile.isPriorityTraffic
+
+            if leftPriority != rightPriority {
+                return leftPriority && !rightPriority
+            }
+
+            if leftPriority && rightPriority && leftProfile.priorityTier != rightProfile.priorityTier {
+                return leftProfile.priorityTier < rightProfile.priorityTier
+            }
+
+            return leftDistance < rightDistance
+        }
+    }
+
+    var priorityAircraftWithin40: [Aircraft] {
+        displayAircraft.filter { item in
+            item.distanceKilometers(from: center) <= 40
+                && trafficProfile(for: item).isPriorityTraffic
+        }
+    }
+
     func refresh() async {
         guard let url = URL(string: "https://xavpac-one.vercel.app/api/aircraft?radius=50") else {
             errorMessage = "Adresse XavPac invalide."
@@ -56,7 +110,7 @@ final class AircraftService: ObservableObject {
             var request = URLRequest(url: url)
             request.cachePolicy = .reloadIgnoringLocalCacheData
             request.timeoutInterval = 12
-            request.setValue("XavPacTV/2.0", forHTTPHeaderField: "User-Agent")
+            request.setValue("XavPacTV/4.0", forHTTPHeaderField: "User-Agent")
 
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
@@ -84,7 +138,16 @@ final class AircraftService: ObservableObject {
             updatedAt = ISO8601DateFormatter().date(from: payload.fetchedAt ?? "") ?? Date()
             errorMessage = nil
 
-            let top = Array(sorted.prefix(12))
+            let rawPriority = sorted
+                .filter { item in
+                    item.distanceKilometers(from: center) <= 40
+                        && item.trafficProfile(enrichment: nil).isPriorityTraffic
+                }
+            let candidates = rawPriority + sorted
+            var seen = Set<String>()
+            let enrichmentTargets = candidates.filter { seen.insert($0.id).inserted }.prefix(25)
+            let top = Array(enrichmentTargets)
+
             let signature = top.map(\.id).joined(separator: ":")
             let enrichmentExpired = lastEnrichmentAt.map { Date().timeIntervalSince($0) > 30 } ?? true
             if enrichmentExpired || signature != lastEnrichmentSignature {
@@ -165,7 +228,7 @@ final class AircraftService: ObservableObject {
             request.timeoutInterval = 18
             request.cachePolicy = .reloadIgnoringLocalCacheData
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.setValue("XavPacTV/2.0", forHTTPHeaderField: "User-Agent")
+            request.setValue("XavPacTV/4.0", forHTTPHeaderField: "User-Agent")
 
             let (responseData, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
@@ -259,7 +322,7 @@ final class DestinationMediaService: ObservableObject {
             var request = URLRequest(url: url)
             request.timeoutInterval = 15
             request.cachePolicy = .reloadIgnoringLocalCacheData
-            request.setValue("XavPacTV/2.0", forHTTPHeaderField: "User-Agent")
+            request.setValue("XavPacTV/4.0", forHTTPHeaderField: "User-Agent")
 
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
