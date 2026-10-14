@@ -211,50 +211,45 @@ enum TVTrafficKind: String, Hashable {
         switch self {
         case .civilSecurity: return "SÉCURITÉ CIVILE"
         case .medical: return "SECOURS / MÉDICAL"
-        case .military: return "MILITAIRE"
+        case .military: return "ARMÉE"
         case .surveillance: return "SURVEILLANCE"
         case .helicopter: return "HÉLICOPTÈRE"
         case .drone: return "DRONE"
         case .glider: return "PLANEUR"
         case .balloon: return "AÉROSTAT"
         case .ultralight: return "ULM"
-        case .lightPrivate: return "PRIVÉ / LÉGER"
+        case .lightPrivate: return "AVIATION LÉGÈRE / PRIVÉE"
         case .specialized: return "AÉRONEF SPÉCIAL"
-        case .airline: return "VOL DE LIGNE"
+        case .airline: return "LIGNE COMMERCIALE"
         case .unknown: return "AÉRONEF"
         }
     }
 
-    var symbolName: String {
+    var defaultSymbolName: String {
         switch self {
-        case .helicopter, .medical, .civilSecurity:
+        case .helicopter, .medical:
             return "helicopter"
         case .drone:
             return "paperplane.fill"
         case .balloon:
             return "balloon.2.fill"
-        case .military, .surveillance:
-            return "airplane"
-        case .glider, .ultralight, .lightPrivate, .specialized, .airline, .unknown:
+        default:
             return "airplane"
         }
     }
 
+    // Le choix utilisateur est strict : seules la Sécurité civile et l'Armée
+    // déclenchent la priorité automatique et l'alerte.
     var priorityTier: Int {
         switch self {
-        case .civilSecurity, .medical, .military:
-            return 0
-        case .surveillance, .helicopter, .drone:
-            return 1
-        case .glider, .balloon, .ultralight, .lightPrivate, .specialized:
-            return 2
-        case .airline, .unknown:
-            return 9
+        case .civilSecurity: return 0
+        case .military: return 1
+        default: return 9
         }
     }
 
     var isPriorityTraffic: Bool {
-        priorityTier < 9
+        self == .civilSecurity || self == .military
     }
 }
 
@@ -263,13 +258,15 @@ struct TVTrafficProfile: Hashable {
     let label: String
     let symbolName: String
     let priorityTier: Int
+    let relativeIconScale: Double
+    let isRotorcraft: Bool
 
     var isPriorityTraffic: Bool { kind.isPriorityTraffic }
 }
 
 extension Aircraft {
     func trafficProfile(enrichment: TVAircraftEnrichment?) -> TVTrafficProfile {
-        let joined = [
+        let rawValues = [
             callsign,
             registration,
             aircraftType,
@@ -281,23 +278,39 @@ extension Aircraft {
             enrichment?.aircraftCategory,
             enrichment?.operatorName
         ]
-        .compactMap { $0?.lowercased() }
-        .joined(separator: " ")
+        let joined = rawValues
+            .compactMap { $0?.lowercased() }
+            .joined(separator: " ")
 
         let adsbCategory = category?.lowercased()
 
+        let helicopterPattern = #"helic|hélic|rotor|h125|h145|ec145|h135|ec135|as[ .-]?350|as50|écureuil|squirrel|nh90|caracal|cougar|gazelle|dauphin|aw139|aw169|bell|r44|r66"#
+        let isRotorcraft = adsbCategory == "a7"
+            || enrichment?.aircraftCategory == "helicopter"
+            || joined.range(of: helicopterPattern, options: .regularExpression) != nil
+
         let kind: TVTrafficKind
-        if joined.range(of: #"sécurité civile|securite civile|civil security|dragons?d{2}|canadair|cl-?415|cl-?215|water bomber|fire boss|at-?802"#, options: .regularExpression) != nil {
+        if joined.range(
+            of: #"sécurité civile|securite civile|civil security|dragon\s?\d{2}|canadair|cl-?415|cl-?215|water bomber|fire boss|at-?802|dash 8.*sécurité|dash 8.*securite"#,
+            options: .regularExpression
+        ) != nil {
             kind = .civilSecurity
-        } else if joined.range(of: #"samu|smur|medevac|medical|médical|hems|secours|urgences"#, options: .regularExpression) != nil {
-            kind = .medical
-        } else if joined.range(of: #"rafale|mirage|military|militaire|armée|armee|air force|french navy|marine nationale|french army|alat|aéronavale|aeronavale|a400m|c-?130|c160|transall|alphajet|alpha jet|awacs|dga essais"#, options: .regularExpression) != nil || enrichment?.aircraftCategory == "military" {
+        } else if joined.range(
+            of: #"rafale|mirage|fighter|military|militaire|armée|armee|air force|french navy|marine nationale|french army|alat|aéronavale|aeronavale|a400m|c-?130|c160|transall|alphajet|alpha jet|awacs|dga essais|armée de l'air"#,
+            options: .regularExpression
+        ) != nil || enrichment?.aircraftCategory == "military" {
             kind = .military
-        } else if joined.range(of: #"douane|customs|surveillance|police|gendarmerie|coast guard|gardes.côtes|patmar"#, options: .regularExpression) != nil {
+        } else if joined.range(
+            of: #"samu|smur|medevac|medical|médical|hems|secours|urgences"#,
+            options: .regularExpression
+        ) != nil {
+            kind = .medical
+        } else if joined.range(
+            of: #"douane|customs|surveillance|police|gendarmerie|coast guard|gardes.côtes|patmar"#,
+            options: .regularExpression
+        ) != nil {
             kind = .surveillance
-        } else if adsbCategory == "a7"
-                    || enrichment?.aircraftCategory == "helicopter"
-                    || joined.range(of: #"helic|hélic|rotor|h125|h145|ec145|h135|ec135|as[ .-]?350|as50|écureuil|squirrel|nh90|caracal|cougar|gazelle|dauphin"#, options: .regularExpression) != nil {
+        } else if isRotorcraft {
             kind = .helicopter
         } else if adsbCategory == "b6"
                     || enrichment?.aircraftCategory == "drone"
@@ -316,23 +329,57 @@ extension Aircraft {
         } else if enrichment?.aircraftCategory == "light"
                     || adsbCategory == "a1"
                     || adsbCategory == "a2"
-                    || joined.range(of: #"private|privé|cessna|piper|robin|cirrus|diamond|da20|da40|da42|tecnam|pilatus|pc-?6|pc-?12"#, options: .regularExpression) != nil {
+                    || joined.range(
+                        of: #"private|privé|cessna|piper|robin|cirrus|diamond|da20|da40|da42|tecnam|pilatus|pc-?6|pc-?12"#,
+                        options: .regularExpression
+                    ) != nil {
             kind = .lightPrivate
         } else if enrichment?.aircraftCategory == "specialized"
-                    || joined.range(of: #"special|experimental|survey|research|calibration"#, options: .regularExpression) != nil {
+                    || joined.range(
+                        of: #"special|experimental|survey|research|calibration"#,
+                        options: .regularExpression
+                    ) != nil {
             kind = .specialized
         } else if enrichment?.aircraftCategory == "airliner"
-                    || joined.range(of: #"airbus|boeing|a3dd|b7dd|embraer|airliner"#, options: .regularExpression) != nil {
+                    || joined.range(
+                        of: #"airbus|boeing|a3\d\d|b7\d\d|embraer|airliner"#,
+                        options: .regularExpression
+                    ) != nil {
             kind = .airline
         } else {
             kind = .unknown
         }
 
+        let scale: Double
+        if isRotorcraft {
+            scale = 0.90
+        } else if joined.range(
+            of: #"a380|b747|b777|b787|a350|a340|a330|a400m|c-?17|an-?124|beluga"#,
+            options: .regularExpression
+        ) != nil {
+            scale = 1.42
+        } else if joined.range(
+            of: #"a3[12]\d|b737|b738|b739|737 max|embraer|e1[789]0|e2[789]0|crj|atr|dash|dhc-?8|c-?130"#,
+            options: .regularExpression
+        ) != nil {
+            scale = 1.16
+        } else if kind == .lightPrivate || kind == .ultralight || kind == .glider || kind == .drone {
+            scale = 0.78
+        } else if kind == .military {
+            scale = 1.05
+        } else {
+            scale = 1.0
+        }
+
+        let symbolName = isRotorcraft ? "helicopter" : kind.defaultSymbolName
+
         return TVTrafficProfile(
             kind: kind,
             label: kind.label,
-            symbolName: kind.symbolName,
-            priorityTier: kind.priorityTier
+            symbolName: symbolName,
+            priorityTier: kind.priorityTier,
+            relativeIconScale: scale,
+            isRotorcraft: isRotorcraft
         )
     }
 }
