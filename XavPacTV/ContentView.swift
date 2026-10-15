@@ -71,16 +71,9 @@ struct ContentView: View {
             let mapWidth = bodyWidth * 0.61
 
             ZStack {
-                LinearGradient(
-                    colors: [
-                        Color(red: 0.87, green: 0.96, blue: 1.0),
-                        Color(red: 0.99, green: 0.995, blue: 1.0),
-                        Color(red: 0.91, green: 0.97, blue: 1.0)
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-                .ignoresSafeArea()
+                SkyShowBackdrop()
+                    .ignoresSafeArea()
+                    .allowsHitTesting(false)
 
                 VStack(spacing: 18) {
                     cinemaHeader
@@ -91,11 +84,26 @@ struct ContentView: View {
                             .frame(width: mapWidth)
 
                         VStack(spacing: 18) {
-                            cinemaDestination
-                                .frame(maxHeight: .infinity)
+                            Group {
+                                if let priorityAircraft {
+                                    cinemaPrioritySpotlight(priorityAircraft)
+                                        .transition(.opacity.combined(with: .scale(scale: 0.97)))
+                                } else {
+                                    cinemaDestination
+                                        .transition(.opacity.combined(with: .scale(scale: 0.97)))
+                                }
+                            }
+                            .frame(maxHeight: .infinity)
+                            .animation(.easeInOut(duration: 0.75), value: priorityAircraft?.id)
 
-                            cinemaPriorityStatus
-                                .frame(height: 125)
+                            Group {
+                                if priorityAircraft != nil {
+                                    cinemaFeatured
+                                } else {
+                                    cinemaPriorityStatus
+                                }
+                            }
+                            .frame(height: 125)
                         }
                         .frame(maxWidth: .infinity)
                     }
@@ -105,7 +113,7 @@ struct ContentView: View {
                         .frame(height: 282)
 
                     HStack {
-                        Text("✦ XAVPAC TV  •  LE CIEL EN SPECTACLE")
+                        Text("✦ XAVPAC TV  •  SKY SHOW  •  LE CIEL EN SPECTACLE")
                         Spacer()
                         Text("BÂGÉ-DOMMARTIN  •  RAYON 50 KM  •  DIRECT")
                     }
@@ -172,7 +180,7 @@ struct ContentView: View {
                         .foregroundStyle(Color(red: 0.01, green: 0.59, blue: 0.82))
                 }
                 .font(.system(size: 52, weight: .black, design: .rounded))
-                Text("PODIUM DES APPROCHES  •  LE CIEL EN DIRECT")
+                Text("LE CIEL S'ANIME  ✦  LE SPECTACLE EST EN DIRECT")
                     .font(.system(size: 20, weight: .bold))
                     .tracking(3)
                     .foregroundStyle(Color(red: 0.25, green: 0.48, blue: 0.64))
@@ -219,23 +227,13 @@ struct ContentView: View {
                 profiles: trafficProfiles
             )
             .overlay(alignment: .bottomLeading) {
-                HStack(spacing: 13) {
-                    Image(systemName: "location.fill")
-                        .foregroundStyle(Color(red: 0.0, green: 0.64, blue: 0.81))
-                    Text("HOME  •  BÂGÉ-DOMMARTIN")
-                }
-                .font(.system(size: 22, weight: .black))
-                .foregroundStyle(Color(red: 0.06, green: 0.27, blue: 0.41))
-                .padding(.horizontal, 20)
-                .padding(.vertical, 15)
-                .background(Color.white.opacity(0.96), in: RoundedRectangle(cornerRadius: 17))
-                .padding(23)
+                EmptyView()
             }
 
             HStack(spacing: 12) {
-                Circle().fill(.green).frame(width: 14, height: 14)
-                Text("RADAR LIVE")
-                    .font(.system(size: 25, weight: .black, design: .rounded))
+                Image(systemName: "sparkle")
+                    .font(.system(size: 20, weight: .heavy))
+                    .foregroundStyle(Color(red: 0.05, green: 0.65, blue: 0.87))
                 Text("50 KM")
                     .font(.system(size: 22, weight: .bold))
                     .foregroundStyle(Color(red: 0.14, green: 0.46, blue: 0.62))
@@ -262,6 +260,10 @@ struct ContentView: View {
                     .frame(width: geometry.size.width, height: geometry.size.height)
                     .clipped()
                     .id(mediaService.current?.id ?? "cinema-fallback")
+                    .transition(.opacity)
+                    .animation(.easeInOut(duration: 1.0), value: mediaService.current?.id)
+                SkyShowGlimmers()
+                    .allowsHitTesting(false)
 
                 LinearGradient(
                     colors: [.clear, .black.opacity(0.04), Color(red: 0.01, green: 0.10, blue: 0.25).opacity(0.96)],
@@ -273,7 +275,7 @@ struct ContentView: View {
                     HStack(spacing: 11) {
                         Image(systemName: "play.rectangle.fill")
                             .font(.system(size: 28, weight: .bold))
-                        Text("ESCALE IMMERSIVE")
+                        Text("✦  ESCALE IMMERSIVE")
                             .font(.system(size: 23, weight: .black))
                             .tracking(1.8)
                         Spacer()
@@ -311,7 +313,129 @@ struct ContentView: View {
         .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 26)
             .stroke(Color.white, lineWidth: 4))
-        .shadow(color: .cyan.opacity(0.17), radius: 18, y: 6)
+        .shadow(color: .cyan.opacity(0.25), radius: 25, y: 6)
+    }
+
+
+    // Le trafic Sécurité civile / Armée prend naturellement la place de l'escale.
+    // Photo réellement rattachée à l'appareil si disponible, jamais inventée.
+    private func cinemaPrioritySpotlight(_ aircraft: Aircraft) -> some View {
+        let enrichment = service.enrichment(for: aircraft)
+        let profile = service.trafficProfile(for: aircraft)
+        let safety = profile.kind == .civilSecurity
+        let alertTint = safety ? Color(red: 1.0, green: 0.70, blue: 0.18)
+                               : Color(red: 1.0, green: 0.29, blue: 0.35)
+        let aircraftName = enrichment?.aircraftModel
+            ?? enrichment?.aircraftType
+            ?? aircraft.description
+            ?? aircraft.aircraftType
+            ?? "TYPE EN COURS D'IDENTIFICATION"
+
+        return GeometryReader { geometry in
+            ZStack(alignment: .bottomLeading) {
+                if let photoURL = enrichment?.photoURL,
+                   enrichment?.photo.kind != "generic" {
+                    AsyncImage(url: photoURL) { phase in
+                        if let image = phase.image {
+                            image.resizable().scaledToFill()
+                        } else {
+                            priorityPhotoPlaceholder(isHelicopter: profile.isRotorcraft, color: alertTint)
+                        }
+                    }
+                    .frame(width: geometry.size.width, height: geometry.size.height)
+                    .clipped()
+                } else {
+                    priorityPhotoPlaceholder(isHelicopter: profile.isRotorcraft, color: alertTint)
+                }
+
+                LinearGradient(
+                    colors: [.black.opacity(0.08), .black.opacity(0.30),
+                             Color(red: 0.05, green: 0.09, blue: 0.20).opacity(0.97)],
+                    startPoint: .top, endPoint: .bottom
+                )
+                SkyShowGlimmers()
+                    .allowsHitTesting(false)
+
+                VStack(alignment: .leading, spacing: 13) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 30, weight: .black))
+                        Text("✦  PASSAGE EXCEPTIONNEL")
+                            .font(.system(size: 22, weight: .black, design: .rounded))
+                            .tracking(1.3)
+                        Spacer(minLength: 0)
+                        Image(systemName: profile.isRotorcraft ? "helicopter" : "airplane")
+                            .font(.system(size: 32, weight: .heavy))
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 13)
+                    .background(alertTint.opacity(0.85), in: RoundedRectangle(cornerRadius: 15))
+                    .modifier(CinemaAlertPulse(isEnabled: true))
+
+                    Spacer()
+
+                    Text(safety ? "SÉCURITÉ CIVILE" : "ARMÉE")
+                        .font(.system(size: 28, weight: .black, design: .rounded))
+                        .tracking(3)
+                        .foregroundStyle(alertTint)
+                        .shadow(color: .black, radius: 6)
+
+                    Text(aircraftName)
+                        .font(.system(size: 54, weight: .black, design: .rounded))
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.62)
+                        .foregroundStyle(.white)
+                        .shadow(color: .black.opacity(0.6), radius: 8)
+
+                    HStack(alignment: .firstTextBaseline, spacing: 12) {
+                        Text(aircraft.displayName)
+                            .font(.system(size: 28, weight: .bold))
+                            .lineLimit(1)
+                        Spacer(minLength: 5)
+                        Text(String(format: "%.1f", aircraft.distanceKilometers(from: service.center))
+                             + " KM")
+                            .font(.system(size: 42, weight: .black, design: .rounded))
+                            .monospacedDigit()
+                    }
+                    .foregroundStyle(.white)
+
+                    HStack(spacing: 20) {
+                        Label(aircraft.altitudeLabel, systemImage: "mountain.2.fill")
+                        Label(aircraft.speedLabel, systemImage: "speedometer")
+                    }
+                    .font(.system(size: 21, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.83))
+                }
+                .padding(30)
+            }
+        }
+        .background(Color(red: 0.10, green: 0.13, blue: 0.22))
+        .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 26, style: .continuous)
+                .stroke(alertTint, lineWidth: 4)
+        }
+        .shadow(color: alertTint.opacity(0.55), radius: 25)
+    }
+
+    private func priorityPhotoPlaceholder(isHelicopter: Bool, color: Color) -> some View {
+        GeometryReader { geometry in
+            ZStack {
+                LinearGradient(
+                    colors: [Color(red: 0.12, green: 0.21, blue: 0.42),
+                             color.opacity(0.68),
+                             Color(red: 0.08, green: 0.14, blue: 0.29)],
+                    startPoint: .topLeading, endPoint: .bottomTrailing
+                )
+                Image(systemName: isHelicopter ? "helicopter" : "airplane")
+                    .font(.system(size: 170, weight: .ultraLight))
+                    .foregroundStyle(.white.opacity(0.58))
+                    .rotationEffect(.degrees(-12))
+                    .shadow(color: color.opacity(0.8), radius: 30)
+            }
+            .frame(width: geometry.size.width, height: geometry.size.height)
+        }
     }
 
     private var cinemaRouteLabel: String {
