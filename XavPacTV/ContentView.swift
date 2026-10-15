@@ -8,6 +8,7 @@ struct ContentView: View {
     @StateObject private var mediaService = DestinationMediaService()
     @StateObject private var airportWeather = AirportWeatherService()
     @StateObject private var soundscape = AmbientSoundscape()
+    @State private var displayClock = Date()
 
     private let navy = Color(red: 0.018, green: 0.075, blue: 0.16)
     private let deepBlue = Color(red: 0.02, green: 0.16, blue: 0.31)
@@ -28,12 +29,33 @@ struct ContentView: View {
 
     // Conserver les moyens nationaux en alerte pendant les escales vidéo.
     private var priorityAircraft: Aircraft? {
-        service.priorityAircraftWithin40.first
+        service.specialAircraftInZone.first
     }
 
     private var priorityProfile: TVTrafficProfile? {
         guard let priorityAircraft else { return nil }
         return service.trafficProfile(for: priorityAircraft)
+    }
+
+    private var specialCounts: (civil: Int, military: Int, medical: Int, helicopters: Int) {
+        let kinds = service.specialAircraftInZone.map { service.trafficProfile(for: $0).kind }
+        return (
+            kinds.filter { $0 == .civilSecurity }.count,
+            kinds.filter { $0 == .military }.count,
+            kinds.filter { $0 == .medical }.count,
+            kinds.filter { $0 == .helicopter }.count
+        )
+    }
+
+    private var radarIsLive: Bool {
+        guard let updated = service.updatedAt else { return false }
+        return service.errorMessage == nil && displayClock.timeIntervalSince(updated) < 40
+    }
+
+    private var radarStatus: String {
+        guard let updated = service.updatedAt else { return "RECHERCHE DU TRAFIC…" }
+        if !radarIsLive { return "DONNÉES À ACTUALISER" }
+        return "RADAR ACTIF · " + updated.formatted(date: .omitted, time: .shortened)
     }
 
     private var trafficProfiles: [String: TVTrafficProfile] {
@@ -67,7 +89,7 @@ struct ContentView: View {
         guard let aircraft = featuredAircraft,
               let profile = featuredProfile else { return false }
         return profile.isPriorityTraffic
-            && aircraft.distanceKilometers(from: service.center) <= 40
+            && aircraft.distanceKilometers(from: service.center) <= 50
     }
 
     private var isOverheadPass: Bool {
@@ -82,7 +104,10 @@ struct ContentView: View {
     }
 
     private var priorityAlertKey: String {
-        priorityAircraft?.id ?? "none"
+        // Ne pas interrompre l'ambiance pour un simple hélicoptère privé.
+        guard let aircraft = priorityAircraft else { return "none" }
+        let kind = service.trafficProfile(for: aircraft).kind
+        return kind == .helicopter ? "none" : aircraft.id
     }
 
     // Mode cinéma tvOS : tout doit rester lisible depuis la table, à plusieurs mètres.
@@ -118,14 +143,8 @@ struct ContentView: View {
                             .frame(maxHeight: .infinity)
                             .animation(.easeInOut(duration: 0.75), value: priorityAircraft?.id)
 
-                            Group {
-                                if priorityAircraft != nil {
-                                    cinemaPriorityStatus
-                                } else {
-                                    cinemaFeatured
-                                }
-                            }
-                            .frame(height: 125)
+                            cinemaPriorityStatus
+                                .frame(height: 125)
                         }
                         .frame(maxWidth: .infinity)
                     }
@@ -158,6 +177,15 @@ struct ContentView: View {
             UIApplication.shared.isIdleTimerDisabled = false
             service.stop()
             soundscape.stop()
+        }
+        .task {
+            // L'état de liaison évolue même lorsque le fournisseur ADS-B
+            // ne répond plus : ne jamais afficher EN DIRECT indéfiniment.
+            while !Task.isCancelled {
+                do { try await Task.sleep(nanoseconds: 4_000_000_000) }
+                catch { break }
+                displayClock = Date()
+            }
         }
         .task(id: podiumWeatherKey) {
             await airportWeather.refresh(for: podiumAirports)
@@ -348,9 +376,13 @@ struct ContentView: View {
     private func cinemaPrioritySpotlight(_ aircraft: Aircraft) -> some View {
         let enrichment = service.enrichment(for: aircraft)
         let profile = service.trafficProfile(for: aircraft)
-        let safety = profile.kind == .civilSecurity
-        let alertTint = safety ? Color(red: 1.0, green: 0.70, blue: 0.18)
-                               : Color(red: 1.0, green: 0.29, blue: 0.35)
+        let alertTint: Color
+        switch profile.kind {
+        case .civilSecurity: alertTint = Color(red: 1.0, green: 0.70, blue: 0.18)
+        case .military: alertTint = Color(red: 1.0, green: 0.29, blue: 0.35)
+        case .medical: alertTint = Color(red: 0.12, green: 0.88, blue: 0.55)
+        default: alertTint = Color(red: 0.11, green: 0.80, blue: 0.96)
+        }
         let aircraftName = enrichment?.aircraftModel
             ?? enrichment?.aircraftType
             ?? aircraft.description
@@ -401,7 +433,7 @@ struct ContentView: View {
 
                     Spacer()
 
-                    Text(safety ? "SÉCURITÉ CIVILE" : "ARMÉE")
+                    Text(profile.label)
                         .font(.system(size: 28, weight: .black, design: .rounded))
                         .tracking(3)
                         .foregroundStyle(alertTint)
@@ -429,6 +461,7 @@ struct ContentView: View {
                     HStack(spacing: 20) {
                         Label(aircraft.altitudeLabel, systemImage: "mountain.2.fill")
                         Label(aircraft.speedLabel, systemImage: "speedometer")
+                        Label(aircraft.headingLabel, systemImage: "location.north.fill")
                     }
                     .font(.system(size: 21, weight: .bold))
                     .foregroundStyle(.white.opacity(0.83))
