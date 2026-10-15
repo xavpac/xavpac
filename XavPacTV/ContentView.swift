@@ -108,9 +108,9 @@ struct ContentView: View {
 
                             Group {
                                 if priorityAircraft != nil {
-                                    cinemaFeatured
-                                } else {
                                     cinemaPriorityStatus
+                                } else {
+                                    cinemaFeatured
                                 }
                             }
                             .frame(height: 125)
