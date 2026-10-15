@@ -118,12 +118,9 @@ final class AircraftService: ObservableObject {
 
             let payload = try JSONDecoder().decode(AircraftPayload.self, from: data)
 
-            if let responseCenter = payload.center {
-                center = CLLocationCoordinate2D(
-                    latitude: responseCenter.latitude,
-                    longitude: responseCenter.longitude
-                )
-            }
+            // HOME est un point géographique fixe : ne jamais utiliser le centre
+            // de recherche renvoyé par une API ou un ancien serveur.
+            // Sinon, la maison peut apparaître vers Mâcon au lieu de Bâgé-Dommartin.
 
             let sorted = payload.aircraft
                 .filter { !$0.onGround.orFalse }
