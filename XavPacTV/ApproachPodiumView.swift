@@ -47,6 +47,7 @@ struct ApproachPodiumCard: View {
 
     private var distance: String {
         String(format: "%.1f", aircraft.distanceKilometers(from: home))
+            .replacingOccurrences(of: ".", with: ",")
     }
 
     var body: some View {
