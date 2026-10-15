@@ -50,7 +50,7 @@ private final class AircraftAnnotationView: MKAnnotationView {
         glyphView.layer.shadowOffset = .zero
         addSubview(glyphView)
 
-        tagLabel.font = .systemFont(ofSize: 15, weight: .heavy)
+        tagLabel.font = .systemFont(ofSize: 22, weight: .heavy)
         tagLabel.textColor = UIColor(red: 0.02, green: 0.08, blue: 0.16, alpha: 1)
         tagLabel.textAlignment = .center
         tagLabel.backgroundColor = UIColor.white.withAlphaComponent(0.96)
@@ -75,8 +75,8 @@ private final class AircraftAnnotationView: MKAnnotationView {
 
         let tint = color(for: item.profile.kind)
         let scale = CGFloat(item.profile.relativeIconScale)
-        let normalSize = max(25, 30 * scale)
-        let selectedSize = max(44, 48 * scale)
+        let normalSize = max(34, 42 * scale)
+        let selectedSize = max(52, 62 * scale)
         let symbolSize = item.isSelected ? selectedSize : normalSize
 
         if item.profile.isRotorcraft {
@@ -113,12 +113,12 @@ private final class AircraftAnnotationView: MKAnnotationView {
         }
 
         if item.isSelected {
-            frame = CGRect(x: 0, y: 0, width: 316, height: 72)
+            frame = CGRect(x: 0, y: 0, width: 410, height: 94)
 
-            let haloSize = max(54, 58 * scale)
+            let haloSize = max(70, 80 * scale)
             haloView.frame = CGRect(
                 x: 0,
-                y: (72 - haloSize) / 2,
+                y: (94 - haloSize) / 2,
                 width: haloSize,
                 height: haloSize
             )
@@ -129,7 +129,7 @@ private final class AircraftAnnotationView: MKAnnotationView {
 
             glyphView.frame = CGRect(
                 x: 5,
-                y: (72 - selectedSize) / 2,
+                y: (94 - selectedSize) / 2,
                 width: selectedSize,
                 height: selectedSize
             )
@@ -142,16 +142,16 @@ private final class AircraftAnnotationView: MKAnnotationView {
             }
 
             tagLabel.text = "  \(title) · \(String(format: "%.1f", item.distanceKm)) km  "
-            tagLabel.frame = CGRect(x: 68, y: 14, width: 238, height: 44)
+            tagLabel.frame = CGRect(x: 87, y: 18, width: 310, height: 58)
             tagLabel.layer.borderColor = tint.withAlphaComponent(0.90).cgColor
             tagLabel.isHidden = false
-            centerOffset = CGPoint(x: 120, y: 0)
+            centerOffset = CGPoint(x: 145, y: 0)
 
             if item.profile.isPriorityTraffic {
                 addPriorityPulse(color: tint)
             }
         } else {
-            let viewSize = max(42, 46 * scale)
+            let viewSize = max(56, 62 * scale)
             frame = CGRect(x: 0, y: 0, width: viewSize, height: viewSize)
 
             haloView.frame = bounds.insetBy(dx: 2, dy: 2)
@@ -320,9 +320,9 @@ struct AircraftMapView: UIViewRepresentable {
     func makeUIView(context: Context) -> MKMapView {
         let map = MKMapView(frame: .zero)
         map.delegate = context.coordinator
-        map.mapType = .hybrid
+        map.mapType = .standard
         map.pointOfInterestFilter = .excludingAll
-        map.overrideUserInterfaceStyle = .dark
+        map.overrideUserInterfaceStyle = .light
 
         // La cartographie XavPac TV est volontairement figée :
         // aucun déplacement, zoom ou réglage n'est possible depuis la télécommande.
@@ -429,8 +429,8 @@ struct AircraftMapView: UIViewRepresentable {
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
             if let polyline = overlay as? MKPolyline {
                 let renderer = MKPolylineRenderer(polyline: polyline)
-                renderer.strokeColor = UIColor.systemCyan.withAlphaComponent(0.94)
-                renderer.lineWidth = 5
+                renderer.strokeColor = UIColor(red: 0.00, green: 0.44, blue: 0.78, alpha: 0.92)
+                renderer.lineWidth = 6
                 renderer.lineJoin = .round
                 renderer.lineCap = .round
                 return renderer
@@ -438,8 +438,8 @@ struct AircraftMapView: UIViewRepresentable {
 
             if let circle = overlay as? MKCircle {
                 let renderer = MKCircleRenderer(circle: circle)
-                renderer.strokeColor = UIColor.systemCyan.withAlphaComponent(0.56)
-                renderer.fillColor = UIColor.systemCyan.withAlphaComponent(0.015)
+                renderer.strokeColor = UIColor(red: 0.03, green: 0.50, blue: 0.80, alpha: 0.48)
+                renderer.fillColor = UIColor(red: 0.15, green: 0.76, blue: 0.98, alpha: 0.025)
                 renderer.lineWidth = circle.radius >= 40_000 ? 1.8 : 1.2
                 renderer.lineDashPattern = [8, 8]
                 return renderer
