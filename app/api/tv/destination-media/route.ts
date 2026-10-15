@@ -12,6 +12,7 @@ type DestinationMediaItem = {
   author: string | null;
   sourceName: string;
   sourceUrl: string | null;
+  appleVideoUrl?: string | null;
 };
 
 type PexelsVideoFile = {
@@ -450,10 +451,21 @@ async function fetchCommonsVideos(city: string, _iata: string, _page: number, _t
           const info = page.videoinfo?.[0];
           const derivative = pickCommonsVideoDerivative(info?.derivatives);
           if (!derivative?.src) return [];
+          // Les films WebM s'affichent sur le site, mais la tvOS native doit
+          // recevoir une dérivée MP4 ou QuickTime pour son lecteur AVPlayer.
+          const appleDerivative = (info?.derivatives ?? [])
+            .filter((item) => {
+              const mime = (item.type ?? "").toLowerCase();
+              return (mime.includes("video/mp4") || mime.includes("video/quicktime"))
+                && item.src?.startsWith("https://")
+                && (item.width ?? 0) >= 360;
+            })
+            .sort((first, second) => (second.width ?? 0) - (first.width ?? 0))[0];
           return [{
             id: `commons-video-${page.pageid ?? hashString(derivative.src)}`,
             type: "video",
             url: derivative.src,
+            appleVideoUrl: appleDerivative?.src ?? null,
             preview: info?.thumburl?.startsWith("https://") ? info.thumburl : null,
             author: stripHtml(info?.extmetadata?.Artist?.value)
               || stripHtml(info?.extmetadata?.Credit?.value),
