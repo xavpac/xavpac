@@ -25,6 +25,16 @@ struct ContentView: View {
         return service.trafficProfile(for: featuredAircraft)
     }
 
+    // Conserver les moyens nationaux en alerte pendant les escales vidéo.
+    private var priorityAircraft: Aircraft? {
+        service.priorityAircraftWithin40.first
+    }
+
+    private var priorityProfile: TVTrafficProfile? {
+        guard let priorityAircraft else { return nil }
+        return service.trafficProfile(for: priorityAircraft)
+    }
+
     private var trafficProfiles: [String: TVTrafficProfile] {
         Dictionary(uniqueKeysWithValues: service.aircraft.map { aircraft in
             (aircraft.id, service.trafficProfile(for: aircraft))
@@ -40,7 +50,7 @@ struct ContentView: View {
 
     private var isOverheadPass: Bool {
         guard let aircraft = featuredAircraft else { return false }
-        return aircraft.distanceKilometers(from: service.center) <= 8
+        return aircraft.distanceKilometers(from: service.center) <= 12
     }
 
     private var destinationTaskKey: String {
@@ -50,7 +60,7 @@ struct ContentView: View {
     }
 
     private var priorityAlertKey: String {
-        isPriorityActive ? (featuredAircraft?.id ?? "priority") : "none"
+        priorityAircraft?.id ?? "none"
     }
 
     var body: some View {
@@ -87,7 +97,11 @@ struct ContentView: View {
             }
             .padding(12)
             .background(
-                navy.opacity(0.97),
+                LinearGradient(
+                    colors: [Color.white.opacity(0.98), Color(red: 0.91, green: 0.97, blue: 1.0)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ),
                 in: RoundedRectangle(cornerRadius: 32, style: .continuous)
             )
             .overlay {
@@ -165,7 +179,7 @@ struct ContentView: View {
                         .font(.system(size: 35, weight: .heavy, design: .rounded))
                         .foregroundStyle(.cyan)
                 }
-                Text("TRAFIC AÉRIEN EN DIRECT")
+                Text("LE CIEL EN SPECTACLE · EN DIRECT")
                     .font(.caption.bold())
                     .foregroundStyle(.white.opacity(0.72))
             }
@@ -253,7 +267,7 @@ struct ContentView: View {
             )
 
             GeometryReader { proxy in
-                let size = min(proxy.size.width, proxy.size.height) * 0.64
+                let size = min(proxy.size.width, proxy.size.height) * 0.43
                 RadarSweepOverlay()
                     .frame(width: size, height: size)
                     .position(
@@ -267,9 +281,8 @@ struct ContentView: View {
                 compactStatus
                 Spacer()
 
-                if let aircraft = featuredAircraft,
-                   let profile = featuredProfile,
-                   isPriorityActive {
+                if let aircraft = priorityAircraft,
+                   let profile = priorityProfile {
                     PriorityAlertBanner(
                         title: profile.kind == .civilSecurity ? "SÉCURITÉ CIVILE" : "ARMÉE",
                         subtitle: "\(profile.label) · \(distanceText(aircraft))",
@@ -459,7 +472,7 @@ struct ContentView: View {
         ZStack(alignment: .bottomLeading) {
             destinationMediaView
                 .id(mediaService.current?.id ?? "destination-fallback")
-                .frame(height: 220)
+                .frame(height: 258)
                 .clipped()
                 .animation(.easeInOut(duration: 0.8), value: mediaService.current?.id)
 
@@ -523,7 +536,7 @@ struct ContentView: View {
         if let media = mediaService.current {
             if media.isVideo,
                isOverheadPass,
-               let url = media.mediaURL {
+               let url = media.televisionVideoURL {
                 LoopingVideoView(url: url)
             } else if media.isVideo,
                       let preview = media.previewURL {
@@ -531,6 +544,8 @@ struct ContentView: View {
                     url: preview,
                     fallback: AnyView(destinationFallback)
                 )
+            } else if media.isVideo {
+                destinationFallback
             } else if let url = media.mediaURL {
                 CinematicDestinationImage(
                     url: url,
