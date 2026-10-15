@@ -5,7 +5,7 @@ import Foundation
 @MainActor
 final class AircraftService: ObservableObject {
     @Published private(set) var aircraft: [Aircraft] = []
-    @Published private(set) var center = CLLocationCoordinate2D(latitude: 46.346, longitude: 4.977)
+    @Published private(set) var center = CLLocationCoordinate2D(latitude: 46.345497, longitude: 4.976824)
     @Published private(set) var source = "XavPac"
     @Published private(set) var updatedAt: Date?
     @Published private(set) var errorMessage: String?
@@ -51,24 +51,23 @@ final class AircraftService: ObservableObject {
     }
 
     var featuredAircraft: Aircraft? {
-        let priority = aircraft
+        // À proximité immédiate, présenter le vol dont la destination est connue
+        // afin que la vidéo de ville démarre sans aucune action sur la télécommande.
+        let closeIdentifiedFlight = aircraft
             .filter { item in
-                item.distanceKilometers(from: center) <= 40
-                    && trafficProfile(for: item).isPriorityTraffic
+                item.distanceKilometers(from: center) <= 12
+                    && enrichment(for: item)?.arrivalAirport != nil
+                    && enrichment(for: item)?.routeConfidence != "unavailable"
             }
-            .sorted { lhs, rhs in
-                let leftProfile = trafficProfile(for: lhs)
-                let rightProfile = trafficProfile(for: rhs)
-
-                if leftProfile.priorityTier != rightProfile.priorityTier {
-                    return leftProfile.priorityTier < rightProfile.priorityTier
-                }
-
-                return lhs.distanceKilometers(from: center)
-                    < rhs.distanceKilometers(from: center)
+            .min { left, right in
+                left.distanceKilometers(from: center) < right.distanceKilometers(from: center)
             }
+        if let closeIdentifiedFlight {
+            return closeIdentifiedFlight
+        }
 
-        return priority.first ?? aircraft.first
+        // Sinon, priorité seulement à la Sécurité civile et aux armées.
+        return priorityAircraftWithin40.first ?? aircraft.first
     }
 
     var displayAircraft: [Aircraft] {
@@ -101,7 +100,7 @@ final class AircraftService: ObservableObject {
     }
 
     func refresh() async {
-        guard let url = URL(string: "https://xavpac-one.vercel.app/api/aircraft?radius=50") else {
+        guard let url = URL(string: "\(xavPacBaseURL.absoluteString)/api/aircraft?lat=46.345497&lon=4.976824&radius=50") else {
             errorMessage = "Adresse XavPac invalide."
             return
         }
@@ -193,7 +192,7 @@ final class AircraftService: ObservableObject {
                 || !($0.registration ?? "").isEmpty
         }
         guard !valid.isEmpty,
-              let url = URL(string: "https://xavpac-one.vercel.app/api/aviation/enriched-aircraft") else {
+              let url = URL(string: "\(xavPacBaseURL.absoluteString)/api/aviation/enriched-aircraft") else {
             return
         }
 
@@ -286,7 +285,7 @@ final class DestinationMediaService: ObservableObject {
 
     func preferVideo() {
         guard !items.isEmpty,
-              let videoIndex = items.firstIndex(where: { $0.isVideo }) else {
+              let videoIndex = items.firstIndex(where: { $0.televisionVideoURL != nil }) else {
             return
         }
 
@@ -310,7 +309,7 @@ final class DestinationMediaService: ObservableObject {
     }
 
     private func fetch(city: String, iata: String?) async {
-        guard var components = URLComponents(string: "https://xavpac-one.vercel.app/api/tv/destination-media") else {
+        guard var components = URLComponents(string: "\(xavPacBaseURL.absoluteString)/api/tv/destination-media") else {
             return
         }
 
@@ -340,9 +339,8 @@ final class DestinationMediaService: ObservableObject {
 
             let payload = try JSONDecoder().decode(DestinationMediaPayload.self, from: data)
             let seen = seenIDs(for: city)
-            let unseen = payload.items.filter { !seen.contains($0.id) }.shuffled()
-            let fallback = payload.items.shuffled()
-            let chosen = unseen.isEmpty ? fallback : unseen
+            let unseen = payload.items.filter { !seen.contains($0.id) }
+            let chosen = unseen.isEmpty ? payload.items : unseen
 
             self.city = payload.city
             self.provider = payload.provider
