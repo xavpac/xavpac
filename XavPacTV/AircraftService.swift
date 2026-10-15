@@ -13,11 +13,13 @@ final class AircraftService: ObservableObject {
     @Published private(set) var trails: [String: [CLLocationCoordinate2D]] = [:]
 
     private var refreshTask: Task<Void, Never>?
+    private var enrichmentTask: Task<Void, Never>?
     private var lastEnrichmentAt: Date?
     private var lastEnrichmentSignature = ""
 
     deinit {
         refreshTask?.cancel()
+        enrichmentTask?.cancel()
     }
 
     func start() {
@@ -38,6 +40,8 @@ final class AircraftService: ObservableObject {
     func stop() {
         refreshTask?.cancel()
         refreshTask = nil
+        enrichmentTask?.cancel()
+        enrichmentTask = nil
     }
 
     func enrichment(for aircraft: Aircraft?) -> TVAircraftEnrichment? {
@@ -51,8 +55,13 @@ final class AircraftService: ObservableObject {
     }
 
     var featuredAircraft: Aircraft? {
-        // À proximité immédiate, présenter le vol dont la destination est connue
-        // afin que la vidéo de ville démarre sans aucune action sur la télécommande.
+        // Une escale vidéo cède toujours la place aux moyens spéciaux détectés.
+        if let special = specialAircraftInZone.first {
+            return special
+        }
+
+        // Sans moyen spécial, privilégier le vol qui passe près de HOME
+        // et dont la ville d'arrivée est réellement identifiée.
         let closeIdentifiedFlight = aircraft
             .filter { item in
                 item.distanceKilometers(from: center) <= 12
@@ -62,12 +71,7 @@ final class AircraftService: ObservableObject {
             .min { left, right in
                 left.distanceKilometers(from: center) < right.distanceKilometers(from: center)
             }
-        if let closeIdentifiedFlight {
-            return closeIdentifiedFlight
-        }
-
-        // Sinon, priorité seulement à la Sécurité civile et aux armées.
-        return priorityAircraftWithin40.first ?? aircraft.first
+        return closeIdentifiedFlight ?? aircraft.first
     }
 
     var displayAircraft: [Aircraft] {
@@ -77,8 +81,8 @@ final class AircraftService: ObservableObject {
             let leftProfile = trafficProfile(for: lhs)
             let rightProfile = trafficProfile(for: rhs)
 
-            let leftPriority = leftDistance <= 40 && leftProfile.isPriorityTraffic
-            let rightPriority = rightDistance <= 40 && rightProfile.isPriorityTraffic
+            let leftPriority = leftDistance <= 50 && leftProfile.isPriorityTraffic
+            let rightPriority = rightDistance <= 50 && rightProfile.isPriorityTraffic
 
             if leftPriority != rightPriority {
                 return leftPriority && !rightPriority
@@ -92,9 +96,11 @@ final class AircraftService: ObservableObject {
         }
     }
 
-    var priorityAircraftWithin40: [Aircraft] {
+    var specialAircraftInZone: [Aircraft] {
+        // Les avions commerciaux ne sont pas des moyens spéciaux.
+        // Tous les hélicoptères, le SAMU, l'Armée et la Sécurité civile le sont.
         displayAircraft.filter { item in
-            item.distanceKilometers(from: center) <= 40
+            item.distanceKilometers(from: center) <= 50
                 && trafficProfile(for: item).isPriorityTraffic
         }
     }
@@ -124,6 +130,8 @@ final class AircraftService: ObservableObject {
 
             let sorted = payload.aircraft
                 .filter { !$0.onGround.orFalse }
+                .filter { $0.positionAgeSeconds.map { $0 <= 120 } ?? true }
+                .filter { $0.distanceKilometers(from: center) <= 50 }
                 .sorted { lhs, rhs in
                     lhs.distanceKilometers(from: center) < rhs.distanceKilometers(from: center)
                 }
@@ -136,7 +144,7 @@ final class AircraftService: ObservableObject {
 
             let rawPriority = sorted
                 .filter { item in
-                    item.distanceKilometers(from: center) <= 40
+                    item.distanceKilometers(from: center) <= 50
                         && item.trafficProfile(enrichment: nil).isPriorityTraffic
                 }
             let candidates = rawPriority + sorted
@@ -147,9 +155,14 @@ final class AircraftService: ObservableObject {
             let signature = top.map(\.id).joined(separator: ":")
             let enrichmentExpired = lastEnrichmentAt.map { Date().timeIntervalSince($0) > 30 } ?? true
             if enrichmentExpired || signature != lastEnrichmentSignature {
-                await refreshEnrichment(for: top)
+                // L'API d'enrichissement peut prendre plusieurs secondes.
+                // Ne jamais retarder le cycle radar de 8 secondes pour des photos.
+                enrichmentTask?.cancel()
                 lastEnrichmentAt = Date()
                 lastEnrichmentSignature = signature
+                enrichmentTask = Task { [weak self] in
+                    await self?.refreshEnrichment(for: top)
+                }
             }
         } catch {
             errorMessage = "Trafic momentanément indisponible — dernière situation conservée."
