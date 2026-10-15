@@ -376,80 +376,88 @@ async function fetchPixabay(city: string, _iata: string, page: number, _theme: s
 
 
 function pickCommonsVideoDerivative(derivatives?: CommonsVideoDerivative[]) {
+  // Commons proposes generally WebM and QuickTime transcodes rather than MP4.
+  // Keep the best widely-playable derivative; the client skips broken videos.
   const candidates = (derivatives ?? [])
     .filter((item) => {
       const src = item.src ?? "";
       const type = (item.type ?? "").toLowerCase();
-      const key = (item.transcodekey ?? "").toLowerCase();
-      const isAppleFriendly = type.includes("video/mp4") || src.toLowerCase().includes(".mp4");
-      const isLandscape = (item.width ?? 0) >= (item.height ?? 0);
+      const isVideo = type.includes("video/mp4") || type.includes("video/webm")
+        || type.includes("video/quicktime") || /\\.(mp4|webm|mov)(?:[?#]|$)/i.test(src);
       return src.startsWith("https://")
-        && isAppleFriendly
-        && isLandscape
-        && !key.includes("vp9");
+        && isVideo
+        && (item.width ?? 0) >= (item.height ?? 0)
+        && (item.width ?? 0) >= 360;
     })
     .sort((left, right) => {
-      const leftWidth = left.width ?? 0;
-      const rightWidth = right.width ?? 0;
-      const leftPreferred = leftWidth >= 720 && leftWidth <= 1920 ? 1 : 0;
-      const rightPreferred = rightWidth >= 720 && rightWidth <= 1920 ? 1 : 0;
-      return rightPreferred - leftPreferred || rightWidth - leftWidth;
+      const score = (item: CommonsVideoDerivative) => {
+        const src = (item.src ?? "").toLowerCase();
+        const type = (item.type ?? "").toLowerCase();
+        const format = type.includes("video/mp4") || /\\.mp4(?:[?#]|$)/.test(src)
+          ? 300 : type.includes("video/webm") ? 200 : 100;
+        const width = item.width ?? 0;
+        const resolution = width >= 960 && width <= 1920 ? 65 : width >= 640 ? 50 : 15;
+        return format + resolution;
+      };
+      return score(right) - score(left) || (right.width ?? 0) - (left.width ?? 0);
     });
-
   return candidates[0] ?? null;
 }
 
 async function fetchCommonsVideos(city: string, _iata: string, _page: number, _theme: string) {
-  const query = city + " filetype:video";
+  const normalized = (value: string) => value.normalize("NFD")
+    .replace(/[\\u0300-\\u036f]/g, "").replace(/[_-]+/g, " ").toLowerCase();
+  // Scenery and time-lapses take priority over miscellaneous historic footage.
+  for (const query of [city + " timelapse filetype:video", city + " filetype:video"]) {
+    const url = new URL("https://commons.wikimedia.org/w/api.php");
+    url.searchParams.set("action", "query");
+    url.searchParams.set("generator", "search");
+    url.searchParams.set("gsrsearch", query);
+    url.searchParams.set("gsrnamespace", "6");
+    url.searchParams.set("gsrlimit", "30");
+    url.searchParams.set("gsroffset", "0");
+    url.searchParams.set("prop", "videoinfo");
+    url.searchParams.set("viprop", "url|mime|derivatives|extmetadata");
+    url.searchParams.set("viurlwidth", "1280");
+    url.searchParams.set("format", "json");
+    url.searchParams.set("origin", "*");
 
-  const url = new URL("https://commons.wikimedia.org/w/api.php");
-  url.searchParams.set("action", "query");
-  url.searchParams.set("generator", "search");
-  url.searchParams.set("gsrsearch", query);
-  url.searchParams.set("gsrnamespace", "6");
-  url.searchParams.set("gsrlimit", "12");
-  url.searchParams.set("gsroffset", "0");
-  url.searchParams.set("prop", "videoinfo");
-  url.searchParams.set("viprop", "url|mime|derivatives|extmetadata");
-  url.searchParams.set("viurlwidth", "1280");
-  url.searchParams.set("format", "json");
-  url.searchParams.set("origin", "*");
-
-  const response = await fetch(url, {
-    next: { revalidate: 21_600 },
-    signal: AbortSignal.timeout(8500),
-    headers: {
-      Accept: "application/json",
-      "User-Agent": "XavPacTV/4.0 (https://github.com/xavpac/xavpac)"
+    try {
+      const response = await fetch(url, {
+        next: { revalidate: 21_600 },
+        signal: AbortSignal.timeout(8500),
+        headers: {
+          Accept: "application/json",
+          "User-Agent": "XavPacTV/4.0 (https://github.com/xavpac/xavpac)"
+        }
+      });
+      if (!response.ok) continue;
+      const payload = await response.json() as { query?: { pages?: Record<string, CommonsVideoPage> } };
+      const videos = Object.values(payload.query?.pages ?? {})
+        .filter((page) => normalized(page.title ?? "").includes(normalized(city)))
+        .flatMap<DestinationMediaItem>((page) => {
+          const info = page.videoinfo?.[0];
+          const derivative = pickCommonsVideoDerivative(info?.derivatives);
+          if (!derivative?.src) return [];
+          return [{
+            id: `commons-video-${page.pageid ?? hashString(derivative.src)}`,
+            type: "video",
+            url: derivative.src,
+            preview: info?.thumburl?.startsWith("https://") ? info.thumburl : null,
+            author: stripHtml(info?.extmetadata?.Artist?.value)
+              || stripHtml(info?.extmetadata?.Credit?.value),
+            sourceName: "Wikimedia Commons",
+            sourceUrl: info?.descriptionurl?.startsWith("https://")
+              ? info.descriptionurl
+              : "https://commons.wikimedia.org/"
+          }];
+        });
+      if (videos.length) return videos.slice(0, 12);
+    } catch {
+      // Try a broader Commons query, then keep the photographic fallback.
     }
-  });
-
-  if (!response.ok) return [] as DestinationMediaItem[];
-
-  const payload = await response.json() as {
-    query?: { pages?: Record<string, CommonsVideoPage> };
-  };
-
-  return Object.values(payload.query?.pages ?? {})
-    .flatMap<DestinationMediaItem>((pageItem) => {
-      const info = pageItem.videoinfo?.[0];
-      const derivative = pickCommonsVideoDerivative(info?.derivatives);
-      if (!derivative?.src) return [];
-
-      return [{
-        id: `commons-video-${pageItem.pageid ?? hashString(derivative.src)}`,
-        type: "video",
-        url: derivative.src,
-        preview: info?.thumburl?.startsWith("https://") ? info.thumburl : null,
-        author: stripHtml(info?.extmetadata?.Artist?.value)
-          || stripHtml(info?.extmetadata?.Credit?.value),
-        sourceName: "Wikimedia Commons",
-        sourceUrl: info?.descriptionurl?.startsWith("https://")
-          ? info.descriptionurl
-          : "https://commons.wikimedia.org/"
-      }];
-    })
-    .slice(0, 12);
+  }
+  return [] as DestinationMediaItem[];
 }
 
 async function fetchCommons(city: string, _iata: string, _page: number, _theme: string) {
