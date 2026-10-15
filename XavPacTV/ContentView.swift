@@ -1390,6 +1390,78 @@ struct ContentView: View {
     }
 }
 
+// Lumières d'ambiance tvOS : peu d'éléments, aucune interaction, visibles au vidéoprojecteur.
+private struct SkyShowBackdrop: View {
+    @State private var drift = false
+
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack {
+                LinearGradient(
+                    colors: [
+                        Color(red: 0.82, green: 0.95, blue: 1.00),
+                        Color(red: 0.98, green: 0.995, blue: 1.0),
+                        Color(red: 0.90, green: 0.96, blue: 1.0)
+                    ],
+                    startPoint: .topLeading, endPoint: .bottomTrailing
+                )
+
+                Circle()
+                    .fill(Color(red: 0.15, green: 0.80, blue: 0.98).opacity(0.23))
+                    .frame(width: geometry.size.width * 0.65)
+                    .blur(radius: 110)
+                    .offset(x: drift ? -140 : 140, y: -geometry.size.height * 0.30)
+
+                Circle()
+                    .fill(Color(red: 1.0, green: 0.71, blue: 0.32).opacity(0.18))
+                    .frame(width: geometry.size.width * 0.45)
+                    .blur(radius: 95)
+                    .offset(x: drift ? 190 : -150, y: geometry.size.height * 0.30)
+
+                Circle()
+                    .stroke(Color.white.opacity(0.54), lineWidth: 2)
+                    .frame(width: geometry.size.width * 0.72)
+                    .offset(x: geometry.size.width * 0.43,
+                            y: geometry.size.height * 0.49)
+            }
+            .frame(width: geometry.size.width, height: geometry.size.height)
+            .onAppear {
+                withAnimation(.easeInOut(duration: 12).repeatForever(autoreverses: true)) {
+                    drift = true
+                }
+            }
+        }
+    }
+}
+
+private struct SkyShowGlimmers: View {
+    @State private var shimmering = false
+
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack {
+                Image(systemName: "sparkle")
+                    .font(.system(size: 48, weight: .ultraLight))
+                    .position(x: geometry.size.width * 0.84, y: geometry.size.height * 0.16)
+                Image(systemName: "sparkle")
+                    .font(.system(size: 27, weight: .ultraLight))
+                    .position(x: geometry.size.width * 0.68, y: geometry.size.height * 0.25)
+                Image(systemName: "sparkle")
+                    .font(.system(size: 19, weight: .ultraLight))
+                    .position(x: geometry.size.width * 0.91, y: geometry.size.height * 0.38)
+            }
+            .foregroundStyle(Color.white.opacity(shimmering ? 0.78 : 0.22))
+            .shadow(color: .white.opacity(0.55), radius: shimmering ? 15 : 2)
+            .scaleEffect(shimmering ? 1.04 : 0.98)
+            .onAppear {
+                withAnimation(.easeInOut(duration: 2.8).repeatForever(autoreverses: true)) {
+                    shimmering = true
+                }
+            }
+        }
+    }
+}
+
 private struct CinemaAlertPulse: ViewModifier {
     var isEnabled = true
     @State private var glowing = false
