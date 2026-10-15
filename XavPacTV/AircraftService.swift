@@ -376,3 +376,97 @@ final class DestinationMediaService: ObservableObject {
 private extension Optional where Wrapped == Bool {
     var orFalse: Bool { self ?? false }
 }
+
+
+ 
+// Température observée (METAR) : aucune météo inventée si la station ne répond pas.
+struct TVAirportWeather: Decodable {
+    struct CloudLayer: Decodable { let cover: String? }
+    let icaoId: String?
+    let temp: Double?
+    let wxString: String?
+    let clouds: [CloudLayer]?
+    let fltCat: String?
+
+    var temperatureLabel: String {
+        guard let temp, temp.isFinite else { return "—" }
+        return "\(Int(temp.rounded()))°"
+    }
+
+    var symbolName: String {
+        let weather = (wxString ?? "").uppercased()
+        if weather.contains("TS") { return "cloud.bolt.rain.fill" }
+        if weather.contains("SN") { return "cloud.snow.fill" }
+        if weather.contains("RA") || weather.contains("DZ") { return "cloud.rain.fill" }
+        let covers = (clouds ?? []).compactMap(\.cover).map { $0.uppercased() }
+        if covers.contains("OVC") || covers.contains("BKN") { return "cloud.fill" }
+        if covers.contains("SCT") || covers.contains("FEW") { return "cloud.sun.fill" }
+        return "sun.max.fill"
+    }
+
+    var conditionLabel: String {
+        let weather = (wxString ?? "").uppercased()
+        if weather.contains("TS") { return "Orage" }
+        if weather.contains("SN") { return "Neige" }
+        if weather.contains("RA") || weather.contains("DZ") { return "Pluie" }
+        let covers = (clouds ?? []).compactMap(\.cover).map { $0.uppercased() }
+        if covers.contains("OVC") || covers.contains("BKN") { return "Nuageux" }
+        if covers.contains("SCT") || covers.contains("FEW") { return "Éclaircies" }
+        return "Ciel dégagé"
+    }
+}
+
+private struct TVAirportWeatherResponse: Decodable {
+    let metar: [TVAirportWeather]
+}
+
+@MainActor
+final class AirportWeatherService: ObservableObject {
+    @Published private(set) var observations: [String: TVAirportWeather] = [:]
+    private var lastSignature = ""
+    private var lastAttempt: Date?
+
+    func weather(for airport: TVAirport?) -> TVAirportWeather? {
+        guard let code = airport?.icao?.uppercased() else { return nil }
+        return observations[code]
+    }
+
+    func refresh(for airports: [TVAirport]) async {
+        let ids = Array(Set(airports.compactMap { airport -> String? in
+            guard let icao = airport.icao?.uppercased(),
+                  icao.range(of: "^[A-Z0-9]{4}$", options: .regularExpression) != nil else { return nil }
+            return icao
+        })).sorted().prefix(6)
+
+        guard !ids.isEmpty else { return }
+        let signature = ids.joined(separator: ",")
+        if signature == lastSignature,
+           let lastAttempt,
+           Date().timeIntervalSince(lastAttempt) < 900 { return }
+        lastSignature = signature
+        lastAttempt = Date()
+
+        guard var url = URLComponents(
+            url: xavPacBaseURL.appendingPathComponent("api/airport-weather"),
+            resolvingAgainstBaseURL: false
+        ) else { return }
+        url.queryItems = [URLQueryItem(name: "ids", value: signature)]
+        guard let requestURL = url.url else { return }
+
+        do {
+            var request = URLRequest(url: requestURL)
+            request.cachePolicy = .reloadIgnoringLocalCacheData
+            request.timeoutInterval = 14
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse,
+                  (200..<300).contains(http.statusCode) else { return }
+            let payload = try JSONDecoder().decode(TVAirportWeatherResponse.self, from: data)
+            observations.merge(Dictionary(uniqueKeysWithValues: payload.metar.compactMap { item in
+                guard let id = item.icaoId?.uppercased() else { return nil }
+                return (id, item)
+            })) { _, new in new }
+        } catch {
+            // Les relevés météo restent facultatifs et ne bloquent jamais le radar.
+        }
+    }
+}
