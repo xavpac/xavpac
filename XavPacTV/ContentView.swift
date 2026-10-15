@@ -1254,6 +1254,21 @@ struct ContentView: View {
     }
 }
 
+private struct CinemaAlertPulse: ViewModifier {
+    @State private var glowing = false
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(glowing ? 1.0 : 0.74)
+            .scaleEffect(glowing ? 1.0 : 0.985)
+            .onAppear {
+                withAnimation(.easeInOut(duration: 0.65).repeatForever(autoreverses: true)) {
+                    glowing = true
+                }
+            }
+    }
+}
+
 private struct PriorityAlertBanner: View {
     let title: String
     let subtitle: String
