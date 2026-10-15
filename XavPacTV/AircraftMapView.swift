@@ -7,18 +7,21 @@ final class AircraftAnnotation: NSObject, MKAnnotation {
     let isSelected: Bool
     let distanceKm: Double
     let profile: TVTrafficProfile
+    let routeLabel: String?
     dynamic var coordinate: CLLocationCoordinate2D
 
     init(
         aircraft: Aircraft,
         isSelected: Bool,
         center: CLLocationCoordinate2D,
-        profile: TVTrafficProfile
+        profile: TVTrafficProfile,
+        routeLabel: String?
     ) {
         self.aircraft = aircraft
         self.isSelected = isSelected
         self.distanceKm = aircraft.distanceKilometers(from: center)
         self.profile = profile
+        self.routeLabel = routeLabel
         self.coordinate = aircraft.coordinate
         super.init()
     }
@@ -138,7 +141,7 @@ private final class AircraftAnnotationView: MKAnnotationView {
             if item.profile.isPriorityTraffic {
                 title = item.profile.label
             } else {
-                title = item.aircraft.displayName
+                title = item.routeLabel ?? "TRAJET À CONFIRMER"
             }
 
             tagLabel.text = "  \(title) · \(String(format: "%.1f", item.distanceKm)) km  "
@@ -312,6 +315,7 @@ struct AircraftMapView: UIViewRepresentable {
     let trails: [String: [CLLocationCoordinate2D]]
     let selectedID: String?
     let profiles: [String: TVTrafficProfile]
+    let routes: [String: String]
 
     func makeCoordinator() -> Coordinator {
         Coordinator(parent: self)
@@ -327,6 +331,8 @@ struct AircraftMapView: UIViewRepresentable {
         // La cartographie XavPac TV est volontairement figée :
         // aucun déplacement, zoom ou réglage n'est possible depuis la télécommande.
         map.isUserInteractionEnabled = false
+        map.showsCompass = false
+        map.showsScale = false
 
         let region = MKCoordinateRegion(
             center: center,
@@ -350,7 +356,8 @@ struct AircraftMapView: UIViewRepresentable {
                     aircraft: item,
                     isSelected: item.id == selectedID,
                     center: center,
-                    profile: profiles[item.id] ?? item.trafficProfile(enrichment: nil)
+                    profile: profiles[item.id] ?? item.trafficProfile(enrichment: nil),
+                    routeLabel: routes[item.id]
                 )
             }
         )
