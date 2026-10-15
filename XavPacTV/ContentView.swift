@@ -6,6 +6,7 @@ import UIKit
 struct ContentView: View {
     @StateObject private var service = AircraftService()
     @StateObject private var mediaService = DestinationMediaService()
+    @StateObject private var airportWeather = AirportWeatherService()
     @StateObject private var soundscape = AmbientSoundscape()
 
     private let navy = Color(red: 0.018, green: 0.075, blue: 0.16)
@@ -49,6 +50,17 @@ struct ContentView: View {
                   departure != "—", arrival != "—" else { return nil }
             return (aircraft.id, "\(departure) → \(arrival)")
         })
+    }
+
+    private var podiumAirports: [TVAirport] {
+        service.aircraft.prefix(3).flatMap { aircraft in
+            let info = service.enrichment(for: aircraft)
+            return [info?.departureAirport, info?.arrivalAirport].compactMap { $0 }
+        }
+    }
+
+    private var podiumWeatherKey: String {
+        podiumAirports.compactMap(\.icao).sorted().joined(separator: ",")
     }
 
     private var isPriorityActive: Bool {
@@ -120,7 +132,7 @@ struct ContentView: View {
                     .frame(maxHeight: .infinity)
 
                     cinemaPodium
-                        .frame(height: 282)
+                        .frame(height: 328)
 
                     HStack {
                         Text("✦ XAVPAC TV  •  SKY SHOW  •  LE CIEL EN SPECTACLE")
@@ -146,6 +158,9 @@ struct ContentView: View {
             UIApplication.shared.isIdleTimerDisabled = false
             service.stop()
             soundscape.stop()
+        }
+        .task(id: podiumWeatherKey) {
+            await airportWeather.refresh(for: podiumAirports)
         }
         .task(id: destinationTaskKey) {
             await mediaService.load(for: featuredEnrichment)
@@ -572,7 +587,9 @@ struct ContentView: View {
                 profile: service.trafficProfile(for: item),
                 home: service.center,
                 rank: rank,
-                isHero: hero
+                isHero: hero,
+                departureWeather: airportWeather.weather(for: service.enrichment(for: item)?.departureAirport),
+                arrivalWeather: airportWeather.weather(for: service.enrichment(for: item)?.arrivalAirport)
             )
             .id(item.id)
         } else {
