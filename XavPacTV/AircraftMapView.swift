@@ -8,6 +8,7 @@ final class AircraftAnnotation: NSObject, MKAnnotation {
     let distanceKm: Double
     let profile: TVTrafficProfile
     let routeLabel: String?
+    let approachRank: Int?
     dynamic var coordinate: CLLocationCoordinate2D
 
     init(
@@ -15,13 +16,15 @@ final class AircraftAnnotation: NSObject, MKAnnotation {
         isSelected: Bool,
         center: CLLocationCoordinate2D,
         profile: TVTrafficProfile,
-        routeLabel: String?
+        routeLabel: String?,
+        approachRank: Int?
     ) {
         self.aircraft = aircraft
         self.isSelected = isSelected
         self.distanceKm = aircraft.distanceKilometers(from: center)
         self.profile = profile
         self.routeLabel = routeLabel
+        self.approachRank = approachRank
         self.coordinate = aircraft.coordinate
         super.init()
     }
@@ -76,7 +79,17 @@ private final class AircraftAnnotationView: MKAnnotationView {
         haloView.layer.removeAllAnimations()
         glyphView.layer.removeAllAnimations()
 
-        let tint = color(for: item.profile.kind)
+        let tint: UIColor
+        if item.profile.isPriorityTraffic {
+            tint = color(for: item.profile.kind)
+        } else {
+            switch item.approachRank {
+            case 1: tint = UIColor(red: 1.0, green: 0.76, blue: 0.20, alpha: 1)
+            case 2: tint = UIColor(red: 0.08, green: 0.72, blue: 0.99, alpha: 1)
+            case 3: tint = UIColor(red: 0.69, green: 0.39, blue: 1.0, alpha: 1)
+            default: tint = color(for: item.profile.kind)
+            }
+        }
         let scale = CGFloat(item.profile.relativeIconScale)
         let normalSize = max(34, 42 * scale)
         let selectedSize = max(52, 62 * scale)
@@ -349,13 +362,14 @@ struct AircraftMapView: UIViewRepresentable {
 
         map.addAnnotation(RadarHomeAnnotation(coordinate: center))
         map.addAnnotations(
-            aircraft.prefix(60).map { item in
+            aircraft.prefix(60).enumerated().map { index, item in
                 AircraftAnnotation(
                     aircraft: item,
                     isSelected: item.id == selectedID,
                     center: center,
                     profile: profiles[item.id] ?? item.trafficProfile(enrichment: nil),
-                    routeLabel: routes[item.id]
+                    routeLabel: routes[item.id],
+                    approachRank: index < 3 ? index + 1 : nil
                 )
             }
         )
