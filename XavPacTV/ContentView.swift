@@ -630,65 +630,64 @@ struct ContentView: View {
         }
     }
 
+    // Toujours montrer l'état des moyens spéciaux : jamais « Ligne commerciale »
+    // à cet emplacement, même lorsque le vol vedette est un avion de ligne.
     private var cinemaPriorityStatus: some View {
-        HStack(spacing: 22) {
-            Image(systemName: priorityProfile?.isRotorcraft == true ? "helicopter" : "shield.lefthalf.filled")
-                .font(.system(size: 55, weight: .heavy))
-                .frame(width: 70)
-                .foregroundStyle(priorityAircraft == nil
-                                 ? Color(red: 0.0, green: 0.60, blue: 0.82)
-                                 : Color.white)
+        let counts = specialCounts
+        let active = priorityAircraft != nil
 
-            VStack(alignment: .leading, spacing: 10) {
-                Text("SÉCURITÉ CIVILE  /  ARMÉE")
-                    .font(.system(size: 27, weight: .black))
+        return HStack(spacing: 17) {
+            Image(systemName: priorityProfile?.isRotorcraft == true ? "helicopter" : "cross.case.fill")
+                .font(.system(size: 49, weight: .bold))
+                .frame(width: 61)
+                .foregroundStyle(active ? Color.white : Color(red: 0.01, green: 0.58, blue: 0.80))
+
+            VStack(alignment: .leading, spacing: 7) {
+                Text("MOYENS SPÉCIAUX · 50 KM")
+                    .font(.system(size: 26, weight: .black))
                     .lineLimit(1)
                     .minimumScaleFactor(0.70)
+
                 if let aircraft = priorityAircraft {
-                    Text("\(aircraft.displayName)  •  \(distanceText(aircraft))")
-                        .font(.system(size: 27, weight: .bold))
-                        .monospacedDigit()
+                    Text("\(service.trafficProfile(for: aircraft).label)  ·  \(aircraft.displayName)  ·  \(distanceText(aircraft))")
+                        .font(.system(size: 22, weight: .bold))
                         .lineLimit(1)
-                        .minimumScaleFactor(0.7)
+                        .minimumScaleFactor(0.70)
                 } else {
-                    Text("Aucun moyen prioritaire identifié")
-                        .font(.system(size: 23, weight: .medium))
+                    Text(radarIsLive ? "Aucun appareil spécial détecté" : "En attente de données actualisées")
+                        .font(.system(size: 21, weight: .medium))
                         .lineLimit(1)
                 }
+
+                Text("SÉCURITÉ CIVILE \(counts.civil)   ·   ARMÉE \(counts.military)   ·   SAMU \(counts.medical)   ·   HÉLICOS \(counts.helicopters)")
+                    .font(.system(size: 15, weight: .heavy))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.68)
             }
             Spacer(minLength: 0)
-            if priorityAircraft != nil {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 38, weight: .heavy))
-            } else {
-                Circle()
-                    .fill(Color.green)
-                    .frame(width: 18, height: 18)
-                    .shadow(color: .green.opacity(0.5), radius: 8)
-            }
+            Image(systemName: active ? "dot.radiowaves.left.and.right" : "checkmark.shield.fill")
+                .font(.system(size: 29, weight: .bold))
         }
-        .padding(.horizontal, 28)
+        .padding(.horizontal, 19)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .foregroundStyle(priorityAircraft == nil
-                         ? Color(red: 0.08, green: 0.37, blue: 0.55)
-                         : Color.white)
+        .foregroundStyle(active ? Color.white : Color(red: 0.08, green: 0.37, blue: 0.55))
         .background(
             LinearGradient(
-                colors: priorityAircraft == nil
-                ? [Color.white, Color(red: 0.85, green: 0.97, blue: 1.0)]
-                : [Color(red: 0.97, green: 0.13, blue: 0.18), Color(red: 0.64, green: 0.06, blue: 0.17)],
+                colors: active
+                    ? [Color(red: 0.84, green: 0.19, blue: 0.26), Color(red: 0.22, green: 0.18, blue: 0.40)]
+                    : [Color.white, Color(red: 0.87, green: 0.96, blue: 1.0)],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
-            ), in: RoundedRectangle(cornerRadius: 24, style: .continuous)
+            ),
+            in: RoundedRectangle(cornerRadius: 24, style: .continuous)
         )
         .overlay {
             RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(priorityAircraft == nil ? Color.cyan.opacity(0.35) : Color.white.opacity(0.95),
-                        lineWidth: priorityAircraft == nil ? 2 : 4)
+                .stroke(active ? Color.white.opacity(0.95) : Color.cyan.opacity(0.35),
+                        lineWidth: active ? 3 : 2)
         }
-        .shadow(color: priorityAircraft == nil ? .cyan.opacity(0.10) : .red.opacity(0.40),
-                radius: 16, y: 5)
-        .modifier(CinemaAlertPulse(isEnabled: priorityAircraft != nil))
+        .shadow(color: active ? .red.opacity(0.26) : .cyan.opacity(0.10), radius: 15, y: 4)
+        .modifier(CinemaAlertPulse(isEnabled: active))
     }
 
     private var headerBar: some View {
@@ -718,7 +717,7 @@ struct ContentView: View {
                         .font(.system(size: 35, weight: .heavy, design: .rounded))
                         .foregroundStyle(.cyan)
                 }
-                Text("LE CIEL EN SPECTACLE · EN DIRECT")
+                Text(radarStatus)
                     .font(.caption.bold())
                     .foregroundStyle(.white.opacity(0.72))
             }
@@ -734,9 +733,9 @@ struct ContentView: View {
 
             headerStat(
                 icon: "exclamationmark.triangle.fill",
-                value: "\(service.priorityAircraftWithin40.count)",
-                label: "alertes",
-                color: service.priorityAircraftWithin40.isEmpty ? .green : .red
+                value: "\(service.specialAircraftInZone.count)",
+                label: "moyens spéciaux",
+                color: service.specialAircraftInZone.isEmpty ? .green : .orange
             )
 
             HStack(spacing: 11) {
@@ -1239,9 +1238,7 @@ struct ContentView: View {
         }
 
         if isPriorityActive {
-            return profile.kind == .civilSecurity
-                ? "ALERTE PRIORITAIRE · SÉCURITÉ CIVILE"
-                : "ALERTE PRIORITAIRE · ARMÉE"
+            return "MOYEN SPÉCIAL · " + profile.label
         }
 
         return profile.label
