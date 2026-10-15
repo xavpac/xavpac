@@ -56,10 +56,10 @@ private final class AircraftAnnotationView: MKAnnotationView {
         glyphView.layer.shadowOffset = .zero
         addSubview(glyphView)
 
-        tagLabel.font = .systemFont(ofSize: 22, weight: .heavy)
-        tagLabel.textColor = UIColor(red: 0.02, green: 0.08, blue: 0.16, alpha: 1)
+        tagLabel.font = .systemFont(ofSize: 19, weight: .heavy)
+        tagLabel.textColor = .white
         tagLabel.textAlignment = .center
-        tagLabel.backgroundColor = UIColor.white.withAlphaComponent(0.96)
+        tagLabel.backgroundColor = UIColor(red: 0.025, green: 0.13, blue: 0.26, alpha: 0.93)
         tagLabel.layer.cornerRadius = 11
         tagLabel.layer.borderWidth = 1.5
         tagLabel.clipsToBounds = true
@@ -129,12 +129,12 @@ private final class AircraftAnnotationView: MKAnnotationView {
         }
 
         if item.isSelected {
-            frame = CGRect(x: 0, y: 0, width: 410, height: 94)
+            frame = CGRect(x: 0, y: 0, width: 332, height: 80)
 
-            let haloSize = max(70, 80 * scale)
+            let haloSize = max(63, 72 * scale)
             haloView.frame = CGRect(
                 x: 0,
-                y: (94 - haloSize) / 2,
+                y: (80 - haloSize) / 2,
                 width: haloSize,
                 height: haloSize
             )
@@ -145,7 +145,7 @@ private final class AircraftAnnotationView: MKAnnotationView {
 
             glyphView.frame = CGRect(
                 x: 5,
-                y: (94 - selectedSize) / 2,
+                y: (80 - selectedSize) / 2,
                 width: selectedSize,
                 height: selectedSize
             )
@@ -157,11 +157,13 @@ private final class AircraftAnnotationView: MKAnnotationView {
                 title = item.routeLabel ?? "TRAJET À CONFIRMER"
             }
 
-            tagLabel.text = "  \(title) · \(String(format: "%.1f", item.distanceKm)) km  "
-            tagLabel.frame = CGRect(x: 87, y: 18, width: 310, height: 58)
+            tagLabel.text = " \(title) · \(String(format: "%.1f", item.distanceKm)) km "
+            tagLabel.adjustsFontSizeToFitWidth = true
+            tagLabel.minimumScaleFactor = 0.65
+            tagLabel.frame = CGRect(x: 78, y: 17, width: 242, height: 46)
             tagLabel.layer.borderColor = tint.withAlphaComponent(0.90).cgColor
             tagLabel.isHidden = false
-            centerOffset = CGPoint(x: 145, y: 0)
+            centerOffset = CGPoint(x: 102, y: 0)
 
             if item.profile.isPriorityTraffic {
                 addPriorityPulse(color: tint)
@@ -351,11 +353,18 @@ struct AircraftMapView: UIViewRepresentable {
             longitudinalMeters: 92_000
         )
         map.setRegion(region, animated: false)
+        // MapKit tvOS ajoute parfois un curseur de zoom blanc malgré le verrouillage.
+        // Masquer les widgets natifs (sans toucher à nos marqueurs de trafic).
+        DispatchQueue.main.async { [weak map] in
+            guard let map else { return }
+            Self.hideNativeMapControls(in: map)
+        }
         return map
     }
 
     func updateUIView(_ map: MKMapView, context: Context) {
         context.coordinator.parent = self
+        Self.hideNativeMapControls(in: map)
 
         map.removeAnnotations(map.annotations)
         map.removeOverlays(map.overlays)
@@ -397,12 +406,33 @@ struct AircraftMapView: UIViewRepresentable {
         }
     }
 
+    private static func hideNativeMapControls(in view: UIView) {
+        for subview in view.subviews {
+            let kind = String(describing: type(of: subview)).lowercased()
+            // Les contrôles UIKit et leurs vues privées varient selon tvOS.
+            // Ne supprimer ni l'image de la carte, ni les overlays, ni les aéronefs.
+            if subview is UISlider
+                || kind.contains("zoomslider")
+                || kind.contains("zoomcontrol")
+                || kind.contains("zoomview")
+                || kind.contains("compassview") {
+                subview.isHidden = true
+            } else {
+                hideNativeMapControls(in: subview)
+            }
+        }
+    }
+
     final class Coordinator: NSObject, MKMapViewDelegate {
         var parent: AircraftMapView
         var lastCenter = CLLocationCoordinate2D(latitude: 0, longitude: 0)
 
         init(parent: AircraftMapView) {
             self.parent = parent
+        }
+
+        func mapViewDidFinishRenderingMap(_ mapView: MKMapView, fullyRendered: Bool) {
+            AircraftMapView.hideNativeMapControls(in: mapView)
         }
 
         func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
