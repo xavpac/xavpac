@@ -41,3 +41,66 @@ jobs:
             -destination "generic/platform=tvOS Simulator" \
             CODE_SIGNING_ALLOWED=NO \
             build
+
+      - name: Prépare le dernier projet Xcode daté
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(TZ=Europe/Paris date '+%d-%m-%Y_%Hh%M')"
+          NAME="XavPacTV_PODIUM_${VERSION}"
+          PROJET="01_OUVRIR_XavPacTV_PODIUM_${VERSION}.xcodeproj"
+          DIR="distribution/${NAME}"
+          mkdir -p "$DIR"
+          cp -R XavPacTV "$DIR/XavPacTV"
+          cp -R XavPacTV.xcodeproj "$DIR/$PROJET"
+          # Le scheme partagé contient une référence au nom du projet Xcode.
+          # En la corrigeant, le fichier renommé demeure ouvrable et compilable.
+          SCHEME="$DIR/$PROJET/xcshareddata/xcschemes/XavPacTV.xcscheme"
+          sed -i '' "s@container:XavPacTV.xcodeproj@container:${PROJET}@g" "$SCHEME"
+          test -f "$DIR/$PROJET/project.pbxproj"
+          test -f "$SCHEME"
+          test -f "$DIR/XavPacTV/ApproachPodiumView.swift"
+          cat > "$DIR/00_LIRE_EN_PREMIER.txt" <<TXT
+          XAVPAC TV - PODIUM DES APPROCHES - PROPOSITION 2
+          Dernière version : ${VERSION} (heure de Paris)
+
+          SUR TON MAC, OUVRE EXACTEMENT :
+          ${PROJET}
+
+          1. Décompresse le ZIP.
+          2. Double-clique sur le fichier .xcodeproj ci-dessus.
+          3. Dans Xcode, sélectionne l'Apple TV « Salon Haut ».
+          4. Garde ton équipe Apple dans Signing & Capabilities.
+          5. Appuie sur Run (triangle ▶).
+
+          Ne pas ouvrir un autre fichier .xcodeproj d'un ancien dossier.
+          Pas de clic ni de réglage dans l'app Apple TV.
+          TXT
+          echo "artifact_name=${NAME}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "project=${PROJET}" >> "$GITHUB_OUTPUT"
+          echo "Le projet daté à ouvrir est : ${PROJET}" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Contrôle le projet renommé à ouvrir sur le Mac
+        shell: bash
+        run: |
+          set -o pipefail
+          NAME="XavPacTV_PODIUM_${{ steps.package.outputs.version }}"
+          PROJET="${{ steps.package.outputs.project }}"
+          xcodebuild \
+            -project "distribution/$NAME/$PROJET" \
+            -scheme XavPacTV \
+            -configuration Debug \
+            -sdk appletvsimulator \
+            -destination "generic/platform=tvOS Simulator" \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Met le ZIP daté à télécharger sur GitHub
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.package.outputs.artifact_name }}
+          path: distribution/${{ steps.package.outputs.artifact_name }}/
+          if-no-files-found: error
+          retention-days: 90
