@@ -41,6 +41,16 @@ struct ContentView: View {
         })
     }
 
+    private var trafficRoutes: [String: String] {
+        Dictionary(uniqueKeysWithValues: service.aircraft.compactMap { aircraft in
+            guard let info = service.enrichment(for: aircraft),
+                  let departure = info.departureAirport?.code,
+                  let arrival = info.arrivalAirport?.code,
+                  departure != "—", arrival != "—" else { return nil }
+            return (aircraft.id, "\(departure) → \(arrival)")
+        })
+    }
+
     private var isPriorityActive: Bool {
         guard let aircraft = featuredAircraft,
               let profile = featuredProfile else { return false }
@@ -224,7 +234,8 @@ struct ContentView: View {
                 center: service.center,
                 trails: service.trails,
                 selectedID: featuredAircraft?.id,
-                profiles: trafficProfiles
+                profiles: trafficProfiles,
+                routes: trafficRoutes
             )
             .overlay(alignment: .bottomLeading) {
                 EmptyView()
@@ -741,7 +752,8 @@ struct ContentView: View {
                 center: service.center,
                 trails: service.trails,
                 selectedID: featuredAircraft?.id,
-                profiles: trafficProfiles
+                profiles: trafficProfiles,
+                routes: trafficRoutes
             )
 
             GeometryReader { proxy in
