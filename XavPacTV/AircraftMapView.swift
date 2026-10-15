@@ -30,15 +30,6 @@ final class AircraftAnnotation: NSObject, MKAnnotation {
     }
 }
 
-final class RadarHomeAnnotation: NSObject, MKAnnotation {
-    dynamic var coordinate: CLLocationCoordinate2D
-
-    init(coordinate: CLLocationCoordinate2D) {
-        self.coordinate = coordinate
-        super.init()
-    }
-}
-
 private final class AircraftAnnotationView: MKAnnotationView {
     private let glyphView = UIImageView()
     private let haloView = UIView()
@@ -369,7 +360,6 @@ struct AircraftMapView: UIViewRepresentable {
         map.removeAnnotations(map.annotations)
         map.removeOverlays(map.overlays)
 
-        map.addAnnotation(RadarHomeAnnotation(coordinate: center))
         map.addAnnotations(
             aircraft.prefix(60).enumerated().map { index, item in
                 AircraftAnnotation(
@@ -434,25 +424,6 @@ struct AircraftMapView: UIViewRepresentable {
         }
 
         func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
-            if annotation is RadarHomeAnnotation {
-                let identifier = "home-v5"
-                let view = mapView.dequeueReusableAnnotationView(withIdentifier: identifier)
-                    ?? MKAnnotationView(annotation: annotation, reuseIdentifier: identifier)
-
-                view.annotation = annotation
-                view.displayPriority = .required
-                view.canShowCallout = false
-                let configuration = UIImage.SymbolConfiguration(pointSize: 31, weight: .bold)
-                view.image = UIImage(
-                    systemName: "house.circle.fill",
-                    withConfiguration: configuration
-                )?.withTintColor(
-                    UIColor(red: 0.05, green: 0.82, blue: 0.95, alpha: 1),
-                    renderingMode: .alwaysOriginal
-                )
-                return view
-            }
-
             guard let aircraftAnnotation = annotation as? AircraftAnnotation else {
                 return nil
             }
