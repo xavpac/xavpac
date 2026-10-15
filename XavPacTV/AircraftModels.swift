@@ -226,7 +226,7 @@ enum TVTrafficKind: String, Hashable {
     var label: String {
         switch self {
         case .civilSecurity: return "SÉCURITÉ CIVILE"
-        case .medical: return "SECOURS / MÉDICAL"
+        case .medical: return "SAMU / SECOURS MÉDICAL"
         case .military: return "ARMÉE"
         case .surveillance: return "SURVEILLANCE"
         case .helicopter: return "HÉLICOPTÈRE"
@@ -254,17 +254,23 @@ enum TVTrafficKind: String, Hashable {
         }
     }
 
-    // Le choix utilisateur est strict : seules la Sécurité civile et l'Armée
-    // déclenchent la priorité automatique et l'alerte.
+    // Un moyen spécial présent dans les 50 km remplace l'escale immersive.
+    // La Sécurité civile et l'Armée passent avant le SAMU et les autres hélicoptères.
     var priorityTier: Int {
         switch self {
-        case .civilSecurity, .military: return 0
+        case .civilSecurity: return 0
+        case .military: return 1
+        case .medical: return 2
+        case .helicopter: return 3
         default: return 9
         }
     }
 
     var isPriorityTraffic: Bool {
-        self == .civilSecurity || self == .military
+        switch self {
+        case .civilSecurity, .military, .medical, .helicopter: return true
+        default: return false
+        }
     }
 }
 
