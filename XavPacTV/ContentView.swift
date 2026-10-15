@@ -63,66 +63,62 @@ struct ContentView: View {
         priorityAircraft?.id ?? "none"
     }
 
+    // Mode cinéma tvOS : tout doit rester lisible depuis la table, à plusieurs mètres.
+    // Aucun bouton, aucun focus, aucun réglage : une présentation autonome.
     var body: some View {
-        ZStack {
-            LinearGradient(
-                colors: [
-                    Color(red: 0.90, green: 0.96, blue: 0.99),
-                    Color(red: 0.80, green: 0.90, blue: 0.96)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
+        GeometryReader { geometry in
+            let bodyWidth = max(0, geometry.size.width - 72)
+            let mapWidth = bodyWidth * 0.61
 
-            VStack(spacing: 14) {
-                headerBar
-
-                HStack(spacing: 16) {
-                    mapPanel
-
-                    VStack(spacing: 12) {
-                        featuredCard
-
-                        if featuredEnrichment?.arrivalAirport != nil {
-                            destinationCard
-                        } else {
-                            noDestinationCard
-                        }
-
-                        nearbyCard
-                    }
-                    .frame(width: 600)
-                }
-            }
-            .padding(12)
-            .background(
+            ZStack {
                 LinearGradient(
-                    colors: [Color.white.opacity(0.98), Color(red: 0.91, green: 0.97, blue: 1.0)],
+                    colors: [
+                        Color(red: 0.87, green: 0.96, blue: 1.0),
+                        Color(red: 0.99, green: 0.995, blue: 1.0),
+                        Color(red: 0.91, green: 0.97, blue: 1.0)
+                    ],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
-                ),
-                in: RoundedRectangle(cornerRadius: 32, style: .continuous)
-            )
-            .overlay {
-                RoundedRectangle(cornerRadius: 32, style: .continuous)
-                    .stroke(
-                        LinearGradient(
-                            colors: [
-                                Color.cyan.opacity(0.90),
-                                Color.blue.opacity(0.50),
-                                Color.cyan.opacity(0.70)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 2.4
-                    )
+                )
+                .ignoresSafeArea()
+
+                VStack(spacing: 18) {
+                    cinemaHeader
+                        .frame(height: 94)
+
+                    HStack(spacing: 20) {
+                        cinemaMap
+                            .frame(width: mapWidth)
+
+                        VStack(spacing: 18) {
+                            cinemaDestination
+                                .frame(maxHeight: .infinity)
+
+                            cinemaFeatured
+                                .frame(height: 180)
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    .frame(maxHeight: .infinity)
+
+                    cinemaTrafficStrip
+                        .frame(height: 148)
+
+                    HStack {
+                        Text("✦ XAVPAC TV  •  LE CIEL EN SPECTACLE")
+                        Spacer()
+                        Text("BÂGÉ-DOMMARTIN  •  RAYON 50 KM  •  DIRECT")
+                    }
+                    .font(.system(size: 17, weight: .heavy, design: .rounded))
+                    .tracking(1.4)
+                    .foregroundStyle(Color(red: 0.31, green: 0.47, blue: 0.57))
+                    .frame(height: 26)
+                }
+                .padding(.horizontal, 36)
+                .padding(.vertical, 22)
             }
-            .shadow(color: Color.cyan.opacity(0.18), radius: 20)
-            .padding(.horizontal, 18)
-            .padding(.vertical, 16)
         }
+        .allowsHitTesting(false)
         .onAppear {
             UIApplication.shared.isIdleTimerDisabled = true
             service.start()
@@ -141,7 +137,7 @@ struct ContentView: View {
         }
         .task(id: mediaService.current?.id) {
             guard let media = mediaService.current else { return }
-            let seconds: UInt64 = media.isVideo ? 12 : 9
+            let seconds: UInt64 = media.isVideo ? 20 : 11
             try? await Task.sleep(nanoseconds: seconds * 1_000_000_000)
             guard !Task.isCancelled else { return }
             await mediaService.advance()
@@ -150,6 +146,352 @@ struct ContentView: View {
             guard priorityAlertKey != "none" else { return }
             soundscape.playPriorityAlert()
         }
+    }
+
+    private var cinemaHeader: some View {
+        HStack(spacing: 22) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 23, style: .continuous)
+                    .fill(LinearGradient(
+                        colors: [Color(red: 0.15, green: 0.75, blue: 0.98),
+                                 Color(red: 0.03, green: 0.37, blue: 0.80)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing))
+                Image(systemName: "airplane")
+                    .font(.system(size: 43, weight: .black))
+                    .foregroundStyle(.white)
+            }
+            .frame(width: 86, height: 84)
+            .shadow(color: .cyan.opacity(0.32), radius: 14, y: 5)
+
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 12) {
+                    Text("XavPac")
+                        .foregroundStyle(Color(red: 0.06, green: 0.21, blue: 0.39))
+                    Text("TV")
+                        .foregroundStyle(Color(red: 0.01, green: 0.59, blue: 0.82))
+                }
+                .font(.system(size: 52, weight: .black, design: .rounded))
+                Text("LE CIEL EN SPECTACLE")
+                    .font(.system(size: 20, weight: .bold))
+                    .tracking(3)
+                    .foregroundStyle(Color(red: 0.25, green: 0.48, blue: 0.64))
+            }
+            Spacer(minLength: 24)
+
+            HStack(spacing: 14) {
+                Circle()
+                    .fill(service.errorMessage == nil ? Color.green : Color.orange)
+                    .frame(width: 19, height: 19)
+                    .shadow(color: .green.opacity(0.6), radius: 8)
+                Text(service.errorMessage == nil ? "EN DIRECT" : "RECONNEXION")
+                    .font(.system(size: 24, weight: .black))
+                    .foregroundStyle(Color(red: 0.04, green: 0.39, blue: 0.53))
+            }
+            .padding(.horizontal, 21)
+            .frame(height: 69)
+            .background(Color.white, in: RoundedRectangle(cornerRadius: 20))
+            .overlay(RoundedRectangle(cornerRadius: 20)
+                .stroke(Color.cyan.opacity(0.25), lineWidth: 2))
+
+            HStack(alignment: .firstTextBaseline, spacing: 11) {
+                Text("\(service.aircraft.count)")
+                    .font(.system(size: 56, weight: .black, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(Color(red: 0.02, green: 0.43, blue: 0.73))
+                Text("AÉRONEFS")
+                    .font(.system(size: 21, weight: .heavy))
+                    .foregroundStyle(Color(red: 0.24, green: 0.40, blue: 0.55))
+            }
+            .padding(.horizontal, 20)
+            .frame(height: 69)
+            .background(Color.white, in: RoundedRectangle(cornerRadius: 20))
+        }
+    }
+
+    private var cinemaMap: some View {
+        ZStack(alignment: .topLeading) {
+            AircraftMapView(
+                aircraft: service.aircraft,
+                center: service.center,
+                trails: service.trails,
+                selectedID: featuredAircraft?.id,
+                profiles: trafficProfiles
+            )
+            .overlay(alignment: .bottomLeading) {
+                HStack(spacing: 13) {
+                    Image(systemName: "location.fill")
+                        .foregroundStyle(Color(red: 0.0, green: 0.64, blue: 0.81))
+                    Text("HOME  •  BÂGÉ-DOMMARTIN")
+                }
+                .font(.system(size: 22, weight: .black))
+                .foregroundStyle(Color(red: 0.06, green: 0.27, blue: 0.41))
+                .padding(.horizontal, 20)
+                .padding(.vertical, 15)
+                .background(Color.white.opacity(0.96), in: RoundedRectangle(cornerRadius: 17))
+                .padding(23)
+            }
+
+            HStack(spacing: 12) {
+                Circle().fill(.green).frame(width: 14, height: 14)
+                Text("RADAR LIVE")
+                    .font(.system(size: 25, weight: .black, design: .rounded))
+                Text("50 KM")
+                    .font(.system(size: 22, weight: .bold))
+                    .foregroundStyle(Color(red: 0.14, green: 0.46, blue: 0.62))
+            }
+            .foregroundStyle(Color(red: 0.04, green: 0.29, blue: 0.46))
+            .padding(.horizontal, 19)
+            .padding(.vertical, 15)
+            .background(Color.white.opacity(0.97), in: RoundedRectangle(cornerRadius: 18))
+            .padding(23)
+
+            if let aircraft = priorityAircraft,
+               let profile = priorityProfile {
+                HStack(spacing: 14) {
+                    Image(systemName: profile.isRotorcraft ? "helicopter" : "airplane")
+                        .font(.system(size: 32, weight: .black))
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(profile.kind == .civilSecurity ? "SÉCURITÉ CIVILE" : "ARMÉE")
+                            .font(.system(size: 25, weight: .black))
+                        Text("\(aircraft.displayName)  •  \(distanceText(aircraft))")
+                            .font(.system(size: 19, weight: .bold))
+                    }
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, 24)
+                .padding(.vertical, 16)
+                .background(Color(red: 0.89, green: 0.16, blue: 0.12),
+                            in: RoundedRectangle(cornerRadius: 19))
+                .overlay(RoundedRectangle(cornerRadius: 19)
+                    .stroke(.white.opacity(0.95), lineWidth: 3))
+                .shadow(color: .red.opacity(0.55), radius: 19)
+                .padding(23)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                .modifier(CinemaAlertPulse())
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 26)
+            .stroke(Color.white, lineWidth: 5))
+        .shadow(color: Color(red: 0.23, green: 0.46, blue: 0.69).opacity(0.22),
+                radius: 22, y: 7)
+    }
+
+    private var cinemaDestination: some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .bottomLeading) {
+                cinemaMedia
+                    .frame(width: geometry.size.width, height: geometry.size.height)
+                    .clipped()
+                    .id(mediaService.current?.id ?? "cinema-fallback")
+
+                LinearGradient(
+                    colors: [.clear, .black.opacity(0.04), Color(red: 0.01, green: 0.10, blue: 0.25).opacity(0.96)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+
+                VStack(alignment: .leading, spacing: 9) {
+                    HStack(spacing: 11) {
+                        Image(systemName: "play.rectangle.fill")
+                            .font(.system(size: 28, weight: .bold))
+                        Text("ESCALE IMMERSIVE")
+                            .font(.system(size: 23, weight: .black))
+                            .tracking(1.8)
+                        Spacer()
+                        if isOverheadPass {
+                            Text("PASSAGE PROCHE")
+                                .font(.system(size: 19, weight: .heavy))
+                                .padding(.horizontal, 15)
+                                .padding(.vertical, 8)
+                                .background(Color(red: 0.03, green: 0.58, blue: 0.89),
+                                            in: Capsule())
+                        }
+                    }
+                    Spacer()
+                    Text(featuredEnrichment?.arrivalAirport?.city ?? "Prochaine escale…")
+                        .font(.system(size: 65, weight: .black, design: .rounded))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.56)
+                        .shadow(color: .black.opacity(0.40), radius: 8)
+                    Text(cinemaRouteLabel)
+                        .font(.system(size: 27, weight: .bold, design: .rounded))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                        .foregroundStyle(Color(red: 0.81, green: 0.95, blue: 1.0))
+                    if featuredEnrichment?.arrivalAirport == nil {
+                        Text("Les images de la prochaine ville apparaîtront automatiquement")
+                            .font(.system(size: 20, weight: .medium))
+                            .lineLimit(2)
+                    }
+                }
+                .padding(29)
+                .foregroundStyle(.white)
+            }
+        }
+        .background(Color(red: 0.05, green: 0.25, blue: 0.54))
+        .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 26)
+            .stroke(Color.white, lineWidth: 4))
+        .shadow(color: .cyan.opacity(0.17), radius: 18, y: 6)
+    }
+
+    private var cinemaRouteLabel: String {
+        guard let info = featuredEnrichment,
+              let arrival = info.arrivalAirport else { return "LE MONDE DÉFILE AU-DESSUS DE NOUS" }
+        let start = info.departureAirport?.city ?? info.departureAirport?.code ?? "EN VOL"
+        return "\(start.uppercased())  →  \(arrival.code)"
+    }
+
+    @ViewBuilder
+    private var cinemaMedia: some View {
+        if isOverheadPass,
+           let videoURL = mediaService.current?.televisionVideoURL {
+            LoopingVideoView(url: videoURL)
+        } else if let media = mediaService.current,
+                  !media.isVideo,
+                  let url = media.mediaURL {
+            CinematicDestinationImage(url: url, fallback: AnyView(destinationFallback))
+        } else if let still = mediaService.items.first(where: { !$0.isVideo && $0.mediaURL != nil }),
+                  let url = still.mediaURL {
+            CinematicDestinationImage(url: url, fallback: AnyView(destinationFallback))
+        } else {
+            destinationFallback
+        }
+    }
+
+    private var cinemaFeatured: some View {
+        HStack(spacing: 24) {
+            if let aircraft = featuredAircraft {
+                Image(systemName: featuredProfile?.isRotorcraft == true ? "helicopter" : "airplane")
+                    .font(.system(size: 70, weight: .black))
+                    .foregroundStyle(trafficColor(featuredProfile?.kind))
+                    .frame(width: 87)
+
+                VStack(alignment: .leading, spacing: 7) {
+                    Text(featuredProfile?.label ?? "TRAFIC AÉRIEN")
+                        .font(.system(size: 19, weight: .black))
+                        .tracking(1.1)
+                        .foregroundStyle(Color(red: 0.25, green: 0.50, blue: 0.67))
+                        .lineLimit(1)
+                    Text(aircraft.displayName)
+                        .font(.system(size: 51, weight: .black, design: .rounded))
+                        .foregroundStyle(Color(red: 0.03, green: 0.22, blue: 0.40))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.58)
+                    Text(featuredTitle(aircraft))
+                        .font(.system(size: 24, weight: .bold))
+                        .foregroundStyle(Color(red: 0.35, green: 0.48, blue: 0.57))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                }
+                Spacer(minLength: 8)
+                VStack(alignment: .trailing, spacing: 9) {
+                    Text(distanceText(aircraft))
+                        .font(.system(size: 42, weight: .black, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundStyle(Color(red: 0.0, green: 0.53, blue: 0.77))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                    Text(aircraft.altitudeLabel + "   •   " + aircraft.speedLabel)
+                        .font(.system(size: 21, weight: .bold))
+                        .foregroundStyle(Color(red: 0.28, green: 0.48, blue: 0.59))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                }
+            } else {
+                Image(systemName: "antenna.radiowaves.left.and.right")
+                    .font(.system(size: 55, weight: .bold))
+                    .foregroundStyle(.cyan)
+                VStack(alignment: .leading, spacing: 9) {
+                    Text("RADAR EN ÉCOUTE")
+                        .font(.system(size: 37, weight: .black))
+                        .foregroundStyle(Color(red: 0.05, green: 0.25, blue: 0.47))
+                    Text("Le prochain avion s’affichera automatiquement")
+                        .font(.system(size: 24, weight: .medium))
+                        .foregroundStyle(Color(red: 0.29, green: 0.49, blue: 0.61))
+                }
+                Spacer()
+            }
+        }
+        .padding(.horizontal, 27)
+        .padding(.vertical, 18)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.white, in: RoundedRectangle(cornerRadius: 24))
+        .overlay(RoundedRectangle(cornerRadius: 24)
+            .stroke(Color(red: 0.71, green: 0.87, blue: 0.96), lineWidth: 2))
+        .shadow(color: Color(red: 0.35, green: 0.56, blue: 0.69).opacity(0.17),
+                radius: 12, y: 4)
+    }
+
+    private var cinemaTrafficStrip: some View {
+        HStack(spacing: 18) {
+            ForEach(Array(service.displayAircraft.prefix(3).enumerated()),
+                    id: \.element.id) { index, aircraft in
+                cinemaTrafficCard(aircraft, index: index)
+            }
+            if service.displayAircraft.isEmpty {
+                HStack(spacing: 18) {
+                    Image(systemName: "airplane.circle.fill")
+                        .font(.system(size: 48, weight: .bold))
+                    Text("EN ATTENTE DES PROCHAINS AÉRONEFS")
+                        .font(.system(size: 32, weight: .black))
+                }
+                .foregroundStyle(Color(red: 0.16, green: 0.45, blue: 0.62))
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color.white, in: RoundedRectangle(cornerRadius: 24))
+            } else {
+                Spacer(minLength: 0)
+            }
+        }
+    }
+
+    private func cinemaTrafficCard(_ aircraft: Aircraft, index: Int) -> some View {
+        let profile = service.trafficProfile(for: aircraft)
+        let info = service.enrichment(for: aircraft)
+        let priority = profile.isPriorityTraffic
+
+        return HStack(spacing: 20) {
+            Image(systemName: profile.isRotorcraft ? "helicopter" : "airplane")
+                .font(.system(size: 49, weight: .black))
+                .foregroundStyle(trafficColor(profile.kind))
+                .frame(width: 64)
+            VStack(alignment: .leading, spacing: 7) {
+                Text(priority ? profile.label : "VOL \(index + 1)  ·  \(profile.label)")
+                    .font(.system(size: 18, weight: .black))
+                    .foregroundStyle(priority ? Color.red : Color(red: 0.27, green: 0.47, blue: 0.59))
+                    .lineLimit(1)
+                Text(aircraft.displayName)
+                    .font(.system(size: 38, weight: .black, design: .rounded))
+                    .foregroundStyle(Color(red: 0.04, green: 0.22, blue: 0.42))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.63)
+                Text(routeCities(info))
+                    .font(.system(size: 23, weight: .semibold))
+                    .foregroundStyle(Color(red: 0.22, green: 0.45, blue: 0.63))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.65)
+            }
+            Spacer(minLength: 4)
+            Text(distanceText(aircraft))
+                .font(.system(size: 27, weight: .black))
+                .monospacedDigit()
+                .foregroundStyle(Color(red: 0.01, green: 0.57, blue: 0.78))
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+        }
+        .padding(19)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(priority
+                    ? Color(red: 1.0, green: 0.96, blue: 0.86)
+                    : Color.white,
+                    in: RoundedRectangle(cornerRadius: 23))
+        .overlay(RoundedRectangle(cornerRadius: 23)
+            .stroke(priority ? Color.orange.opacity(0.8) : Color.cyan.opacity(0.20),
+                    lineWidth: priority ? 3 : 2))
+        .shadow(color: Color(red: 0.30, green: 0.56, blue: 0.70).opacity(0.12),
+                radius: 8, y: 4)
     }
 
     private var headerBar: some View {
