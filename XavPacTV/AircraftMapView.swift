@@ -414,7 +414,6 @@ struct AircraftMapView: UIViewRepresentable {
             if subview is UISlider
                 || kind.contains("zoomslider")
                 || kind.contains("zoomcontrol")
-                || kind.contains("zoomview")
                 || kind.contains("compassview") {
                 subview.isHidden = true
             } else {
