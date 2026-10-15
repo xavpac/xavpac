@@ -58,6 +58,11 @@ struct ApproachPodiumCard: View {
                     .clipped()
 
                 LinearGradient(
+                    colors: [accent.opacity(0.26), .clear, accent.opacity(0.08)],
+                    startPoint: .topLeading, endPoint: .bottomTrailing
+                )
+
+                LinearGradient(
                     stops: [
                         .init(color: midnight.opacity(0.09), location: 0),
                         .init(color: midnight.opacity(0.13), location: 0.36),
@@ -129,8 +134,8 @@ struct ApproachPodiumCard: View {
                                 .foregroundStyle(isHero ? champagne : .white)
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.62)
-                            Text("KM DE HOME")
-                                .font(.system(size: isHero ? 17 : 13, weight: .black))
+                            Text("KM  ✦  À PROXIMITÉ")
+                                .font(.system(size: isHero ? 16 : 12, weight: .black))
                                 .foregroundStyle(isHero ? champagne : sky)
                                 .lineLimit(1)
                         }
