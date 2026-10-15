@@ -94,15 +94,15 @@ struct ContentView: View {
                             cinemaDestination
                                 .frame(maxHeight: .infinity)
 
-                            cinemaFeatured
-                                .frame(height: 180)
+                            cinemaPriorityStatus
+                                .frame(height: 125)
                         }
                         .frame(maxWidth: .infinity)
                     }
                     .frame(maxHeight: .infinity)
 
-                    cinemaTrafficStrip
-                        .frame(height: 148)
+                    cinemaPodium
+                        .frame(height: 282)
 
                     HStack {
                         Text("✦ XAVPAC TV  •  LE CIEL EN SPECTACLE")
@@ -172,7 +172,7 @@ struct ContentView: View {
                         .foregroundStyle(Color(red: 0.01, green: 0.59, blue: 0.82))
                 }
                 .font(.system(size: 52, weight: .black, design: .rounded))
-                Text("LE CIEL EN SPECTACLE")
+                Text("PODIUM DES APPROCHES  •  LE CIEL EN DIRECT")
                     .font(.system(size: 20, weight: .bold))
                     .tracking(3)
                     .foregroundStyle(Color(red: 0.25, green: 0.48, blue: 0.64))
@@ -246,30 +246,7 @@ struct ContentView: View {
             .background(Color.white.opacity(0.97), in: RoundedRectangle(cornerRadius: 18))
             .padding(23)
 
-            if let aircraft = priorityAircraft,
-               let profile = priorityProfile {
-                HStack(spacing: 14) {
-                    Image(systemName: profile.isRotorcraft ? "helicopter" : "airplane")
-                        .font(.system(size: 32, weight: .black))
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(profile.kind == .civilSecurity ? "SÉCURITÉ CIVILE" : "ARMÉE")
-                            .font(.system(size: 25, weight: .black))
-                        Text("\(aircraft.displayName)  •  \(distanceText(aircraft))")
-                            .font(.system(size: 19, weight: .bold))
-                    }
-                }
-                .foregroundStyle(.white)
-                .padding(.horizontal, 24)
-                .padding(.vertical, 16)
-                .background(Color(red: 0.89, green: 0.16, blue: 0.12),
-                            in: RoundedRectangle(cornerRadius: 19))
-                .overlay(RoundedRectangle(cornerRadius: 19)
-                    .stroke(.white.opacity(0.95), lineWidth: 3))
-                .shadow(color: .red.opacity(0.55), radius: 19)
-                .padding(23)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                .modifier(CinemaAlertPulse())
-            }
+
         }
         .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 26)
@@ -425,73 +402,108 @@ struct ContentView: View {
                 radius: 12, y: 4)
     }
 
-    private var cinemaTrafficStrip: some View {
-        HStack(spacing: 18) {
-            ForEach(Array(service.displayAircraft.prefix(3).enumerated()),
-                    id: \.element.id) { index, aircraft in
-                cinemaTrafficCard(aircraft, index: index)
+    // Classement fondé sur la distance réelle, sans changer les alertes nationales.
+    private var cinemaPodium: some View {
+        GeometryReader { geometry in
+            let aircraft = Array(service.aircraft.prefix(3))
+            let gap: CGFloat = 17
+            let usable = max(0, geometry.size.width - gap * 2)
+            let side = usable * 0.25
+            let hero = usable - (2 * side)
+
+            HStack(alignment: .bottom, spacing: gap) {
+                podiumPosition(aircraft, index: 1, rank: 2, hero: false)
+                    .frame(width: side, height: geometry.size.height - 18)
+                podiumPosition(aircraft, index: 0, rank: 1, hero: true)
+                    .frame(width: hero, height: geometry.size.height)
+                podiumPosition(aircraft, index: 2, rank: 3, hero: false)
+                    .frame(width: side, height: geometry.size.height - 18)
             }
-            if service.displayAircraft.isEmpty {
-                HStack(spacing: 18) {
-                    Image(systemName: "airplane.circle.fill")
-                        .font(.system(size: 48, weight: .bold))
-                    Text("EN ATTENTE DES PROCHAINS AÉRONEFS")
-                        .font(.system(size: 32, weight: .black))
-                }
-                .foregroundStyle(Color(red: 0.16, green: 0.45, blue: 0.62))
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color.white, in: RoundedRectangle(cornerRadius: 24))
-            } else {
-                Spacer(minLength: 0)
-            }
+            .frame(width: geometry.size.width, height: geometry.size.height,
+                   alignment: .bottom)
+            .animation(.easeInOut(duration: 0.55), value: aircraft.first?.id)
         }
     }
 
-    private func cinemaTrafficCard(_ aircraft: Aircraft, index: Int) -> some View {
-        let profile = service.trafficProfile(for: aircraft)
-        let info = service.enrichment(for: aircraft)
-        let priority = profile.isPriorityTraffic
-
-        return HStack(spacing: 20) {
-            Image(systemName: profile.isRotorcraft ? "helicopter" : "airplane")
-                .font(.system(size: 49, weight: .black))
-                .foregroundStyle(trafficColor(profile.kind))
-                .frame(width: 64)
-            VStack(alignment: .leading, spacing: 7) {
-                Text(priority ? profile.label : "VOL \(index + 1)  ·  \(profile.label)")
-                    .font(.system(size: 18, weight: .black))
-                    .foregroundStyle(priority ? Color.red : Color(red: 0.27, green: 0.47, blue: 0.59))
-                    .lineLimit(1)
-                Text(aircraft.displayName)
-                    .font(.system(size: 38, weight: .black, design: .rounded))
-                    .foregroundStyle(Color(red: 0.04, green: 0.22, blue: 0.42))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.63)
-                Text(routeCities(info))
-                    .font(.system(size: 23, weight: .semibold))
-                    .foregroundStyle(Color(red: 0.22, green: 0.45, blue: 0.63))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.65)
-            }
-            Spacer(minLength: 4)
-            Text(distanceText(aircraft))
-                .font(.system(size: 27, weight: .black))
-                .monospacedDigit()
-                .foregroundStyle(Color(red: 0.01, green: 0.57, blue: 0.78))
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
+    @ViewBuilder
+    private func podiumPosition(
+        _ aircraft: [Aircraft], index: Int, rank: Int, hero: Bool
+    ) -> some View {
+        if aircraft.indices.contains(index) {
+            let item = aircraft[index]
+            ApproachPodiumCard(
+                aircraft: item,
+                enrichment: service.enrichment(for: item),
+                profile: service.trafficProfile(for: item),
+                home: service.center,
+                rank: rank,
+                isHero: hero
+            )
+            .id(item.id)
+        } else {
+            PodiumWaitingCard(rank: rank, isHero: hero)
         }
-        .padding(19)
+    }
+
+    private var cinemaPriorityStatus: some View {
+        HStack(spacing: 22) {
+            Image(systemName: priorityProfile?.isRotorcraft == true ? "helicopter" : "shield.lefthalf.filled")
+                .font(.system(size: 55, weight: .heavy))
+                .frame(width: 70)
+                .foregroundStyle(priorityAircraft == nil
+                                 ? Color(red: 0.0, green: 0.60, blue: 0.82)
+                                 : Color.white)
+
+            VStack(alignment: .leading, spacing: 10) {
+                Text("SÉCURITÉ CIVILE  /  ARMÉE")
+                    .font(.system(size: 27, weight: .black))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.70)
+                if let aircraft = priorityAircraft {
+                    Text("\(aircraft.displayName)  •  \(distanceText(aircraft))")
+                        .font(.system(size: 27, weight: .bold))
+                        .monospacedDigit()
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                } else {
+                    Text("Aucun moyen prioritaire identifié")
+                        .font(.system(size: 23, weight: .medium))
+                        .lineLimit(1)
+                }
+            }
+            Spacer(minLength: 0)
+            if priorityAircraft != nil {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 38, weight: .heavy))
+            } else {
+                Circle()
+                    .fill(Color.green)
+                    .frame(width: 18, height: 18)
+                    .shadow(color: .green.opacity(0.5), radius: 8)
+            }
+        }
+        .padding(.horizontal, 28)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(priority
-                    ? Color(red: 1.0, green: 0.96, blue: 0.86)
-                    : Color.white,
-                    in: RoundedRectangle(cornerRadius: 23))
-        .overlay(RoundedRectangle(cornerRadius: 23)
-            .stroke(priority ? Color.orange.opacity(0.8) : Color.cyan.opacity(0.20),
-                    lineWidth: priority ? 3 : 2))
-        .shadow(color: Color(red: 0.30, green: 0.56, blue: 0.70).opacity(0.12),
-                radius: 8, y: 4)
+        .foregroundStyle(priorityAircraft == nil
+                         ? Color(red: 0.08, green: 0.37, blue: 0.55)
+                         : Color.white)
+        .background(
+            LinearGradient(
+                colors: priorityAircraft == nil
+                ? [Color.white, Color(red: 0.85, green: 0.97, blue: 1.0)]
+                : [Color(red: 0.97, green: 0.13, blue: 0.18), Color(red: 0.64, green: 0.06, blue: 0.17)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            ), in: RoundedRectangle(cornerRadius: 24, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(priorityAircraft == nil ? Color.cyan.opacity(0.35) : Color.white.opacity(0.95),
+                        lineWidth: priorityAircraft == nil ? 2 : 4)
+        }
+        .shadow(color: priorityAircraft == nil ? .cyan.opacity(0.10) : .red.opacity(0.40),
+                radius: 16, y: 5)
+        .modifier(CinemaAlertPulse(isEnabled: priorityAircraft != nil))
     }
 
     private var headerBar: some View {
@@ -1255,15 +1267,28 @@ struct ContentView: View {
 }
 
 private struct CinemaAlertPulse: ViewModifier {
+    var isEnabled = true
     @State private var glowing = false
 
     func body(content: Content) -> some View {
         content
-            .opacity(glowing ? 1.0 : 0.74)
-            .scaleEffect(glowing ? 1.0 : 0.985)
+            .opacity(isEnabled ? (glowing ? 1.0 : 0.74) : 1.0)
+            .scaleEffect(isEnabled ? (glowing ? 1.0 : 0.985) : 1.0)
             .onAppear {
-                withAnimation(.easeInOut(duration: 0.65).repeatForever(autoreverses: true)) {
-                    glowing = true
+                if isEnabled {
+                    withAnimation(.easeInOut(duration: 0.65).repeatForever(autoreverses: true)) {
+                        glowing = true
+                    }
+                }
+            }
+            .onChange(of: isEnabled) { enabled in
+                if enabled {
+                    glowing = false
+                    withAnimation(.easeInOut(duration: 0.65).repeatForever(autoreverses: true)) {
+                        glowing = true
+                    }
+                } else {
+                    glowing = false
                 }
             }
     }
