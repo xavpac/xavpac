@@ -435,6 +435,17 @@ async function fetchCommonsVideos(city: string, _iata: string, _page: number, _t
       const payload = await response.json() as { query?: { pages?: Record<string, CommonsVideoPage> } };
       const videos = Object.values(payload.query?.pages ?? {})
         .filter((page) => normalized(page.title ?? "").includes(normalized(city)))
+        .sort((a, b) => {
+          const scenicScore = (title: string) => {
+            const label = normalized(title);
+            let score = 0;
+            if (/hyperlapse|timelapse|time lapse|a day in|sunset|night|nightlife|cityscape|skyline|panorama|scenery|landscape|drone|aerial|view|tour eiffel/.test(label)) score += 10;
+            if (/tram|train|berthing|container|vessel|ship|msc |game|conference|interview|edit /.test(label)) score -= 15;
+            if (/\\.webm$/.test(label)) score += 2;
+            return score;
+          };
+          return scenicScore(b.title ?? "") - scenicScore(a.title ?? "");
+        })
         .flatMap<DestinationMediaItem>((page) => {
           const info = page.videoinfo?.[0];
           const derivative = pickCommonsVideoDerivative(info?.derivatives);
