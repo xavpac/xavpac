@@ -1,7 +1,7 @@
 import CoreLocation
 import Foundation
 
-let xavPacBaseURL = URL(string: "https://xavpac-one.vercel.app")!
+let xavPacBaseURL = URL(string: "https://xavpac-ty3i.vercel.app")!
 
 func xavPacAssetURL(_ value: String?) -> URL? {
     guard let value, !value.isEmpty else { return nil }
@@ -180,15 +180,31 @@ struct DestinationMedia: Decodable, Identifiable, Hashable {
     let author: String?
     let sourceName: String
     let sourceURL: String?
+    let appleVideoURL: String?
 
     enum CodingKeys: String, CodingKey {
         case id, type, url, preview, author, sourceName
         case sourceURL = "sourceUrl"
+        case appleVideoURL = "appleVideoUrl"
     }
 
     var mediaURL: URL? { URL(string: url) }
     var previewURL: URL? { preview.flatMap(URL.init(string:)) }
     var isVideo: Bool { type == "video" }
+
+    // AVPlayer sur tvOS préfère les flux Apple (MP4/QuickTime).
+    // Ne jamais afficher un fichier WebM comme s'il s'agissait d'une image.
+    var televisionVideoURL: URL? {
+        guard isVideo else { return nil }
+        if let appleVideoURL, let url = URL(string: appleVideoURL) {
+            return url
+        }
+        guard let url = mediaURL,
+              ["mp4", "m4v", "mov"].contains(url.pathExtension.lowercased()) else {
+            return nil
+        }
+        return url
+    }
 }
 
 
