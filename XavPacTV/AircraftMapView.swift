@@ -411,8 +411,7 @@ struct AircraftMapView: UIViewRepresentable {
             let kind = String(describing: type(of: subview)).lowercased()
             // Les contrôles UIKit et leurs vues privées varient selon tvOS.
             // Ne supprimer ni l'image de la carte, ni les overlays, ni les aéronefs.
-            if subview is UISlider
-                || kind.contains("zoomslider")
+            if kind.contains("zoomslider")
                 || kind.contains("zoomcontrol")
                 || kind.contains("compassview") {
                 subview.isHidden = true
