@@ -300,7 +300,7 @@ async function fetchPixabay(city: string, _iata: string, page: number, _theme: s
   const key = process.env.PIXABAY_API_KEY?.trim();
   if (!key) return null;
 
-  const query = [city, iata, theme].filter(Boolean).join(" ");
+  const query = city;
 
   const videoUrl = new URL("https://pixabay.com/api/videos/");
   videoUrl.searchParams.set("key", key);
