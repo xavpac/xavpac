@@ -1,0 +1,43 @@
+name: XavPac TV - contrôle Apple TV
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - xavpac-tv-invites-20261014
+      - main
+    paths:
+      - "XavPacTV/**"
+      - "XavPacTV.xcodeproj/**"
+      - ".github/workflows/xavpac-tv-validation.yml"
+  pull_request:
+    paths:
+      - "XavPacTV/**"
+      - "XavPacTV.xcodeproj/**"
+      - ".github/workflows/xavpac-tv-validation.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-tvos:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - name: Récupère le projet natif
+        uses: actions/checkout@v4
+      - name: Vérifie Xcode et tvOS
+        run: |
+          xcodebuild -version
+          xcodebuild -showsdks
+      - name: Compile l'application Apple TV sans signature
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project XavPacTV.xcodeproj \
+            -scheme XavPacTV \
+            -configuration Debug \
+            -sdk appletvsimulator \
+            -destination "generic/platform=tvOS Simulator" \
+            CODE_SIGNING_ALLOWED=NO \
+            build
