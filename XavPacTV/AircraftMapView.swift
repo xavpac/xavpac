@@ -331,8 +331,6 @@ struct AircraftMapView: UIViewRepresentable {
         // La cartographie XavPac TV est volontairement figée :
         // aucun déplacement, zoom ou réglage n'est possible depuis la télécommande.
         map.isUserInteractionEnabled = false
-        map.showsCompass = false
-        map.showsScale = false
 
         let region = MKCoordinateRegion(
             center: center,
