@@ -12,6 +12,7 @@
 		110000000000000000000003 /* AircraftModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 120000000000000000000003 /* AircraftModels.swift */; };
 		110000000000000000000004 /* AircraftService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 120000000000000000000004 /* AircraftService.swift */; };
 		110000000000000000000005 /* AircraftMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 120000000000000000000005 /* AircraftMapView.swift */; };
+		110000000000000000000008 /* ApproachPodiumView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 120000000000000000000008 /* ApproachPodiumView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -20,6 +21,7 @@
 		120000000000000000000003 /* AircraftModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AircraftModels.swift; sourceTree = "<group>"; };
 		120000000000000000000004 /* AircraftService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AircraftService.swift; sourceTree = "<group>"; };
 		120000000000000000000005 /* AircraftMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AircraftMapView.swift; sourceTree = "<group>"; };
+		120000000000000000000008 /* ApproachPodiumView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApproachPodiumView.swift; sourceTree = "<group>"; };
 		120000000000000000000006 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 		120000000000000000000007 /* XavPacTV.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = XavPacTV.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -51,6 +53,7 @@
 				120000000000000000000003 /* AircraftModels.swift */,
 				120000000000000000000004 /* AircraftService.swift */,
 				120000000000000000000005 /* AircraftMapView.swift */,
+				120000000000000000000008 /* ApproachPodiumView.swift */,
 				120000000000000000000006 /* README.md */,
 			);
 			path = XavPacTV;
@@ -137,6 +140,7 @@
 				110000000000000000000003 /* AircraftModels.swift in Sources */,
 				110000000000000000000004 /* AircraftService.swift in Sources */,
 				110000000000000000000005 /* AircraftMapView.swift in Sources */,
+				110000000000000000000008 /* ApproachPodiumView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
