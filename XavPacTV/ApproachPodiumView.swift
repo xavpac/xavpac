@@ -9,6 +9,8 @@ struct ApproachPodiumCard: View {
     let home: CLLocationCoordinate2D
     let rank: Int
     let isHero: Bool
+    let departureWeather: TVAirportWeather?
+    let arrivalWeather: TVAirportWeather?
 
     private let champagne = Color(red: 1.0, green: 0.79, blue: 0.26)
     private let sky = Color(red: 0.13, green: 0.78, blue: 0.98)
@@ -27,6 +29,26 @@ struct ApproachPodiumCard: View {
     private var model: String {
         enrichment?.aircraftModel ?? enrichment?.aircraftType
         ?? aircraft.description ?? aircraft.aircraftType ?? profile.label
+    }
+
+    private func airportWeatherView(title: String, name: String, weather: TVAirportWeather?) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: weather?.symbolName ?? "cloud")
+                .font(.system(size: isHero ? 23 : 18, weight: .bold))
+                .foregroundStyle(Color(red: 0.88, green: 0.96, blue: 1.0))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title + " · " + name)
+                    .font(.system(size: isHero ? 15 : 12, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.72))
+                    .lineLimit(1)
+                Text(weather == nil ? "Météo indisponible" : ((weather?.temperatureLabel ?? "—") + " · " + (weather?.conditionLabel ?? "")))
+                    .font(.system(size: isHero ? 18 : 14, weight: .heavy))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.68)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var origin: String {
@@ -141,6 +163,13 @@ struct ApproachPodiumCard: View {
                         }
                     }
                     .padding(.top, 3)
+
+                    Rectangle().fill(.white.opacity(0.20)).frame(height: 1)
+                    HStack(spacing: 12) {
+                        airportWeatherView(title: "DÉPART", name: origin, weather: departureWeather)
+                        airportWeatherView(title: "ARRIVÉE", name: destination, weather: arrivalWeather)
+                    }
+                    .padding(.vertical, isHero ? 5 : 3)
                 }
                 .padding(isHero ? 24 : 17)
             }
