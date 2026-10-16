@@ -355,6 +355,21 @@ struct ContentView: View {
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
                         .foregroundStyle(Color(red: 0.81, green: 0.95, blue: 1.0))
+
+                    // Deux observations METAR sous l'image / vidéo immersive.
+                    // Elles ne sont pas remplacées par un trafic prioritaire.
+                    HStack(alignment: .top, spacing: 12) {
+                        cinemaAirportWeatherTile(
+                            title: "DÉPART",
+                            airport: featuredEnrichment?.departureAirport
+                        )
+                        cinemaAirportWeatherTile(
+                            title: "ARRIVÉE",
+                            airport: featuredEnrichment?.arrivalAirport
+                        )
+                    }
+                    .padding(.top, 14)
+
                     if featuredEnrichment?.arrivalAirport == nil {
                         Text("Les images de la prochaine ville apparaîtront automatiquement")
                             .font(.system(size: 20, weight: .medium))
@@ -373,7 +388,60 @@ struct ContentView: View {
     }
 
 
-    // Les trafics Sécurité civile / Armée / SAMU prennent la place de l'escale.
+    // Bandeaux prioritaires réservés à la Sécurité civile et l'Armée.
+    // La destination continue d'être diffusée pendant les alertes.
+    private func cinemaAirportWeatherTile(title: String, airport: TVAirport?) -> some View {
+        let weather = airportWeather.weather(for: airport)
+        let name = airport?.city ?? "Non identifié"
+        let code = airport?.code ?? "—"
+
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 7) {
+                Image(systemName: weather?.symbolName ?? "cloud")
+                    .font(.system(size: 23, weight: .bold))
+                    .foregroundStyle(Color(red: 0.67, green: 0.93, blue: 1.0))
+                Text(title + "  ·  " + code)
+                    .font(.system(size: 18, weight: .black))
+                    .tracking(1)
+                    .foregroundStyle(Color(red: 0.67, green: 0.93, blue: 1.0))
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                Text(weather?.temperatureLabel ?? "—")
+                    .font(.system(size: 28, weight: .black, design: .rounded))
+                    .monospacedDigit()
+            }
+            Text(name)
+                .font(.system(size: 21, weight: .bold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            Text(weather?.windLabel ?? "VENT —")
+                .font(.system(size: 17, weight: .bold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+            HStack(spacing: 10) {
+                Text(weather?.visibilityLabel ?? "VIS. —")
+                Spacer(minLength: 0)
+                Text(weather?.observationLabel ?? "METAR indisponible")
+            }
+            .font(.system(size: 14, weight: .bold))
+            .lineLimit(1)
+            .minimumScaleFactor(0.73)
+            .foregroundStyle(.white.opacity(0.8))
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 13)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            Color(red: 0.02, green: 0.15, blue: 0.30).opacity(0.78),
+            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(Color.white.opacity(0.35), lineWidth: 1)
+        )
+    }
+
     // Photo réellement rattachée à l'appareil si disponible, jamais inventée.
     private func cinemaPrioritySpotlight(_ aircraft: Aircraft) -> some View {
         let enrichment = service.enrichment(for: aircraft)
