@@ -9,6 +9,7 @@ struct ContentView: View {
     @StateObject private var airportWeather = AirportWeatherService()
     @StateObject private var homeScene = HomeSceneService()
     @StateObject private var soundscape = AmbientSoundscape()
+    @StateObject private var appleMusicSoundtrack = AppleMusicSoundtrack()
     @State private var displayClock = Date()
 
     private let navy = Color(red: 0.018, green: 0.075, blue: 0.16)
@@ -194,6 +195,15 @@ struct ContentView: View {
             UIApplication.shared.isIdleTimerDisabled = false
             service.stop()
             soundscape.stop()
+            appleMusicSoundtrack.stop()
+        }
+        .task {
+            // Permission unique MusicKit lors du premier lancement. En cas de
+            // refus, d’absence d’abonnement ou de playlist, l’ambiance sonore
+            // originale continue à jouer sans interrompre le radar.
+            if await appleMusicSoundtrack.start() {
+                soundscape.disableAmbientButKeepAlerts()
+            }
         }
         .task {
             // L'état de liaison évolue même lorsque le fournisseur ADS-B
@@ -2200,6 +2210,11 @@ private final class AmbientSoundscape: ObservableObject {
         alertPlayer.stop()
         engine.pause()
         try? AVAudioSession.sharedInstance().setActive(false)
+    }
+
+    func disableAmbientButKeepAlerts() {
+        // La piste externe prend le relais, mais les alertes restent actives.
+        player.stop()
     }
 
     func playPriorityAlert() {
