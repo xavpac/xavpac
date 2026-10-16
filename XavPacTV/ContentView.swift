@@ -6,7 +6,11 @@ import UIKit
 struct ContentView: View {
     @StateObject private var service = AircraftService()
     @StateObject private var mediaService = DestinationMediaService()
+    @StateObject private var airportWeather = AirportWeatherService()
+    @StateObject private var homeScene = HomeSceneService()
     @StateObject private var soundscape = AmbientSoundscape()
+    @StateObject private var appleMusicSoundtrack = AppleMusicSoundtrack()
+    @State private var displayClock = Date()
 
     private let navy = Color(red: 0.018, green: 0.075, blue: 0.16)
     private let deepBlue = Color(red: 0.02, green: 0.16, blue: 0.31)
@@ -25,22 +29,77 @@ struct ContentView: View {
         return service.trafficProfile(for: featuredAircraft)
     }
 
+    // Conserver les moyens nationaux en alerte pendant les escales vidéo.
+    private var priorityAircraft: Aircraft? {
+        service.specialAircraftInZone.first
+    }
+
+    private var priorityProfile: TVTrafficProfile? {
+        guard let priorityAircraft else { return nil }
+        return service.trafficProfile(for: priorityAircraft)
+    }
+
+    private var specialCounts: (civil: Int, military: Int) {
+        let kinds = service.specialAircraftInZone.map { service.trafficProfile(for: $0).kind }
+        return (
+            kinds.filter { $0 == .civilSecurity }.count,
+            kinds.filter { $0 == .military }.count
+        )
+    }
+
+    private var radarIsLive: Bool {
+        guard let updated = service.updatedAt else { return false }
+        return service.errorMessage == nil && displayClock.timeIntervalSince(updated) < 40
+    }
+
+    private var radarStatus: String {
+        guard let updated = service.updatedAt else { return "RECHERCHE DU TRAFIC…" }
+        if !radarIsLive { return "DONNÉES À ACTUALISER" }
+        return "RADAR ACTIF · " + updated.formatted(date: .omitted, time: .shortened)
+    }
+
     private var trafficProfiles: [String: TVTrafficProfile] {
         Dictionary(uniqueKeysWithValues: service.aircraft.map { aircraft in
             (aircraft.id, service.trafficProfile(for: aircraft))
         })
     }
 
+    private var trafficRoutes: [String: String] {
+        Dictionary(uniqueKeysWithValues: service.aircraft.compactMap { aircraft in
+            guard let info = service.enrichment(for: aircraft),
+                  let departure = info.departureAirport?.code,
+                  let arrival = info.arrivalAirport?.code,
+                  departure != "—", arrival != "—" else { return nil }
+            return (aircraft.id, "\(departure) → \(arrival)")
+        })
+    }
+
+    private var podiumAirports: [TVAirport] {
+        let highlighted: [TVAirport] = [
+            featuredEnrichment?.departureAirport,
+            featuredEnrichment?.arrivalAirport
+        ].compactMap { $0 }
+        let others = service.aircraft.prefix(3).flatMap { aircraft -> [TVAirport] in
+            let info = service.enrichment(for: aircraft)
+            return [info?.departureAirport, info?.arrivalAirport].compactMap { $0 }
+        }
+        return highlighted + others
+    }
+
+    private var podiumWeatherKey: String {
+        podiumAirports.compactMap(\.icao).sorted().joined(separator: ",")
+    }
+
     private var isPriorityActive: Bool {
         guard let aircraft = featuredAircraft,
               let profile = featuredProfile else { return false }
         return profile.isPriorityTraffic
-            && aircraft.distanceKilometers(from: service.center) <= 40
+            && aircraft.distanceKilometers(from: service.center) <= 50
     }
 
     private var isOverheadPass: Bool {
         guard let aircraft = featuredAircraft else { return false }
-        return aircraft.distanceKilometers(from: service.center) <= 8
+        return aircraft.distanceKilometers(from: service.center) <= 12
     }
 
     private var destinationTaskKey: String {
@@ -50,74 +109,143 @@ struct ContentView: View {
     }
 
     private var priorityAlertKey: String {
-        isPriorityActive ? (featuredAircraft?.id ?? "priority") : "none"
+        // Ne pas interrompre l'ambiance pour un simple hélicoptère privé.
+        guard let aircraft = priorityAircraft else { return "none" }
+        let kind = service.trafficProfile(for: aircraft).kind
+        return kind == .helicopter ? "none" : aircraft.id
     }
 
+    // Mode cinéma tvOS : tout doit rester lisible depuis la table, à plusieurs mètres.
+    // Aucun bouton, aucun focus, aucun réglage : une présentation autonome.
     var body: some View {
-        ZStack {
-            LinearGradient(
-                colors: [
-                    Color(red: 0.90, green: 0.96, blue: 0.99),
-                    Color(red: 0.80, green: 0.90, blue: 0.96)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
+        GeometryReader { geometry in
+            let bodyWidth = max(0, geometry.size.width - 72)
+            let mapWidth = bodyWidth * 0.61
 
-            VStack(spacing: 14) {
-                headerBar
+            ZStack {
+                SkyShowBackdrop()
+                    .ignoresSafeArea()
+                    .allowsHitTesting(false)
 
-                HStack(spacing: 16) {
-                    mapPanel
+                VStack(spacing: 18) {
+                    cinemaHeader
+                        .frame(height: 94)
 
-                    VStack(spacing: 12) {
-                        featuredCard
+                    // V4 tvOS : le trafic Armée / Sécurité civile occupe
+                    // TOUTE la colonne de droite tant qu'il est détecté.
+                    // En temps normal : escale immersive + statut des moyens.
+                    // La carte reste fixe et visible en permanence à gauche.
+                    HStack(alignment: .top, spacing: 20) {
+                        VStack(spacing: 18) {
+                            cinemaMap
+                                .frame(maxHeight: .infinity)
 
-                        if featuredEnrichment?.arrivalAirport != nil {
-                            destinationCard
-                        } else {
-                            noDestinationCard
+                            cinemaTwoClosest
+                                .frame(height: 249)
                         }
+                        .frame(width: mapWidth)
+                        .frame(maxHeight: .infinity)
 
-                        nearbyCard
+                        Group {
+                            if radarIsLive, let special = priorityAircraft {
+                                // Une alerte dans le rayon de 50 km prend aussitôt
+                                // la place des DEUX panneaux (météo/escale + statut).
+                                // Ne pas attendre 12 km : l'alerte à 32 km doit
+                                // déjà montrer la photo et l'identification.
+                                cinemaPrioritySpotlight(special)
+                                    .id(special.id)
+                                    .frame(maxHeight: .infinity)
+                                    .transition(.opacity)
+                            } else {
+                                VStack(spacing: 18) {
+                                    cinemaDestination
+                                        .frame(maxHeight: .infinity)
+                                    cinemaPriorityStatus
+                                        .frame(height: 132)
+                                }
+                                .transition(.opacity)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .animation(.easeInOut(duration: 0.45), value: radarIsLive ? priorityAlertKey : "none")
                     }
-                    .frame(width: 600)
+                    .frame(maxHeight: .infinity)
+
+                    HStack {
+                        Text("✦ XAVPAC TV  •  SKY SHOW  •  LE CIEL EN SPECTACLE")
+                        Spacer()
+                        Text(appleMusicSoundtrack.isPlaying
+                             ? "♫ FAVORIS APPLE MUSIC"
+                             : "♫ " + appleMusicSoundtrack.statusLabel)
+                            .foregroundStyle(appleMusicSoundtrack.isPlaying
+                                ? Color(red: 0.05, green: 0.52, blue: 0.30)
+                                : Color(red: 0.48, green: 0.38, blue: 0.19))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                        Spacer(minLength: 8)
+                        Text("BÂGÉ-DOMMARTIN  •  50 KM  •  DIRECT")
+                    }
+                    .font(.system(size: 17, weight: .heavy, design: .rounded))
+                    .tracking(1.4)
+                    .foregroundStyle(Color(red: 0.31, green: 0.47, blue: 0.57))
+                    .frame(height: 26)
                 }
+                .padding(.horizontal, 36)
+                .padding(.vertical, 22)
             }
-            .padding(12)
-            .background(
-                navy.opacity(0.97),
-                in: RoundedRectangle(cornerRadius: 32, style: .continuous)
-            )
-            .overlay {
-                RoundedRectangle(cornerRadius: 32, style: .continuous)
-                    .stroke(
-                        LinearGradient(
-                            colors: [
-                                Color.cyan.opacity(0.90),
-                                Color.blue.opacity(0.50),
-                                Color.cyan.opacity(0.70)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 2.4
-                    )
-            }
-            .shadow(color: Color.cyan.opacity(0.18), radius: 20)
-            .padding(.horizontal, 18)
-            .padding(.vertical, 16)
         }
+        .allowsHitTesting(false)
         .onAppear {
             UIApplication.shared.isIdleTimerDisabled = true
             service.start()
-            soundscape.start()
+            // Priorité à la playlist Apple Music, sans musique concurrente.
         }
         .onDisappear {
             UIApplication.shared.isIdleTimerDisabled = false
             service.stop()
             soundscape.stop()
+            appleMusicSoundtrack.stop()
+        }
+        .task {
+            // Démarrer Apple Music en premier. En cas de synchronisation lente,
+            // réessayer automatiquement sans aucune commande sur la TV.
+            while !Task.isCancelled {
+                if await appleMusicSoundtrack.start() {
+                    soundscape.disableAmbientButKeepAlerts()
+                } else {
+                    soundscape.start()
+                }
+                do { try await Task.sleep(nanoseconds: 180_000_000_000) }
+                catch { break }
+            }
+        }
+        .task {
+            // L'état de liaison évolue même lorsque le fournisseur ADS-B
+            // ne répond plus : ne jamais afficher EN DIRECT indéfiniment.
+            while !Task.isCancelled {
+                do { try await Task.sleep(nanoseconds: 4_000_000_000) }
+                catch { break }
+                displayClock = Date()
+            }
+        }
+        .task(id: podiumWeatherKey) {
+            await airportWeather.refresh(for: podiumAirports)
+        }
+        .task {
+            // Vraie météo de Bâgé-Dommartin actualisée toutes les 15 minutes.
+            while !Task.isCancelled {
+                await homeScene.refresh()
+                do { try await Task.sleep(nanoseconds: 900_000_000_000) }
+                catch { break }
+            }
+        }
+        .task {
+            // Rotation automatique des photographies locales.
+            while !Task.isCancelled {
+                do { try await Task.sleep(nanoseconds: 15_000_000_000) }
+                catch { break }
+                homeScene.advancePhoto()
+            }
         }
         .task(id: destinationTaskKey) {
             await mediaService.load(for: featuredEnrichment)
@@ -127,7 +255,7 @@ struct ContentView: View {
         }
         .task(id: mediaService.current?.id) {
             guard let media = mediaService.current else { return }
-            let seconds: UInt64 = media.isVideo ? 12 : 9
+            let seconds: UInt64 = media.isVideo ? 20 : 11
             try? await Task.sleep(nanoseconds: seconds * 1_000_000_000)
             guard !Task.isCancelled else { return }
             await mediaService.advance()
@@ -136,6 +264,867 @@ struct ContentView: View {
             guard priorityAlertKey != "none" else { return }
             soundscape.playPriorityAlert()
         }
+    }
+
+    private var cinemaHeader: some View {
+        HStack(spacing: 22) {
+            // Le bandeau ne montre plus « XavPac TV » :
+            // vraie photo de l'appareil suivi + logo de sa compagnie.
+            cinemaFeaturedIdentity
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            HStack(spacing: 14) {
+                Circle()
+                    .fill(radarIsLive ? Color.green : Color.orange)
+                    .frame(width: 19, height: 19)
+                    .shadow(color: Color.green.opacity(0.6), radius: 8)
+                Text(radarIsLive ? "EN DIRECT" : "RECONNEXION")
+                    .font(.system(size: 24, weight: .black))
+                    .foregroundStyle(Color(red: 0.04, green: 0.39, blue: 0.53))
+            }
+            .padding(.horizontal, 21)
+            .frame(height: 69)
+            .background(Color.white, in: RoundedRectangle(cornerRadius: 20))
+            .overlay(RoundedRectangle(cornerRadius: 20)
+                .stroke(Color.cyan.opacity(0.25), lineWidth: 2))
+
+            HStack(alignment: .firstTextBaseline, spacing: 11) {
+                Text("\(service.aircraft.count)")
+                    .font(.system(size: 56, weight: .black, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(Color(red: 0.02, green: 0.43, blue: 0.73))
+                Text("AÉRONEFS")
+                    .font(.system(size: 21, weight: .heavy))
+                    .foregroundStyle(Color(red: 0.24, green: 0.40, blue: 0.55))
+            }
+            .padding(.horizontal, 20)
+            .frame(height: 69)
+            .background(Color.white, in: RoundedRectangle(cornerRadius: 20))
+        }
+    }
+
+    // Identité du vol mis en avant, mise à jour automatiquement :
+    // une photo de l'aéronef, le logo réel de son opérateur et son nom.
+    @ViewBuilder
+    private var cinemaFeaturedIdentity: some View {
+        if let aircraft = featuredAircraft {
+            let details = featuredEnrichment
+            let profile = featuredProfile
+            let company = details?.operatorName ?? aircraft.operatorName ?? "Compagnie non renseignée"
+            let model = details?.aircraftModel ?? details?.aircraftType
+                ?? aircraft.description ?? aircraft.aircraftType ?? "Aéronef en direct"
+
+            HStack(spacing: 15) {
+                Group {
+                    if let photoURL = details?.photoURL, details?.photo.kind != "generic" {
+                        AsyncImage(url: photoURL) { phase in
+                            if let image = phase.image {
+                                image.resizable().scaledToFill()
+                            } else {
+                                cinemaHeaderAircraftFallback(isHelicopter: profile?.isRotorcraft ?? false)
+                            }
+                        }
+                    } else {
+                        cinemaHeaderAircraftFallback(isHelicopter: profile?.isRotorcraft ?? false)
+                    }
+                }
+                .frame(width: 170, height: 79)
+                .clipped()
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(Color.white.opacity(0.94), lineWidth: 2))
+                .shadow(color: Color(red: 0.10, green: 0.47, blue: 0.68).opacity(0.17), radius: 8)
+
+                Group {
+                    if let logo = details?.logoURL {
+                        AsyncImage(url: logo) { phase in
+                            if let image = phase.image {
+                                image.resizable().scaledToFit().padding(5)
+                            } else {
+                                cinemaHeaderLogoFallback(isHelicopter: profile?.isRotorcraft ?? false)
+                            }
+                        }
+                    } else {
+                        cinemaHeaderLogoFallback(isHelicopter: profile?.isRotorcraft ?? false)
+                    }
+                }
+                .frame(width: 77, height: 73)
+                .background(Color.white, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(Color(red: 0.70, green: 0.86, blue: 0.95), lineWidth: 1.5))
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(company)
+                        .font(.system(size: 29, weight: .black, design: .rounded))
+                        .foregroundStyle(Color(red: 0.06, green: 0.23, blue: 0.40))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.68)
+                    Text(model)
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(Color(red: 0.24, green: 0.43, blue: 0.59))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.72)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(height: 84)
+        } else {
+            HStack(spacing: 16) {
+                cinemaHeaderAircraftFallback(isHelicopter: false)
+                    .frame(width: 170, height: 79)
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("LE CIEL EN DIRECT")
+                        .font(.system(size: 27, weight: .black, design: .rounded))
+                    Text("Recherche du prochain aéronef…")
+                        .font(.system(size: 19, weight: .medium))
+                }
+                .foregroundStyle(Color(red: 0.08, green: 0.34, blue: 0.50))
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func cinemaHeaderAircraftFallback(isHelicopter: Bool) -> some View {
+        ZStack {
+            LinearGradient(
+                colors: [Color(red: 0.73, green: 0.92, blue: 1.0),
+                         Color(red: 0.25, green: 0.66, blue: 0.88)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            Image(systemName: isHelicopter ? "helicopter" : "airplane")
+                .font(.system(size: 57, weight: .semibold))
+                .foregroundStyle(.white)
+                .shadow(color: .blue.opacity(0.25), radius: 8)
+        }
+    }
+
+    private func cinemaHeaderLogoFallback(isHelicopter: Bool) -> some View {
+        Image(systemName: isHelicopter ? "helicopter" : "airplane")
+            .resizable()
+            .scaledToFit()
+            .foregroundStyle(Color(red: 0.02, green: 0.52, blue: 0.76))
+            .padding(17)
+    }
+
+    private var cinemaMap: some View {
+        ZStack(alignment: .topLeading) {
+            AircraftMapView(
+                aircraft: service.aircraft,
+                center: service.center,
+                trails: service.trails,
+                selectedID: featuredAircraft?.id,
+                profiles: trafficProfiles,
+                routes: trafficRoutes
+            )
+            .overlay(alignment: .bottomLeading) {
+                EmptyView()
+            }
+
+            HStack(spacing: 12) {
+                Image(systemName: "sparkle")
+                    .font(.system(size: 20, weight: .heavy))
+                    .foregroundStyle(Color(red: 0.05, green: 0.65, blue: 0.87))
+                Text("50 KM")
+                    .font(.system(size: 22, weight: .bold))
+                    .foregroundStyle(Color(red: 0.14, green: 0.46, blue: 0.62))
+            }
+            .foregroundStyle(Color(red: 0.04, green: 0.29, blue: 0.46))
+            .padding(.horizontal, 19)
+            .padding(.vertical, 15)
+            .background(Color.white.opacity(0.97), in: RoundedRectangle(cornerRadius: 18))
+            .padding(23)
+
+
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 26)
+            .stroke(Color.white, lineWidth: 5))
+        .shadow(color: Color(red: 0.23, green: 0.46, blue: 0.69).opacity(0.22),
+                radius: 22, y: 7)
+    }
+
+    @ViewBuilder
+    private var cinemaDestination: some View {
+        // L'escale reste un spectacle même sans avion ou destination connue.
+        // Le trafic non identifié continue d'être visible sur le radar.
+        if featuredEnrichment?.arrivalAirport == nil
+            || featuredEnrichment?.routeConfidence == "unavailable" {
+            cinemaHomeWeather
+        } else {
+            cinemaFlightDestination
+        }
+    }
+
+    // Statut discret au-dessus de la météo : le panneau reste identique,
+    // seul le message change en fonction du trafic effectivement reçu.
+    private var homeTrafficStatus: (icon: String, message: String) {
+        guard radarIsLive else {
+            return ("antenna.radiowaves.left.and.right", "RADAR EN ATTENTE DE DONNÉES")
+        }
+        if service.aircraft.isEmpty {
+            return ("checkmark.circle.fill", "AUCUN AVION DANS LA ZONE")
+        }
+        return (
+            "airplane",
+            service.aircraft.count == 1
+                ? "AVION DÉTECTÉ · DESTINATION NON IDENTIFIÉE"
+                : "\(service.aircraft.count) AVIONS DÉTECTÉS · DESTINATION NON IDENTIFIÉE"
+        )
+    }
+
+    private var cinemaHomeWeather: some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .bottomLeading) {
+                if let photo = homeScene.currentPhoto,
+                   let url = URL(string: photo.url) {
+                    CinematicDestinationImage(
+                        url: url,
+                        fallback: AnyView(homeScenicFallback)
+                    )
+                    .frame(width: geometry.size.width, height: geometry.size.height)
+                    .clipped()
+                    .id(photo.id)
+                    .transition(.opacity)
+                } else {
+                    homeScenicFallback
+                        .frame(width: geometry.size.width, height: geometry.size.height)
+                }
+
+                LinearGradient(
+                    stops: [
+                        .init(color: Color(red: 0.01, green: 0.13, blue: 0.25).opacity(0.30), location: 0),
+                        .init(color: .clear, location: 0.28),
+                        .init(color: Color(red: 0.01, green: 0.10, blue: 0.22).opacity(0.94), location: 0.69),
+                        .init(color: Color(red: 0.01, green: 0.10, blue: 0.22).opacity(0.98), location: 1)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                VStack(alignment: .leading, spacing: 11) {
+                    HStack {
+                        Label("✦  ESCALE IMMERSIVE", systemImage: "sun.horizon.fill")
+                            .font(.system(size: 22, weight: .black))
+                            .tracking(1.1)
+                        Spacer()
+                        Text("MÉTÉO LOCALE")
+                            .font(.system(size: 17, weight: .heavy))
+                            .tracking(1.6)
+                            .padding(.horizontal, 13)
+                            .padding(.vertical, 7)
+                            .background(.white.opacity(0.22), in: Capsule())
+                    }
+
+                    Spacer(minLength: 8)
+
+                    Text("Bâgé-Dommartin")
+                        .font(.system(size: 53, weight: .black, design: .rounded))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.62)
+                        .shadow(color: .black.opacity(0.45), radius: 9)
+
+                    // Un message informatif seulement, jamais un bouton.
+                    // Conserver la météo et le diaporama, avec ou sans avion.
+                    HStack(spacing: 12) {
+                        Image(systemName: homeTrafficStatus.icon)
+                            .font(.system(size: 22, weight: .black))
+                            .foregroundStyle(Color(red: 0.89, green: 0.96, blue: 1.0))
+                        Text(homeTrafficStatus.message)
+                            .font(.system(size: 21, weight: .heavy, design: .rounded))
+                            .tracking(0.25)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.72)
+                    }
+                    .padding(.horizontal, 15)
+                    .padding(.vertical, 12)
+                    .background(
+                        Color(red: 0.04, green: 0.23, blue: 0.38).opacity(0.84),
+                        in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .stroke(Color.white.opacity(0.42), lineWidth: 1)
+                    )
+
+                    if let weather = homeScene.weather {
+                        HStack(alignment: .center, spacing: 16) {
+                            Image(systemName: weather.symbolName)
+                                .symbolRenderingMode(.hierarchical)
+                                .font(.system(size: 58, weight: .regular))
+                                .foregroundStyle(Color(red: 0.95, green: 0.82, blue: 0.41))
+                            Text(weather.temperatureLabel)
+                                .font(.system(size: 83, weight: .black, design: .rounded))
+                                .monospacedDigit()
+                                .minimumScaleFactor(0.72)
+                            VStack(alignment: .leading, spacing: 5) {
+                                Text(weather.conditionLabel)
+                                    .font(.system(size: 25, weight: .heavy))
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.68)
+                                Text(weather.minMaxLabel)
+                                    .font(.system(size: 19, weight: .semibold))
+                                    .foregroundStyle(.white.opacity(0.86))
+                            }
+                        }
+                        HStack(spacing: 10) {
+                            localWeatherMetric("VENT", value: weather.windLabel, icon: "wind")
+                            localWeatherMetric("HUMIDITÉ", value: weather.humidityLabel, icon: "humidity.fill")
+                            localWeatherMetric("PRESSION", value: weather.pressureLabel, icon: "barometer")
+                        }
+                        .padding(.top, 10)
+                    } else {
+                        Text("Météo en cours de chargement…")
+                            .font(.system(size: 25, weight: .bold))
+                        Text("Les observations locales s'affichent automatiquement.")
+                            .font(.system(size: 19))
+                            .foregroundStyle(.white.opacity(0.78))
+                    }
+
+                    HStack(spacing: 6) {
+                        if let photo = homeScene.currentPhoto {
+                            Text(photo.caption + " · " + photo.author)
+                                .lineLimit(1)
+                        } else {
+                            Text("Paysages de Bâgé-Dommartin")
+                        }
+                        Spacer(minLength: 6)
+                        Text("Météo : Open-Meteo · Photos : Wikimedia Commons")
+                            .lineLimit(1)
+                    }
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.69))
+                    .padding(.top, 4)
+                }
+                .padding(26)
+                .foregroundStyle(.white)
+            }
+        }
+        .background(Color(red: 0.09, green: 0.38, blue: 0.57))
+        .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 26)
+                .stroke(Color.white, lineWidth: 4)
+        }
+        .shadow(color: .cyan.opacity(0.25), radius: 25, y: 6)
+    }
+
+    private var homeScenicFallback: some View {
+        GeometryReader { geometry in
+            ZStack {
+                LinearGradient(
+                    colors: [
+                        Color(red: 0.51, green: 0.83, blue: 0.97),
+                        Color(red: 0.16, green: 0.57, blue: 0.76),
+                        Color(red: 0.15, green: 0.41, blue: 0.45)
+                    ], startPoint: .topLeading, endPoint: .bottomTrailing
+                )
+                Image(systemName: "house.lodge.fill")
+                    .font(.system(size: 195, weight: .ultraLight))
+                    .foregroundStyle(.white.opacity(0.36))
+                    .position(x: geometry.size.width * 0.60, y: geometry.size.height * 0.37)
+            }
+        }
+    }
+
+    private func localWeatherMetric(_ label: String, value: String, icon: String) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 7) {
+                Image(systemName: icon)
+                Text(label)
+            }
+            .font(.system(size: 15, weight: .heavy))
+            .tracking(0.9)
+            .foregroundStyle(Color(red: 0.72, green: 0.94, blue: 1.0))
+            Text(value)
+                .font(.system(size: 23, weight: .black, design: .rounded))
+                .minimumScaleFactor(0.6)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 13)
+        .padding(.vertical, 11)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            Color(red: 0.03, green: 0.19, blue: 0.31).opacity(0.78),
+            in: RoundedRectangle(cornerRadius: 15, style: .continuous)
+        )
+    }
+
+    private var cinemaFlightDestination: some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .bottomLeading) {
+                cinemaMedia
+                    .frame(width: geometry.size.width, height: geometry.size.height)
+                    .clipped()
+                    .id(mediaService.current?.id ?? "cinema-fallback")
+                    .transition(.opacity)
+                    .animation(.easeInOut(duration: 1.0), value: mediaService.current?.id)
+                SkyShowGlimmers()
+                    .allowsHitTesting(false)
+
+                LinearGradient(
+                    colors: [.clear, .black.opacity(0.04), Color(red: 0.01, green: 0.10, blue: 0.25).opacity(0.96)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+
+                VStack(alignment: .leading, spacing: 9) {
+                    HStack(spacing: 11) {
+                        Image(systemName: "play.rectangle.fill")
+                            .font(.system(size: 28, weight: .bold))
+                        Text("✦  ESCALE IMMERSIVE")
+                            .font(.system(size: 23, weight: .black))
+                            .tracking(1.8)
+                        Spacer()
+                        if let media = mediaService.current {
+                            Text(media.sceneLabel)
+                                .font(.system(size: 15, weight: .black))
+                                .tracking(0.6)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(Color.black.opacity(0.50), in: Capsule())
+                        }
+                        if isOverheadPass {
+                            Text("PASSAGE PROCHE")
+                                .font(.system(size: 19, weight: .heavy))
+                                .padding(.horizontal, 15)
+                                .padding(.vertical, 8)
+                                .background(Color(red: 0.03, green: 0.58, blue: 0.89),
+                                            in: Capsule())
+                        }
+                    }
+                    Spacer()
+                    Text(featuredEnrichment?.arrivalAirport?.city ?? "Prochaine escale…")
+                        .font(.system(size: 65, weight: .black, design: .rounded))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.56)
+                        .shadow(color: .black.opacity(0.40), radius: 8)
+                    Text(cinemaRouteLabel)
+                        .font(.system(size: 27, weight: .bold, design: .rounded))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                        .foregroundStyle(Color(red: 0.81, green: 0.95, blue: 1.0))
+
+                    // Deux observations METAR sous l'image / vidéo immersive.
+                    // Elles ne sont pas remplacées par un trafic prioritaire.
+                    HStack(alignment: .top, spacing: 12) {
+                        cinemaAirportWeatherTile(
+                            title: "DÉPART",
+                            airport: featuredEnrichment?.departureAirport
+                        )
+                        cinemaAirportWeatherTile(
+                            title: "ARRIVÉE",
+                            airport: featuredEnrichment?.arrivalAirport
+                        )
+                    }
+                    .padding(.top, 14)
+
+                    if featuredEnrichment?.arrivalAirport == nil {
+                        Text("Les images de la prochaine ville apparaîtront automatiquement")
+                            .font(.system(size: 20, weight: .medium))
+                            .lineLimit(2)
+                    }
+                }
+                .padding(29)
+                .foregroundStyle(.white)
+            }
+        }
+        .background(Color(red: 0.05, green: 0.25, blue: 0.54))
+        .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 26)
+            .stroke(Color.white, lineWidth: 4))
+        .shadow(color: .cyan.opacity(0.25), radius: 25, y: 6)
+    }
+
+
+    // Météo aéroportuaire utilisée en mode Escale normale.
+    // Elle cède sa place à la fiche opérationnelle lors d'une alerte.
+    private func cinemaAirportWeatherTile(title: String, airport: TVAirport?) -> some View {
+        let weather = airportWeather.weather(for: airport)
+        let name = airport?.city ?? "Non identifié"
+        let code = airport?.code ?? "—"
+
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 7) {
+                Image(systemName: weather?.symbolName ?? "cloud")
+                    .font(.system(size: 23, weight: .bold))
+                    .foregroundStyle(Color(red: 0.67, green: 0.93, blue: 1.0))
+                Text(title + "  ·  " + code)
+                    .font(.system(size: 18, weight: .black))
+                    .tracking(1)
+                    .foregroundStyle(Color(red: 0.67, green: 0.93, blue: 1.0))
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                Text(weather?.temperatureLabel ?? "—")
+                    .font(.system(size: 28, weight: .black, design: .rounded))
+                    .monospacedDigit()
+            }
+            Text(name)
+                .font(.system(size: 21, weight: .bold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            Text(weather?.windLabel ?? "Vent indisponible")
+                .font(.system(size: 17, weight: .bold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+            HStack(spacing: 10) {
+                Text(weather?.visibilityLabel ?? "VIS. —")
+                Spacer(minLength: 0)
+                Text(weather?.observationLabel ?? "Obs. indisponible")
+            }
+            .font(.system(size: 14, weight: .bold))
+            .lineLimit(1)
+            .minimumScaleFactor(0.73)
+            .foregroundStyle(.white.opacity(0.8))
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 13)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            Color(red: 0.02, green: 0.15, blue: 0.30).opacity(0.78),
+            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(Color.white.opacity(0.35), lineWidth: 1)
+        )
+    }
+
+    // Photo réellement rattachée à l'appareil si disponible, jamais inventée.
+    private func cinemaPrioritySpotlight(_ aircraft: Aircraft) -> some View {
+        let enrichment = service.enrichment(for: aircraft)
+        let profile = service.trafficProfile(for: aircraft)
+        let alertTint: Color
+        switch profile.kind {
+        case .civilSecurity: alertTint = Color(red: 1.0, green: 0.70, blue: 0.18)
+        case .military: alertTint = Color(red: 1.0, green: 0.29, blue: 0.35)
+        case .medical: alertTint = Color(red: 0.12, green: 0.88, blue: 0.55)
+        default: alertTint = Color(red: 0.11, green: 0.80, blue: 0.96)
+        }
+        let aircraftName = enrichment?.aircraftModel
+            ?? enrichment?.aircraftType
+            ?? aircraft.description
+            ?? aircraft.aircraftType
+            ?? "TYPE EN COURS D'IDENTIFICATION"
+
+        return GeometryReader { geometry in
+            ZStack(alignment: .bottomLeading) {
+                if let photoURL = enrichment?.photoURL,
+                   enrichment?.photo.kind != "generic" {
+                    AsyncImage(url: photoURL) { phase in
+                        if let image = phase.image {
+                            image.resizable().scaledToFill()
+                        } else {
+                            priorityPhotoPlaceholder(isHelicopter: profile.isRotorcraft, color: alertTint)
+                        }
+                    }
+                    .frame(width: geometry.size.width, height: geometry.size.height)
+                    .clipped()
+                } else {
+                    priorityPhotoPlaceholder(isHelicopter: profile.isRotorcraft, color: alertTint)
+                }
+
+                LinearGradient(
+                    colors: [.black.opacity(0.08), .black.opacity(0.30),
+                             Color(red: 0.05, green: 0.09, blue: 0.20).opacity(0.97)],
+                    startPoint: .top, endPoint: .bottom
+                )
+                SkyShowGlimmers()
+                    .allowsHitTesting(false)
+
+                VStack(alignment: .leading, spacing: 13) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 30, weight: .black))
+                        Text(profile.kind == .military
+                             ? "✦  MOYEN MILITAIRE DÉTECTÉ"
+                             : "✦  SÉCURITÉ CIVILE DÉTECTÉE")
+                            .font(.system(size: 22, weight: .black, design: .rounded))
+                            .tracking(1.3)
+                        Spacer(minLength: 0)
+                        Image(systemName: profile.isRotorcraft ? "helicopter" : "airplane")
+                            .font(.system(size: 32, weight: .heavy))
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 13)
+                    .background(alertTint.opacity(0.85), in: RoundedRectangle(cornerRadius: 15))
+                    .modifier(CinemaAlertPulse(isEnabled: true))
+
+                    Spacer()
+
+                    Text(profile.isRotorcraft ? "HÉLICOPTÈRE · \(profile.label)" : profile.label)
+                        .font(.system(size: 28, weight: .black, design: .rounded))
+                        .tracking(3)
+                        .foregroundStyle(alertTint)
+                        .shadow(color: .black, radius: 6)
+
+                    Text(aircraftName)
+                        .font(.system(size: 54, weight: .black, design: .rounded))
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.62)
+                        .foregroundStyle(.white)
+                        .shadow(color: .black.opacity(0.6), radius: 8)
+
+                    if let operatorName = enrichment?.operatorName ?? aircraft.operatorName,
+                       !operatorName.isEmpty {
+                        Text(operatorName)
+                            .font(.system(size: 24, weight: .semibold))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.70)
+                            .foregroundStyle(.white.opacity(0.88))
+                    }
+
+                    HStack(alignment: .firstTextBaseline, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(aircraft.displayName)
+                            if let registration = enrichment?.registration ?? aircraft.registration,
+                               !registration.isEmpty,
+                               registration != aircraft.displayName {
+                                Text(registration)
+                                    .font(.system(size: 18, weight: .semibold))
+                                    .foregroundStyle(.white.opacity(0.82))
+                            }
+                        }
+                            .font(.system(size: 28, weight: .bold))
+                            .lineLimit(1)
+                        Spacer(minLength: 5)
+                        Text(String(format: "%.1f", aircraft.distanceKilometers(from: service.center))
+                             + " KM")
+                            .font(.system(size: 42, weight: .black, design: .rounded))
+                            .monospacedDigit()
+                    }
+                    .foregroundStyle(.white)
+
+                    HStack(spacing: 20) {
+                        Label(aircraft.altitudeLabel, systemImage: "mountain.2.fill")
+                        Label(aircraft.speedLabel, systemImage: "speedometer")
+                        Label(aircraft.headingLabel, systemImage: "location.north.fill")
+                    }
+                    .font(.system(size: 21, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.83))
+                }
+                .padding(30)
+            }
+        }
+        .background(Color(red: 0.10, green: 0.13, blue: 0.22))
+        .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 26, style: .continuous)
+                .stroke(alertTint, lineWidth: 4)
+        }
+        .shadow(color: alertTint.opacity(0.55), radius: 25)
+    }
+
+    private func priorityPhotoPlaceholder(isHelicopter: Bool, color: Color) -> some View {
+        GeometryReader { geometry in
+            ZStack {
+                LinearGradient(
+                    colors: [Color(red: 0.12, green: 0.21, blue: 0.42),
+                             color.opacity(0.68),
+                             Color(red: 0.08, green: 0.14, blue: 0.29)],
+                    startPoint: .topLeading, endPoint: .bottomTrailing
+                )
+                Image(systemName: isHelicopter ? "helicopter" : "airplane")
+                    .font(.system(size: 170, weight: .ultraLight))
+                    .foregroundStyle(.white.opacity(0.58))
+                    .rotationEffect(.degrees(-12))
+                    .shadow(color: color.opacity(0.8), radius: 30)
+            }
+            .frame(width: geometry.size.width, height: geometry.size.height)
+        }
+    }
+
+    private var cinemaRouteLabel: String {
+        guard let info = featuredEnrichment,
+              let arrival = info.arrivalAirport else { return "LE MONDE DÉFILE AU-DESSUS DE NOUS" }
+        let start = info.departureAirport?.city ?? info.departureAirport?.code ?? "EN VOL"
+        return "\(start.uppercased())  →  \(arrival.code)"
+    }
+
+    @ViewBuilder
+    private var cinemaMedia: some View {
+        if isOverheadPass,
+           let videoURL = mediaService.current?.televisionVideoURL {
+            LoopingVideoView(url: videoURL)
+        } else if let media = mediaService.current,
+                  !media.isVideo,
+                  let url = media.mediaURL {
+            CinematicDestinationImage(url: url, fallback: AnyView(destinationFallback))
+        } else if let still = mediaService.items.first(where: { !$0.isVideo && $0.mediaURL != nil }),
+                  let url = still.mediaURL {
+            CinematicDestinationImage(url: url, fallback: AnyView(destinationFallback))
+        } else {
+            destinationFallback
+        }
+    }
+
+    private var cinemaFeatured: some View {
+        HStack(spacing: 24) {
+            if let aircraft = featuredAircraft {
+                Image(systemName: featuredProfile?.isRotorcraft == true ? "helicopter" : "airplane")
+                    .font(.system(size: 70, weight: .black))
+                    .foregroundStyle(trafficColor(featuredProfile?.kind))
+                    .frame(width: 87)
+
+                VStack(alignment: .leading, spacing: 7) {
+                    Text(featuredProfile?.label ?? "TRAFIC AÉRIEN")
+                        .font(.system(size: 19, weight: .black))
+                        .tracking(1.1)
+                        .foregroundStyle(Color(red: 0.25, green: 0.50, blue: 0.67))
+                        .lineLimit(1)
+                    Text(aircraft.displayName)
+                        .font(.system(size: 51, weight: .black, design: .rounded))
+                        .foregroundStyle(Color(red: 0.03, green: 0.22, blue: 0.40))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.58)
+                    Text(featuredTitle(aircraft))
+                        .font(.system(size: 24, weight: .bold))
+                        .foregroundStyle(Color(red: 0.35, green: 0.48, blue: 0.57))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                }
+                Spacer(minLength: 8)
+                VStack(alignment: .trailing, spacing: 9) {
+                    Text(distanceText(aircraft))
+                        .font(.system(size: 42, weight: .black, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundStyle(Color(red: 0.0, green: 0.53, blue: 0.77))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                    Text(aircraft.altitudeLabel + "   •   " + aircraft.speedLabel)
+                        .font(.system(size: 21, weight: .bold))
+                        .foregroundStyle(Color(red: 0.28, green: 0.48, blue: 0.59))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                }
+            } else {
+                Image(systemName: "antenna.radiowaves.left.and.right")
+                    .font(.system(size: 55, weight: .bold))
+                    .foregroundStyle(.cyan)
+                VStack(alignment: .leading, spacing: 9) {
+                    Text("RADAR EN ÉCOUTE")
+                        .font(.system(size: 37, weight: .black))
+                        .foregroundStyle(Color(red: 0.05, green: 0.25, blue: 0.47))
+                    Text("Le prochain avion s’affichera automatiquement")
+                        .font(.system(size: 24, weight: .medium))
+                        .foregroundStyle(Color(red: 0.29, green: 0.49, blue: 0.61))
+                }
+                Spacer()
+            }
+        }
+        .padding(.horizontal, 27)
+        .padding(.vertical, 18)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.white, in: RoundedRectangle(cornerRadius: 24))
+        .overlay(RoundedRectangle(cornerRadius: 24)
+            .stroke(Color(red: 0.71, green: 0.87, blue: 0.96), lineWidth: 2))
+        .shadow(color: Color(red: 0.35, green: 0.56, blue: 0.69).opacity(0.17),
+                radius: 12, y: 4)
+    }
+
+    // Les 2e et 3e aéronefs les plus proches se partagent le bas gauche.
+    // La destination et les deux METAR restent dans la colonne droite.
+    private var cinemaTwoClosest: some View {
+        GeometryReader { geometry in
+            let aircraft = Array(service.aircraft.dropFirst().prefix(2))
+            let gap: CGFloat = 15
+            let width = max(0, (geometry.size.width - gap) / 2)
+
+            HStack(alignment: .bottom, spacing: gap) {
+                podiumPosition(aircraft, index: 0, rank: 2, hero: false)
+                    .frame(width: width, height: geometry.size.height)
+                podiumPosition(aircraft, index: 1, rank: 3, hero: false)
+                    .frame(width: width, height: geometry.size.height)
+            }
+            .frame(width: geometry.size.width, height: geometry.size.height)
+            .animation(.easeInOut(duration: 0.55), value: aircraft.first?.id)
+        }
+    }
+
+    @ViewBuilder
+    private func podiumPosition(
+        _ aircraft: [Aircraft], index: Int, rank: Int, hero: Bool
+    ) -> some View {
+        if aircraft.indices.contains(index) {
+            let item = aircraft[index]
+            ApproachPodiumCard(
+                aircraft: item,
+                enrichment: service.enrichment(for: item),
+                profile: service.trafficProfile(for: item),
+                home: service.center,
+                rank: rank,
+                isHero: hero,
+                departureWeather: airportWeather.weather(for: service.enrichment(for: item)?.departureAirport),
+                arrivalWeather: airportWeather.weather(for: service.enrichment(for: item)?.arrivalAirport)
+            )
+            .id(item.id)
+        } else {
+            PodiumWaitingCard(rank: rank, isHero: hero)
+        }
+    }
+
+    // Toujours montrer l'état des moyens spéciaux : jamais « Ligne commerciale »
+    // à cet emplacement, même lorsque le vol vedette est un avion de ligne.
+    private var cinemaPriorityStatus: some View {
+        let counts = specialCounts
+        let active = priorityAircraft != nil
+
+        return HStack(spacing: 17) {
+            Image(systemName: priorityProfile?.isRotorcraft == true ? "helicopter" : "cross.case.fill")
+                .font(.system(size: 49, weight: .bold))
+                .frame(width: 61)
+                .foregroundStyle(active ? Color.white : Color(red: 0.01, green: 0.58, blue: 0.80))
+
+            VStack(alignment: .leading, spacing: 7) {
+                Text("MOYENS PRIORITAIRES · SÉCURITÉ CIVILE ET ARMÉE")
+                    .font(.system(size: 26, weight: .black))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.70)
+
+                if let aircraft = priorityAircraft {
+                    Text("\(service.trafficProfile(for: aircraft).label)  ·  \(aircraft.displayName)  ·  \(distanceText(aircraft))")
+                        .font(.system(size: 22, weight: .bold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.70)
+                } else {
+                    Text(radarIsLive ? "Aucun moyen prioritaire détecté" : "En attente de données actualisées")
+                        .font(.system(size: 21, weight: .medium))
+                        .lineLimit(1)
+                }
+
+                Text("SÉCURITÉ CIVILE \(counts.civil)   ·   ARMÉE \(counts.military)")
+                    .font(.system(size: 15, weight: .heavy))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.68)
+            }
+            Spacer(minLength: 0)
+            Image(systemName: active ? "dot.radiowaves.left.and.right" : "checkmark.shield.fill")
+                .font(.system(size: 29, weight: .bold))
+        }
+        .padding(.horizontal, 19)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .foregroundStyle(active ? Color.white : Color(red: 0.08, green: 0.37, blue: 0.55))
+        .background(
+            LinearGradient(
+                colors: active
+                    ? [Color(red: 0.84, green: 0.19, blue: 0.26), Color(red: 0.22, green: 0.18, blue: 0.40)]
+                    : [Color.white, Color(red: 0.87, green: 0.96, blue: 1.0)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            ),
+            in: RoundedRectangle(cornerRadius: 24, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(active ? Color.white.opacity(0.95) : Color.cyan.opacity(0.35),
+                        lineWidth: active ? 3 : 2)
+        }
+        .shadow(color: active ? .red.opacity(0.26) : .cyan.opacity(0.10), radius: 15, y: 4)
+        .modifier(CinemaAlertPulse(isEnabled: active))
     }
 
     private var headerBar: some View {
@@ -165,7 +1154,7 @@ struct ContentView: View {
                         .font(.system(size: 35, weight: .heavy, design: .rounded))
                         .foregroundStyle(.cyan)
                 }
-                Text("TRAFIC AÉRIEN EN DIRECT")
+                Text(radarStatus)
                     .font(.caption.bold())
                     .foregroundStyle(.white.opacity(0.72))
             }
@@ -181,9 +1170,9 @@ struct ContentView: View {
 
             headerStat(
                 icon: "exclamationmark.triangle.fill",
-                value: "\(service.priorityAircraftWithin40.count)",
-                label: "alertes",
-                color: service.priorityAircraftWithin40.isEmpty ? .green : .red
+                value: "\(service.specialAircraftInZone.count)",
+                label: "moyens spéciaux",
+                color: service.specialAircraftInZone.isEmpty ? .green : .orange
             )
 
             HStack(spacing: 11) {
@@ -191,10 +1180,10 @@ struct ContentView: View {
                     .font(.title3.bold())
                     .foregroundStyle(.cyan)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("Ambiance aérienne")
+                    Text("Électro-pop solaire ✦")
                         .font(.headline.bold())
                         .foregroundStyle(.white)
-                    Text("Piste sonore active")
+                    Text("Lounge aérien · dynamique douce")
                         .font(.caption2)
                         .foregroundStyle(.white.opacity(0.65))
                 }
@@ -249,11 +1238,12 @@ struct ContentView: View {
                 center: service.center,
                 trails: service.trails,
                 selectedID: featuredAircraft?.id,
-                profiles: trafficProfiles
+                profiles: trafficProfiles,
+                routes: trafficRoutes
             )
 
             GeometryReader { proxy in
-                let size = min(proxy.size.width, proxy.size.height) * 0.64
+                let size = min(proxy.size.width, proxy.size.height) * 0.43
                 RadarSweepOverlay()
                     .frame(width: size, height: size)
                     .position(
@@ -267,9 +1257,8 @@ struct ContentView: View {
                 compactStatus
                 Spacer()
 
-                if let aircraft = featuredAircraft,
-                   let profile = featuredProfile,
-                   isPriorityActive {
+                if let aircraft = priorityAircraft,
+                   let profile = priorityProfile {
                     PriorityAlertBanner(
                         title: profile.kind == .civilSecurity ? "SÉCURITÉ CIVILE" : "ARMÉE",
                         subtitle: "\(profile.label) · \(distanceText(aircraft))",
@@ -459,7 +1448,7 @@ struct ContentView: View {
         ZStack(alignment: .bottomLeading) {
             destinationMediaView
                 .id(mediaService.current?.id ?? "destination-fallback")
-                .frame(height: 220)
+                .frame(height: 258)
                 .clipped()
                 .animation(.easeInOut(duration: 0.8), value: mediaService.current?.id)
 
@@ -523,7 +1512,7 @@ struct ContentView: View {
         if let media = mediaService.current {
             if media.isVideo,
                isOverheadPass,
-               let url = media.mediaURL {
+               let url = media.televisionVideoURL {
                 LoopingVideoView(url: url)
             } else if media.isVideo,
                       let preview = media.previewURL {
@@ -531,6 +1520,8 @@ struct ContentView: View {
                     url: preview,
                     fallback: AnyView(destinationFallback)
                 )
+            } else if media.isVideo {
+                destinationFallback
             } else if let url = media.mediaURL {
                 CinematicDestinationImage(
                     url: url,
@@ -684,9 +1675,7 @@ struct ContentView: View {
         }
 
         if isPriorityActive {
-            return profile.kind == .civilSecurity
-                ? "ALERTE PRIORITAIRE · SÉCURITÉ CIVILE"
-                : "ALERTE PRIORITAIRE · ARMÉE"
+            return "MOYEN SPÉCIAL · " + profile.label
         }
 
         return profile.label
@@ -897,6 +1886,106 @@ struct ContentView: View {
     }
 }
 
+// Lumières d'ambiance tvOS : peu d'éléments, aucune interaction, visibles au vidéoprojecteur.
+private struct SkyShowBackdrop: View {
+    @State private var drift = false
+
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack {
+                LinearGradient(
+                    colors: [
+                        Color(red: 0.82, green: 0.95, blue: 1.00),
+                        Color(red: 0.98, green: 0.995, blue: 1.0),
+                        Color(red: 0.90, green: 0.96, blue: 1.0)
+                    ],
+                    startPoint: .topLeading, endPoint: .bottomTrailing
+                )
+
+                Circle()
+                    .fill(Color(red: 0.15, green: 0.80, blue: 0.98).opacity(0.23))
+                    .frame(width: geometry.size.width * 0.65)
+                    .blur(radius: 110)
+                    .offset(x: drift ? -140 : 140, y: -geometry.size.height * 0.30)
+
+                Circle()
+                    .fill(Color(red: 1.0, green: 0.71, blue: 0.32).opacity(0.18))
+                    .frame(width: geometry.size.width * 0.45)
+                    .blur(radius: 95)
+                    .offset(x: drift ? 190 : -150, y: geometry.size.height * 0.30)
+
+                Circle()
+                    .stroke(Color.white.opacity(0.54), lineWidth: 2)
+                    .frame(width: geometry.size.width * 0.72)
+                    .offset(x: geometry.size.width * 0.43,
+                            y: geometry.size.height * 0.49)
+            }
+            .frame(width: geometry.size.width, height: geometry.size.height)
+            .onAppear {
+                withAnimation(.easeInOut(duration: 12).repeatForever(autoreverses: true)) {
+                    drift = true
+                }
+            }
+        }
+    }
+}
+
+private struct SkyShowGlimmers: View {
+    @State private var shimmering = false
+
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack {
+                Image(systemName: "sparkle")
+                    .font(.system(size: 48, weight: .ultraLight))
+                    .position(x: geometry.size.width * 0.84, y: geometry.size.height * 0.16)
+                Image(systemName: "sparkle")
+                    .font(.system(size: 27, weight: .ultraLight))
+                    .position(x: geometry.size.width * 0.68, y: geometry.size.height * 0.25)
+                Image(systemName: "sparkle")
+                    .font(.system(size: 19, weight: .ultraLight))
+                    .position(x: geometry.size.width * 0.91, y: geometry.size.height * 0.38)
+            }
+            .foregroundStyle(Color.white.opacity(shimmering ? 0.78 : 0.22))
+            .shadow(color: .white.opacity(0.55), radius: shimmering ? 15 : 2)
+            .scaleEffect(shimmering ? 1.04 : 0.98)
+            .onAppear {
+                withAnimation(.easeInOut(duration: 2.8).repeatForever(autoreverses: true)) {
+                    shimmering = true
+                }
+            }
+        }
+    }
+}
+
+private struct CinemaAlertPulse: ViewModifier {
+    var isEnabled = true
+    @State private var glowing = false
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(isEnabled ? (glowing ? 1.0 : 0.74) : 1.0)
+            .scaleEffect(isEnabled ? (glowing ? 1.0 : 0.985) : 1.0)
+            .onAppear {
+                if isEnabled {
+                    withAnimation(.easeInOut(duration: 0.65).repeatForever(autoreverses: true)) {
+                        glowing = true
+                    }
+                }
+            }
+            .onChange(of: isEnabled) { enabled in
+                if enabled {
+                    glowing = false
+                    withAnimation(.easeInOut(duration: 0.65).repeatForever(autoreverses: true)) {
+                        glowing = true
+                    }
+                } else {
+                    glowing = false
+                }
+            }
+    }
+}
+
 private struct PriorityAlertBanner: View {
     let title: String
     let subtitle: String
@@ -1102,42 +2191,36 @@ private final class AmbientSoundscape: ObservableObject {
     private var audioFormat: AVAudioFormat?
     private var configured = false
 
-    func start() {
-        guard !player.isPlaying else { return }
-
+    func prepareAlertsOnly() {
+        guard !configured else { return }
         do {
             let session = AVAudioSession.sharedInstance()
             try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
             try session.setActive(true)
-
-            if !configured {
-                engine.attach(player)
-                engine.attach(alertPlayer)
-                guard let format = AVAudioFormat(
-                    standardFormatWithSampleRate: 44_100,
-                    channels: 2
-                ) else { return }
-
-                audioFormat = format
-                engine.connect(player, to: engine.mainMixerNode, format: format)
-                engine.connect(alertPlayer, to: engine.mainMixerNode, format: format)
-                buffer = makeAmbientBuffer(format: format, duration: 24)
-                configured = true
-            }
-
-            if !engine.isRunning {
-                try engine.start()
-            }
-
-            if let buffer {
-                player.scheduleBuffer(buffer, at: nil, options: .loops)
-                engine.mainMixerNode.outputVolume = 0.62
-                player.volume = 0.18
-                player.play()
-            }
+            engine.attach(player)
+            engine.attach(alertPlayer)
+            guard let format = AVAudioFormat(
+                standardFormatWithSampleRate: 44_100, channels: 2
+            ) else { return }
+            audioFormat = format
+            engine.connect(player, to: engine.mainMixerNode, format: format)
+            engine.connect(alertPlayer, to: engine.mainMixerNode, format: format)
+            buffer = makeAmbientBuffer(format: format)
+            configured = true
+            try engine.start()
         } catch {
-            // La musique reste optionnelle : le radar continue même si l'audio n'est pas disponible.
+            print("XavPac TV : signal sonore d'alerte indisponible : \(error)")
         }
+    }
+
+    func start() {
+        guard !player.isPlaying else { return }
+        prepareAlertsOnly()
+        guard configured, let buffer else { return }
+        player.scheduleBuffer(buffer, at: nil, options: .loops)
+        engine.mainMixerNode.outputVolume = 0.62
+        player.volume = 0.24
+        player.play()
     }
 
     func stop() {
@@ -1147,9 +2230,14 @@ private final class AmbientSoundscape: ObservableObject {
         try? AVAudioSession.sharedInstance().setActive(false)
     }
 
+    func disableAmbientButKeepAlerts() {
+        // La piste externe prend le relais, mais les alertes restent actives.
+        player.stop()
+    }
+
     func playPriorityAlert() {
         if !configured {
-            start()
+            prepareAlertsOnly()
         }
 
         guard let format = audioFormat,
@@ -1204,54 +2292,77 @@ private final class AmbientSoundscape: ObservableObject {
         return buffer
     }
 
-    private func makeAmbientBuffer(
-        format: AVAudioFormat,
-        duration: Double
-    ) -> AVAudioPCMBuffer? {
+    private func makeAmbientBuffer(format: AVAudioFormat) -> AVAudioPCMBuffer? {
+        // Ambiance électro-pop originale, solaire et entraînante : 116 BPM.
+        // Huit mesures bouclées sans piste externe et sans compte Apple Music.
         let sampleRate = format.sampleRate
-        let frameCount = AVAudioFrameCount(sampleRate * duration)
+        let twoPi = Double.pi * 2
+        let beatDuration = 60.0 / 116.0
+        let barDuration = beatDuration * 4.0
+        let loopDuration = barDuration * 8.0
+        let frameCount = AVAudioFrameCount((sampleRate * loopDuration).rounded())
 
-        guard let buffer = AVAudioPCMBuffer(
-            pcmFormat: format,
-            frameCapacity: frameCount
-        ) else { return nil }
-
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else {
+            return nil
+        }
         buffer.frameLength = frameCount
         guard let channels = buffer.floatChannelData else { return nil }
 
-        let twoPi = Double.pi * 2
+        // Accords majeurs sans la longue coloration mélancolique précédente.
         let chords: [[Double]] = [
-            [130.81, 164.81, 196.00, 246.94], // Cmaj7
-            [110.00, 130.81, 164.81, 196.00], // Am7
-            [87.31, 130.81, 174.61, 220.00],  // Fmaj7
-            [98.00, 146.83, 196.00, 246.94]   // G6
+            [130.81, 164.81, 196.00, 246.94, 293.66], // Cmaj9
+            [174.61, 220.00, 261.63, 329.63, 392.00], // Fmaj9
+            [196.00, 246.94, 293.66, 329.63, 440.00], // G6/9
+            [130.81, 164.81, 196.00, 261.63, 329.63]  // Cmaj9
         ]
-        let chordDuration = duration / Double(chords.count)
+        let melodySteps = [0, 2, 4, 2, 1, 3, 4, 3]
+        let chordDuration = barDuration * 2.0
 
         for frame in 0..<Int(frameCount) {
             let time = Double(frame) / sampleRate
-            let chordIndex = min(chords.count - 1, Int(time / chordDuration))
-            let localTime = time.truncatingRemainder(dividingBy: chordDuration)
-            let edge = min(1.0, min(localTime / 1.2, (chordDuration - localTime) / 1.2))
-            let breathe = 0.80 + 0.20 * sin(twoPi * time / 8.0)
+            let chordIndex = min(3, Int(time / chordDuration))
+            let chord = chords[chordIndex]
+            let chordTime = time.truncatingRemainder(dividingBy: chordDuration)
+            let chordFade = max(0.0, min(1.0, chordTime / 0.16, (chordDuration - chordTime) / 0.16))
 
-            var tone = 0.0
-            for (index, frequency) in chords[chordIndex].enumerated() {
-                let weight = index == 0 ? 0.34 : 0.18
-                tone += sin(twoPi * frequency * time) * weight
-                tone += sin(twoPi * frequency * 2.0 * time) * weight * 0.10
-            }
+            // Nappe discrète, basse rebondissante et pulsation douce.
+            let pad = (
+                sin(twoPi * chord[1] * time) * 0.105
+                + sin(twoPi * chord[2] * time) * 0.075
+                + sin(twoPi * chord[3] * time) * 0.052
+            ) * chordFade
 
-            let air = sin(twoPi * 523.25 * time) * 0.025
-                * (0.5 + 0.5 * sin(twoPi * time / 12.0))
-            let sample = Float((tone * breathe * max(0.12, edge) + air) * 0.22)
+            let beatPhase = time.truncatingRemainder(dividingBy: beatDuration)
+            let beatIndex = Int(time / beatDuration) % 4
+            let halfBeat = beatDuration / 2.0
+            let halfPhase = time.truncatingRemainder(dividingBy: halfBeat)
+            let bass = sin(twoPi * chord[0] * 0.5 * time) * exp(-beatPhase * 5.5) * 0.26
+            let kick = sin(twoPi * (61.0 + 22.0 * exp(-beatPhase * 22)) * time)
+                * exp(-beatPhase * 20) * 0.22
 
-            channels[0][frame] = sample
-            channels[1][frame] = sample * Float(0.94 + 0.03 * sin(twoPi * time / 10.0))
+            // Chapeau et claquement doux sur les temps 2 et 4.
+            let noise = sin(Double(frame) * 12.9898) * sin(Double(frame) * 78.233)
+            let clap = beatIndex % 2 == 1
+                ? noise * exp(-beatPhase * 26) * 0.15 : 0.0
+            let hiHat = noise * exp(-halfPhase * 46) * 0.072
+
+            // Notes scintillantes sur les contretemps.
+            let melodyStep = Int(time / halfBeat) % melodySteps.count
+            let note = chord[melodySteps[melodyStep]] * 4.0
+            let sparkle = (
+                sin(twoPi * note * time) * 0.15
+                + sin(twoPi * note * 2.0 * time) * 0.035
+            ) * exp(-halfPhase * 11.0)
+
+            // Transition douce à chaque répétition du morceau.
+            let loopFade = max(0.0, min(1.0, time / 0.045, (loopDuration - time) / 0.045))
+            let mix = (pad + bass + kick + clap + hiHat + sparkle) * 0.36 * loopFade
+            channels[0][frame] = Float(mix)
+            channels[1][frame] = Float(mix * (0.95 + 0.05 * sin(twoPi * time / 11)))
         }
-
         return buffer
     }
+
 }
 
 private final class PlayerLayerHostView: UIView {
@@ -1317,6 +2428,130 @@ private struct LoopingVideoView: UIViewRepresentable {
             let item = AVPlayerItem(url: url)
             looper = AVPlayerLooper(player: player, templateItem: item)
             player.play()
+        }
+    }
+}
+
+
+// Données locales pour la scène de repos du grand panneau « Escale immersive ».
+// Aucun temps, aucune photographie d'une autre commune n'est inventé.
+private struct HomeScenePayload: Decodable {
+    let weather: HomeSceneWeather?
+    let photos: [HomeScenePhoto]
+}
+
+private struct HomeScenePhoto: Decodable, Identifiable {
+    let id: String
+    let url: String
+    let caption: String
+    let author: String
+    let license: String
+    let source: String
+}
+
+private struct HomeSceneWeather: Decodable {
+    let observedAt: String?
+    let temperature: Double
+    let feelsLike: Double?
+    let humidity: Double?
+    let weatherCode: Int?
+    let isDay: Bool
+    let windSpeed: Double?
+    let windDirection: Double?
+    let windGusts: Double?
+    let pressure: Double?
+    let cloudCover: Double?
+    let high: Double?
+    let low: Double?
+    let rainChance: Double?
+
+    var temperatureLabel: String { "\(Int(temperature.rounded()))°" }
+    var humidityLabel: String {
+        humidity.map { "\(Int($0.rounded())) %" } ?? "—"
+    }
+    var pressureLabel: String {
+        pressure.map { "\(Int($0.rounded())) hPa" } ?? "—"
+    }
+    var minMaxLabel: String {
+        guard let high, let low else { return "Prévisions indisponibles" }
+        return "Max \(Int(high.rounded()))°  ·  Min \(Int(low.rounded()))°"
+    }
+    var windLabel: String {
+        guard let windSpeed else { return "Vent indisponible" }
+        return WindFrenchFormatter.label(
+            speedKmh: windSpeed, directionDegrees: windDirection
+        )
+    }
+    var conditionLabel: String {
+        guard let weatherCode else { return "Conditions indisponibles" }
+        switch weatherCode {
+        case 0: return "Ciel dégagé"
+        case 1, 2: return "Quelques nuages"
+        case 3: return "Nuageux"
+        case 45, 48: return "Brouillard"
+        case 51...57: return "Bruine"
+        case 61...67: return "Pluie"
+        case 71...77: return "Neige"
+        case 80...82: return "Averses"
+        case 85, 86: return "Averses de neige"
+        case 95...99: return "Orages"
+        default: return "Météo locale"
+        }
+    }
+    var symbolName: String {
+        guard let weatherCode else { return "cloud.sun.fill" }
+        switch weatherCode {
+        case 0: return isDay ? "sun.max.fill" : "moon.stars.fill"
+        case 1, 2: return isDay ? "cloud.sun.fill" : "cloud.moon.fill"
+        case 3: return "cloud.fill"
+        case 45, 48: return "cloud.fog.fill"
+        case 51...67, 80...82: return "cloud.rain.fill"
+        case 71...77, 85, 86: return "cloud.snow.fill"
+        case 95...99: return "cloud.bolt.rain.fill"
+        default: return "cloud.sun.fill"
+        }
+    }
+}
+
+@MainActor
+private final class HomeSceneService: ObservableObject {
+    @Published private(set) var weather: HomeSceneWeather?
+    @Published private(set) var photos: [HomeScenePhoto] = []
+    @Published private(set) var photoIndex = 0
+
+    var currentPhoto: HomeScenePhoto? {
+        guard photos.indices.contains(photoIndex) else { return nil }
+        return photos[photoIndex]
+    }
+
+    func advancePhoto() {
+        guard photos.count > 1 else { return }
+        photoIndex = (photoIndex + 1) % photos.count
+    }
+
+    func refresh() async {
+        guard let url = URL(
+            string: "\(xavPacBaseURL.absoluteString)/api/tv/home-scene"
+        ) else { return }
+
+        do {
+            var request = URLRequest(url: url)
+            request.cachePolicy = .reloadIgnoringLocalCacheData
+            request.timeoutInterval = 24
+            request.setValue("XavPacTV/4.0", forHTTPHeaderField: "User-Agent")
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse,
+                  (200..<300).contains(http.statusCode) else { return }
+            let payload = try JSONDecoder().decode(HomeScenePayload.self, from: data)
+            if let newWeather = payload.weather {
+                weather = newWeather
+            }
+            if !payload.photos.isEmpty {
+                photos = payload.photos
+                photoIndex = min(photoIndex, payload.photos.count - 1)
+            }
+        } catch {
+            // Conserver la dernière météo valable ; ne jamais afficher une valeur inventée.
         }
     }
 }
