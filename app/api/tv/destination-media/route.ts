@@ -471,10 +471,11 @@ async function fetchCommonsScene(
 ): Promise<DestinationMediaItem[]> {
   const country = countrySearchHint(icao);
   const localCity = country ? city + " " + country : city;
-  const airportDistinctive = normalized(airport)
-    .replace(normalized(city), "")
-    .replace(/international|regional|airport|aeroport|aerodrome|de |du |of |the |\s+/g, " ")
-    .trim();
+  const cityTokens = new Set(normalized(city).split(/\s+/));
+  const airportTokens = normalized(airport).split(/\s+/)
+    .filter((word) => word.length >= 4
+      && !cityTokens.has(word)
+      && !["international", "regional", "airport", "aeroport", "aerodrome", "terminal"].includes(word));
   const querySets: string[] = (() => {
     if (mode === "video" && scene === "city") return [
       localCity + " timelapse filetype:video", localCity + " aerial filetype:video", city + " filetype:video"
@@ -528,11 +529,12 @@ async function fetchCommonsScene(
           const isLocal = title.includes(normalized(city))
             || (airport.length >= 4 && title.includes(normalized(airport)));
           if (!isLocal || hasWrongCityContext(entry.title ?? "", city, country)) return false;
-          if ((scene === "airport" || scene === "approach") && airportDistinctive.length >= 5) {
-            // Paris-CDG must never display Paris-Orly, for example.
-            if (!title.includes(airportDistinctive)
-              && !title.includes(normalized(iata))
-              && !title.includes(normalized(icao))) return false;
+          if ((scene === "airport" || scene === "approach") && airportTokens.length) {
+            // Example: CDG video/photo cannot be replaced by Paris-Orly.
+            const matchesAirport = airportTokens.some((word) => title.includes(word));
+            const matchesCode = (iata.length >= 3 && title.includes(normalized(iata)))
+              || (icao.length >= 4 && title.includes(normalized(icao)));
+            if (!matchesAirport && !matchesCode) return false;
           }
           if (scene === "airport" || scene === "approach") {
             return /airport|aeroport|aerodrome|runway|terminal|airfield|landing|approach|takeoff|take.off|flight|aircraft/.test(title)
