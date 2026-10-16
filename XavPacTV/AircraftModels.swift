@@ -305,6 +305,14 @@ extension Aircraft {
 
         let adsbCategory = category?.lowercased()
 
+        // « Malibu Mirage » est un Piper PA-46 civil, pas un Dassault Mirage.
+        // Protéger cette identification, même si l'enrichissement distant
+        // a précédemment classé l'aéronef comme militaire.
+        let civilianMalibuPattern = #"\bpa[ .-]?46\b|\bmalibu(?:\s+mirage)?\b|\bpiper\s+malibu\b"#
+        let isCivilianMalibu = joined.range(
+            of: civilianMalibuPattern, options: .regularExpression
+        ) != nil
+
         let helicopterPattern = #"helic|hélic|rotor|h125|h145|ec145|h135|ec135|as[ .-]?350|as50|écureuil|squirrel|nh90|caracal|cougar|gazelle|dauphin|aw139|aw169|bell|r44|r66"#
         let isRotorcraft = adsbCategory == "a7"
             || enrichment?.aircraftCategory == "helicopter"
@@ -317,10 +325,10 @@ extension Aircraft {
         ) != nil {
             kind = .civilSecurity
         } else if joined.range(
-            of: #"rafale|mirage|fighter|military|militaire|armée|armee|air force|french navy|marine nationale|french army|alat|aéronavale|aeronavale|a400m|c-?130|c160|transall|alphajet|alpha jet|awacs|dga essais|armée de l'air"#,
+            of: #"rafale|\bmirage[ -]?(?:2000[a-z]?|f1|iii|iv|50|5)\b|fighter|military|militaire|armée|armee|air force|french navy|marine nationale|french army|alat|aéronavale|aeronavale|a400m|c-?130|c160|transall|alphajet|alpha jet|awacs|dga essais|armée de l'air"#,
             options: .regularExpression
         ) != nil || enrichment?.aircraftCategory == "military" {
-            kind = .military
+            kind = isCivilianMalibu ? .lightPrivate : .military
         } else if joined.range(
             of: #"samu|smur|medevac|medical|médical|hems|secours|urgences"#,
             options: .regularExpression
