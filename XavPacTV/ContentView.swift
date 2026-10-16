@@ -676,6 +676,16 @@ struct ContentView: View {
                             .font(.system(size: 23, weight: .black))
                             .tracking(1.8)
                         Spacer()
+                        if let media = mediaService.current {
+                            Text(media.sceneLabel)
+                                .font(.system(size: 15, weight: .black))
+                                .tracking(0.6)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(Color.black.opacity(0.50), in: Capsule())
+                        }
                         if isOverheadPass {
                             Text("PASSAGE PROCHE")
                                 .font(.system(size: 19, weight: .heavy))
