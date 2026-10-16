@@ -181,16 +181,27 @@ struct DestinationMedia: Decodable, Identifiable, Hashable {
     let sourceName: String
     let sourceURL: String?
     let appleVideoURL: String?
+    let scene: String?
 
     enum CodingKeys: String, CodingKey {
         case id, type, url, preview, author, sourceName
         case sourceURL = "sourceUrl"
         case appleVideoURL = "appleVideoUrl"
+        case scene
     }
 
     var mediaURL: URL? { URL(string: url) }
     var previewURL: URL? { preview.flatMap(URL.init(string:)) }
     var isVideo: Bool { type == "video" }
+
+    var sceneLabel: String {
+        switch scene {
+        case "airport": return "✈  AÉROPORT D’ARRIVÉE"
+        case "approach": return "✦  APPROCHE & ATTERRISSAGE"
+        case "ambience": return "✦  AMBIANCE LOCALE"
+        default: return isVideo ? "✦  VUE AÉRIENNE" : "✦  DÉCOUVERTE DE LA VILLE"
+        }
+    }
 
     // AVPlayer sur tvOS préfère les flux Apple (MP4/QuickTime).
     // Ne jamais afficher un fichier WebM comme s'il s'agissait d'une image.
