@@ -126,9 +126,21 @@ struct ContentView: View {
                     cinemaHeader
                         .frame(height: 94)
 
-                    HStack(spacing: 20) {
-                        cinemaMap
-                            .frame(width: mapWidth)
+                    // Composition Apple TV fidèle au croquis :
+                    // ┌──────────── CARTE ────────────┬──────── PHOTO / VIDÉO ────────┐
+                    // │                                │                                │
+                    // ├──── AVION 1 ──── AVION 2 ──────┼──── MOYENS NATIONAUX ─────────┤
+                    // La colonne gauche garde ses deux avions, jamais un podium
+                    // de trois cartes réparties sur toute la largeur.
+                    HStack(alignment: .top, spacing: 20) {
+                        VStack(spacing: 18) {
+                            cinemaMap
+                                .frame(maxHeight: .infinity)
+
+                            cinemaTwoClosest
+                                .frame(height: 264)
+                        }
+                        .frame(width: mapWidth, maxHeight: .infinity)
 
                         VStack(spacing: 18) {
                             Group {
@@ -146,12 +158,9 @@ struct ContentView: View {
                             cinemaPriorityStatus
                                 .frame(height: 125)
                         }
-                        .frame(maxWidth: .infinity)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
                     .frame(maxHeight: .infinity)
-
-                    cinemaPodium
-                        .frame(height: 328)
 
                     HStack {
                         Text("✦ XAVPAC TV  •  SKY SHOW  •  LE CIEL EN SPECTACLE")
@@ -594,25 +603,21 @@ struct ContentView: View {
                 radius: 12, y: 4)
     }
 
-    // Classement fondé sur la distance réelle, sans changer les alertes nationales.
-    private var cinemaPodium: some View {
+    // Deux avions les plus proches, affichés sous la carte et UNIQUEMENT là.
+    // La photo/vidéo et les moyens nationaux conservent la colonne droite.
+    private var cinemaTwoClosest: some View {
         GeometryReader { geometry in
-            let aircraft = Array(service.aircraft.prefix(3))
-            let gap: CGFloat = 17
-            let usable = max(0, geometry.size.width - gap * 2)
-            let side = usable * 0.25
-            let hero = usable - (2 * side)
+            let aircraft = Array(service.aircraft.prefix(2))
+            let gap: CGFloat = 15
+            let width = max(0, (geometry.size.width - gap) / 2)
 
             HStack(alignment: .bottom, spacing: gap) {
+                podiumPosition(aircraft, index: 0, rank: 1, hero: false)
+                    .frame(width: width, height: geometry.size.height)
                 podiumPosition(aircraft, index: 1, rank: 2, hero: false)
-                    .frame(width: side, height: geometry.size.height - 18)
-                podiumPosition(aircraft, index: 0, rank: 1, hero: true)
-                    .frame(width: hero, height: geometry.size.height)
-                podiumPosition(aircraft, index: 2, rank: 3, hero: false)
-                    .frame(width: side, height: geometry.size.height - 18)
+                    .frame(width: width, height: geometry.size.height)
             }
-            .frame(width: geometry.size.width, height: geometry.size.height,
-                   alignment: .bottom)
+            .frame(width: geometry.size.width, height: geometry.size.height)
             .animation(.easeInOut(duration: 0.55), value: aircraft.first?.id)
         }
     }
@@ -652,7 +657,7 @@ struct ContentView: View {
                 .foregroundStyle(active ? Color.white : Color(red: 0.01, green: 0.58, blue: 0.80))
 
             VStack(alignment: .leading, spacing: 7) {
-                Text("MOYENS SPÉCIAUX · 50 KM")
+                Text("MOYENS NATIONAUX ET SECOURS · 50 KM")
                     .font(.system(size: 26, weight: .black))
                     .lineLimit(1)
                     .minimumScaleFactor(0.70)
