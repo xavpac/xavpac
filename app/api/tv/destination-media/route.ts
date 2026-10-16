@@ -438,10 +438,10 @@ function hasWrongCityContext(title: string, city: string, country: string) {
   const name = normalized(city);
   const text = normalized(title);
   if (name === "manchester" && country === "England") {
-    return /jamaica|indiana|new hampshire|connecticut|manchester parish|manchester township/.test(text);
+    return /jamaica|indiana|new hampshire|connecticut|manchester parish|manchester township|manchester.boston|manchester nh\b|manchester usa|ted cruz|dunkin/.test(text);
   }
   if (name === "naples" && country === "Italy") {
-    return /florida|maine|united states|naples new york/.test(text);
+    return /florida|maine|united states|naples new york|naples municipal|naples fl\b|afn naples|naples post office/.test(text);
   }
   if (name === "paris" && country === "France") {
     return /texas|kentucky|illinois|tennessee|paris, ontario|paris township/.test(text);
@@ -452,11 +452,11 @@ function hasWrongCityContext(title: string, city: string, country: string) {
 function scenicScore(title: string, scene: TVScene) {
   const text = normalized(title);
   let score = 0;
-  if (/hyperlapse|timelapse|time lapse|sunset|night light|cityscape|skyline|panorama|landscape|drone|aerial|overflight|bird.?s.eye|monument|landmark/.test(text)) score += 12;
+  if (/hyperlapse|timelapse|time lapse|sunset|night light|cityscape|skyline|panorama|landscape|drone|aerial|overflight|bird.?s.eye|monument|landmark|garden|park|cathedral|street view|river view|harbour view/.test(text)) score += 12;
   if (/airport|aeroport|aerodrome|terminal|runway|airfield|landing|approach|takeoff|take.off|control tower|piste/.test(text)) {
     score += scene === "airport" || scene === "approach" ? 15 : -4;
   }
-  if (/tram|train|berthing|container|cargo ship|msc |interview|news|afn |military|army|march|protest|conference|football|soccer|poster|logo|coat of arms|map of|battle|world war/.test(text)) score -= 35;
+  if (/tram|train|metro|metrolink|stagecoach|bus\b|rail|station|berthing|container|cargo ship|msc |interview|news|afn |military|army|post office|mailing|guidance|politic|president|march|protest|conference|football|soccer|poster|logo|coat of arms|\bmap\b|battle|world war/.test(text)) score -= 35;
   if (scene === "approach" && /landing|approach|takeoff|aircraft|plane|aeroplane|flight/.test(text)) score += 10;
   if (/\.webm$/.test(text)) score += 1;
   return score;
@@ -547,7 +547,7 @@ async function fetchCommonsScene(
 
       for (const page of ranked) {
         const title = page.title ?? "";
-        if (scenicScore(title, scene) < 0) continue;
+        if (scenicScore(title, scene) < (mode === "video" && scene === "city" ? 6 : 0)) continue;
         let item: DestinationMediaItem | null = null;
         if (mode === "video") {
           const info = page.videoinfo?.[0];
