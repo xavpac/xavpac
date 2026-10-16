@@ -140,7 +140,8 @@ struct ContentView: View {
                             cinemaTwoClosest
                                 .frame(height: 264)
                         }
-                        .frame(width: mapWidth, maxHeight: .infinity)
+                        .frame(width: mapWidth)
+                        .frame(maxHeight: .infinity)
 
                         VStack(spacing: 18) {
                             Group {
