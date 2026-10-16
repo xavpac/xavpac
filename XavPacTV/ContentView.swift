@@ -758,10 +758,10 @@ struct ContentView: View {
                     .font(.title3.bold())
                     .foregroundStyle(.cyan)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("Ambiance aérienne")
+                    Text("Ambiance voyage ✦")
                         .font(.headline.bold())
                         .foregroundStyle(.white)
-                    Text("Piste sonore active")
+                    Text("Lounge aérien · dynamique douce")
                         .font(.caption2)
                         .foregroundStyle(.white.opacity(0.65))
                 }
@@ -1887,34 +1887,44 @@ private final class AmbientSoundscape: ObservableObject {
         guard let channels = buffer.floatChannelData else { return nil }
 
         let twoPi = Double.pi * 2
+        // Palette majeure C → F → G → C, sans le long accord mineur
+        // de l'ancienne version. Pulsation légère pour un voyage joyeux,
+        // chaleureux, jamais agressif ni mélancolique.
         let chords: [[Double]] = [
-            [130.81, 164.81, 196.00, 246.94], // Cmaj7
-            [110.00, 130.81, 164.81, 196.00], // Am7
-            [87.31, 130.81, 174.61, 220.00],  // Fmaj7
-            [98.00, 146.83, 196.00, 246.94]   // G6
+            [130.81, 164.81, 196.00, 246.94, 293.66], // Do majeur 9
+            [174.61, 220.00, 261.63, 329.63, 392.00], // Fa majeur 9
+            [196.00, 246.94, 293.66, 392.00, 440.00], // Sol 6/9
+            [130.81, 164.81, 196.00, 261.63, 329.63] // Do lumineux
         ]
         let chordDuration = duration / Double(chords.count)
+        let beatDuration = 0.60 // 100 BPM : mouvement discret de lounge aérien
 
         for frame in 0..<Int(frameCount) {
             let time = Double(frame) / sampleRate
             let chordIndex = min(chords.count - 1, Int(time / chordDuration))
             let localTime = time.truncatingRemainder(dividingBy: chordDuration)
-            let edge = min(1.0, min(localTime / 1.2, (chordDuration - localTime) / 1.2))
-            let breathe = 0.80 + 0.20 * sin(twoPi * time / 8.0)
+            let edge = max(0.0, min(1.0,
+                min(localTime / 0.65, (chordDuration - localTime) / 0.65)))
+            let breathe = 0.88 + 0.12 * sin(twoPi * time / 7.0)
 
-            var tone = 0.0
+            var pad = 0.0
             for (index, frequency) in chords[chordIndex].enumerated() {
-                let weight = index == 0 ? 0.34 : 0.18
-                tone += sin(twoPi * frequency * time) * weight
-                tone += sin(twoPi * frequency * 2.0 * time) * weight * 0.10
+                let weight = index == 0 ? 0.20 : 0.115
+                pad += sin(twoPi * frequency * time) * weight
+                pad += sin(twoPi * frequency * 2.0 * time) * weight * 0.055
             }
 
-            let air = sin(twoPi * 523.25 * time) * 0.025
-                * (0.5 + 0.5 * sin(twoPi * time / 12.0))
-            let sample = Float((tone * breathe * max(0.12, edge) + air) * 0.22)
+            let step = Int(localTime / beatDuration) % chords[chordIndex].count
+            let noteTime = localTime.truncatingRemainder(dividingBy: beatDuration)
+            let note = chords[chordIndex][step] * 4
+            let pluck = exp(-noteTime * 8.5)
+            let glimmer = sin(twoPi * note * time) * pluck * 0.135
+            let shimmer = sin(twoPi * note * 1.5 * time) * pluck * 0.026
+            let bass = sin(twoPi * chords[chordIndex][0] * 0.5 * time) * 0.12
+            let sample = Float(((pad * breathe + bass) * edge + glimmer + shimmer) * 0.22)
 
             channels[0][frame] = sample
-            channels[1][frame] = sample * Float(0.94 + 0.03 * sin(twoPi * time / 10.0))
+            channels[1][frame] = sample * Float(0.95 + 0.025 * sin(twoPi * time / 10.0))
         }
 
         return buffer
