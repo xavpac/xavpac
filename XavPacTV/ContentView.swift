@@ -37,13 +37,11 @@ struct ContentView: View {
         return service.trafficProfile(for: priorityAircraft)
     }
 
-    private var specialCounts: (civil: Int, military: Int, medical: Int, helicopters: Int) {
+    private var specialCounts: (civil: Int, military: Int) {
         let kinds = service.specialAircraftInZone.map { service.trafficProfile(for: $0).kind }
         return (
             kinds.filter { $0 == .civilSecurity }.count,
-            kinds.filter { $0 == .military }.count,
-            kinds.filter { $0 == .medical }.count,
-            service.specialAircraftInZone.filter { service.trafficProfile(for: $0).isRotorcraft }.count
+            kinds.filter { $0 == .military }.count
         )
     }
 
@@ -75,10 +73,15 @@ struct ContentView: View {
     }
 
     private var podiumAirports: [TVAirport] {
-        service.aircraft.prefix(3).flatMap { aircraft in
+        let highlighted: [TVAirport] = [
+            featuredEnrichment?.departureAirport,
+            featuredEnrichment?.arrivalAirport
+        ].compactMap { $0 }
+        let others = service.aircraft.prefix(3).flatMap { aircraft -> [TVAirport] in
             let info = service.enrichment(for: aircraft)
             return [info?.departureAirport, info?.arrivalAirport].compactMap { $0 }
         }
+        return highlighted + others
     }
 
     private var podiumWeatherKey: String {
@@ -126,38 +129,27 @@ struct ContentView: View {
                     cinemaHeader
                         .frame(height: 94)
 
-                    // Composition Apple TV fidèle au croquis :
-                    // ┌──────────── CARTE ────────────┬──────── PHOTO / VIDÉO ────────┐
-                    // │                                │                                │
-                    // ├──── AVION 1 ──── AVION 2 ──────┼──── MOYENS NATIONAUX ─────────┤
-                    // La colonne gauche garde ses deux avions, jamais un podium
-                    // de trois cartes réparties sur toute la largeur.
+                    // V3 TV : carte fixe et traînées ADS-B à gauche ; sous la
+                    // carte, les rangs 2 et 3. À droite, la destination
+                    // et ses deux METAR restent visibles même durant une alerte.
                     HStack(alignment: .top, spacing: 20) {
                         VStack(spacing: 18) {
                             cinemaMap
                                 .frame(maxHeight: .infinity)
 
                             cinemaTwoClosest
-                                .frame(height: 264)
+                                .frame(height: 249)
                         }
                         .frame(width: mapWidth)
                         .frame(maxHeight: .infinity)
 
                         VStack(spacing: 18) {
-                            Group {
-                                if let priorityAircraft {
-                                    cinemaPrioritySpotlight(priorityAircraft)
-                                        .transition(.opacity.combined(with: .scale(scale: 0.97)))
-                                } else {
-                                    cinemaDestination
-                                        .transition(.opacity.combined(with: .scale(scale: 0.97)))
-                                }
-                            }
-                            .frame(maxHeight: .infinity)
-                            .animation(.easeInOut(duration: 0.75), value: priorityAircraft?.id)
+                            cinemaDestination
+                                .frame(maxHeight: .infinity)
 
+                            // Alerte sans masquer la vidéo ni les METAR.
                             cinemaPriorityStatus
-                                .frame(height: 125)
+                                .frame(height: 132)
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
@@ -604,18 +596,18 @@ struct ContentView: View {
                 radius: 12, y: 4)
     }
 
-    // Deux avions les plus proches, affichés sous la carte et UNIQUEMENT là.
-    // La photo/vidéo et les moyens nationaux conservent la colonne droite.
+    // Les 2e et 3e aéronefs les plus proches se partagent le bas gauche.
+    // La destination et les deux METAR restent dans la colonne droite.
     private var cinemaTwoClosest: some View {
         GeometryReader { geometry in
-            let aircraft = Array(service.aircraft.prefix(2))
+            let aircraft = Array(service.aircraft.dropFirst().prefix(2))
             let gap: CGFloat = 15
             let width = max(0, (geometry.size.width - gap) / 2)
 
             HStack(alignment: .bottom, spacing: gap) {
-                podiumPosition(aircraft, index: 0, rank: 1, hero: false)
+                podiumPosition(aircraft, index: 0, rank: 2, hero: false)
                     .frame(width: width, height: geometry.size.height)
-                podiumPosition(aircraft, index: 1, rank: 2, hero: false)
+                podiumPosition(aircraft, index: 1, rank: 3, hero: false)
                     .frame(width: width, height: geometry.size.height)
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
@@ -658,7 +650,7 @@ struct ContentView: View {
                 .foregroundStyle(active ? Color.white : Color(red: 0.01, green: 0.58, blue: 0.80))
 
             VStack(alignment: .leading, spacing: 7) {
-                Text("MOYENS NATIONAUX ET SECOURS · 50 KM")
+                Text("MOYENS PRIORITAIRES · SÉCURITÉ CIVILE ET ARMÉE")
                     .font(.system(size: 26, weight: .black))
                     .lineLimit(1)
                     .minimumScaleFactor(0.70)
@@ -669,12 +661,12 @@ struct ContentView: View {
                         .lineLimit(1)
                         .minimumScaleFactor(0.70)
                 } else {
-                    Text(radarIsLive ? "Aucun appareil spécial détecté" : "En attente de données actualisées")
+                    Text(radarIsLive ? "Aucun moyen prioritaire détecté" : "En attente de données actualisées")
                         .font(.system(size: 21, weight: .medium))
                         .lineLimit(1)
                 }
 
-                Text("SÉCURITÉ CIVILE \(counts.civil)   ·   ARMÉE \(counts.military)   ·   SAMU \(counts.medical)   ·   HÉLICOS OPÉRATIONNELS \(counts.helicopters)")
+                Text("SÉCURITÉ CIVILE \(counts.civil)   ·   ARMÉE \(counts.military)")
                     .font(.system(size: 15, weight: .heavy))
                     .lineLimit(1)
                     .minimumScaleFactor(0.68)
