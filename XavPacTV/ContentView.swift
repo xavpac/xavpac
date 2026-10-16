@@ -342,7 +342,7 @@ struct ContentView: View {
     // seul le message change en fonction du trafic effectivement reçu.
     private var homeTrafficStatus: (icon: String, message: String) {
         guard radarIsLive else {
-            return ("antenna.radiowaves.left.and.right.slash", "RADAR EN ATTENTE DE DONNÉES")
+            return ("antenna.radiowaves.left.and.right", "RADAR EN ATTENTE DE DONNÉES")
         }
         if service.aircraft.isEmpty {
             return ("checkmark.circle.fill", "AUCUN AVION DANS LA ZONE")
