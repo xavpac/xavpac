@@ -452,11 +452,11 @@ function hasWrongCityContext(title: string, city: string, country: string) {
 function scenicScore(title: string, scene: TVScene) {
   const text = normalized(title);
   let score = 0;
-  if (/hyperlapse|timelapse|time lapse|sunset|night light|cityscape|skyline|panorama|landscape|drone|aerial|overflight|bird.?s.eye|monument|landmark|garden|park|cathedral|street view|river view|harbour view/.test(text)) score += 12;
+  if (/hyperlapse|timelapse|time lapse|sunset|sunrise|morning in|night light|cityscape|skyline|panorama|landscape|drone|aerial|overflight|bird.?s.eye|monument|landmark|garden|park|cathedral|street view|river view|harbour view/.test(text)) score += 12;
   if (/airport|aeroport|aerodrome|terminal|runway|airfield|landing|approach|takeoff|take.off|control tower|piste/.test(text)) {
     score += scene === "airport" || scene === "approach" ? 15 : -4;
   }
-  if (/tram|train|metro|metrolink|stagecoach|bus\b|rail|station|berthing|container|cargo ship|msc |interview|news|afn |military|army|post office|mailing|guidance|politic|president|march|protest|conference|football|soccer|poster|logo|coat of arms|\bmap\b|battle|world war/.test(text)) score -= 35;
+  if (/tram|train|metro|metrolink|stagecoach|bus\b|rail|station|berthing|container|cargo ship|msc |interview|news|afn |military|army|post office|mailing|guidance|politic|president|march|protest|conference|football|soccer|poster|logo|coat of arms|\bmap\b|banner|passenger destinations|route diagram|timetable|battle|world war|ruins|ruines|incendie|\bfire\b|disaster|accident|covid|pandemic|terror|attack/.test(text)) score -= 35;
   if (scene === "approach" && /landing|approach|takeoff|aircraft|plane|aeroplane|flight/.test(text)) score += 10;
   if (/\.webm$/.test(text)) score += 1;
   return score;
@@ -494,6 +494,7 @@ async function fetchCommonsScene(
   })();
 
   const unique = new Map<string, DestinationMediaItem>();
+  const imageFamilies = new Set<string>();
   for (const query of querySets) {
     if (unique.size >= (mode === "video" ? 4 : 8)) break;
     const url = new URL("https://commons.wikimedia.org/w/api.php");
@@ -587,7 +588,19 @@ async function fetchCommonsScene(
             sourceUrl: info?.descriptionurl?.startsWith("https://") ? info.descriptionurl : "https://commons.wikimedia.org/"
           };
         }
-        if (item) unique.set(item.id, item);
+        if (item) {
+          if (mode === "image") {
+            // Avoid four nearly identical photos from the same photo series.
+            const family = normalized(title)
+              .replace(/\.(jpe?g|png|webp)$/, "")
+              .replace(/[\d()[\]]+/g, "")
+              .replace(/[^a-z ]+/g, " ")
+              .replace(/\s+/g, " ").trim().split(" ").slice(0, 7).join(" ");
+            if (family.length > 18 && imageFamilies.has(family)) continue;
+            if (family.length > 18) imageFamilies.add(family);
+          }
+          unique.set(item.id, item);
+        }
       }
     } catch {
       // Commons may be slow or unavailable; continue with the other categories.
