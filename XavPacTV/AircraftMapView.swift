@@ -30,6 +30,57 @@ final class AircraftAnnotation: NSObject, MKAnnotation {
     }
 }
 
+// Épingle HOME native tvOS : toujours visible, non interactive.
+final class RadarHomeAnnotation: NSObject, MKAnnotation {
+    dynamic var coordinate: CLLocationCoordinate2D
+
+    init(coordinate: CLLocationCoordinate2D) {
+        self.coordinate = coordinate
+        super.init()
+    }
+}
+
+private final class RadarHomeAnnotationView: MKAnnotationView {
+    private let bubble = UIView()
+    private let icon = UIImageView()
+    private let title = UILabel()
+
+    override init(annotation: MKAnnotation?, reuseIdentifier: String?) {
+        super.init(annotation: annotation, reuseIdentifier: reuseIdentifier)
+        frame = CGRect(x: 0, y: 0, width: 155, height: 72)
+        centerOffset = CGPoint(x: 45, y: -17)
+        collisionMode = .rectangle
+        displayPriority = .required
+        canShowCallout = false
+        isUserInteractionEnabled = false
+
+        bubble.frame = CGRect(x: 0, y: 7, width: 155, height: 58)
+        bubble.backgroundColor = UIColor(red: 0.02, green: 0.24, blue: 0.43, alpha: 0.97)
+        bubble.layer.cornerRadius = 22
+        bubble.layer.borderWidth = 2.8
+        bubble.layer.borderColor = UIColor(red: 0.13, green: 0.89, blue: 0.96, alpha: 1).cgColor
+        bubble.layer.shadowColor = UIColor.systemCyan.cgColor
+        bubble.layer.shadowOpacity = 0.9
+        bubble.layer.shadowRadius = 13
+        bubble.layer.shadowOffset = .zero
+        addSubview(bubble)
+
+        icon.frame = CGRect(x: 12, y: 19, width: 33, height: 34)
+        icon.contentMode = .scaleAspectFit
+        icon.image = UIImage(systemName: "house.fill")?.withTintColor(.white, renderingMode: .alwaysOriginal)
+        addSubview(icon)
+
+        title.frame = CGRect(x: 51, y: 13, width: 95, height: 45)
+        title.text = "HOME"
+        title.font = .systemFont(ofSize: 22, weight: .black)
+        title.textColor = .white
+        title.textAlignment = .left
+        addSubview(title)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+}
+
 private final class AircraftAnnotationView: MKAnnotationView {
     private let glyphView = UIImageView()
     private let haloView = UIView()
@@ -360,6 +411,8 @@ struct AircraftMapView: UIViewRepresentable {
         map.removeAnnotations(map.annotations)
         map.removeOverlays(map.overlays)
 
+        // La maison demeure au centre, même lorsque le trafic est vide.
+        map.addAnnotation(RadarHomeAnnotation(coordinate: center))
         map.addAnnotations(
             aircraft.prefix(60).enumerated().map { index, item in
                 AircraftAnnotation(
@@ -380,8 +433,14 @@ struct AircraftMapView: UIViewRepresentable {
         if let selectedID,
            let points = trails[selectedID],
            points.count >= 2 {
-            var coordinates = points
-            map.addOverlay(MKPolyline(coordinates: &coordinates, count: coordinates.count))
+            // Uniquement des points ADS-B réellement observés : ni prédiction
+            // trompeuse, ni droite artificielle vers l'aéroport.
+            var coordinates = Array(points.suffix(24))
+            let glow = MKPolyline(coordinates: &coordinates, count: coordinates.count)
+            glow.title = "observed-halo"
+            let core = MKPolyline(coordinates: &coordinates, count: coordinates.count)
+            core.title = "observed-core"
+            map.addOverlays([glow, core])
         }
 
         if context.coordinator.lastCenter.latitude != center.latitude
@@ -424,6 +483,14 @@ struct AircraftMapView: UIViewRepresentable {
         }
 
         func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
+            if annotation is RadarHomeAnnotation {
+                let identifier = "home-skyshow-v2"
+                let view = (mapView.dequeueReusableAnnotationView(withIdentifier: identifier)
+                    as? RadarHomeAnnotationView)
+                    ?? RadarHomeAnnotationView(annotation: annotation, reuseIdentifier: identifier)
+                view.annotation = annotation
+                return view
+            }
             guard let aircraftAnnotation = annotation as? AircraftAnnotation else {
                 return nil
             }
@@ -447,8 +514,15 @@ struct AircraftMapView: UIViewRepresentable {
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
             if let polyline = overlay as? MKPolyline {
                 let renderer = MKPolylineRenderer(polyline: polyline)
-                renderer.strokeColor = UIColor(red: 0.00, green: 0.44, blue: 0.78, alpha: 0.92)
-                renderer.lineWidth = 6
+                // Trait turquoise précis posé sur un halo discret : visible
+                // à plusieurs mètres mais moins lourd que l'ancien trait bleu.
+                if polyline.title == "observed-halo" {
+                    renderer.strokeColor = UIColor(red: 0.03, green: 0.72, blue: 0.94, alpha: 0.21)
+                    renderer.lineWidth = 13
+                } else {
+                    renderer.strokeColor = UIColor(red: 0.00, green: 0.53, blue: 0.80, alpha: 0.96)
+                    renderer.lineWidth = 3.5
+                }
                 renderer.lineJoin = .round
                 renderer.lineCap = .round
                 return renderer
