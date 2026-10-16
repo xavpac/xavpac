@@ -10,45 +10,64 @@ import SwiftUI
 @MainActor
 final class AppleMusicSoundtrack: ObservableObject {
     @Published private(set) var isPlaying = false
+    // Diagnostic discret au pied de l'écran, sans bouton ni réglage.
+    @Published private(set) var statusLabel = "APPLE MUSIC : CONNEXION…"
 
     private let sharedPlaylistID = MusicItemID("pl.u-7jUWNk8oEy")
     private let player = ApplicationMusicPlayer.shared
 
     func start() async -> Bool {
-        if isPlaying { return true }
+        // Une autorisation MusicKit acceptée ne garantit pas l'accès aux
+        // morceaux : la bibliothèque, l'abonnement et la lecture sont séparés.
+        if isPlaying && player.state.playbackStatus == .playing {
+            return true
+        }
+        isPlaying = false
+        statusLabel = "APPLE MUSIC : AUTORISATION…"
 
         let authorization = MusicAuthorization.currentStatus == .authorized
             ? MusicAuthorization.Status.authorized
             : await MusicAuthorization.request()
         guard authorization == .authorized else {
-            print("XavPac TV : autorisation Apple Music non accordée.")
+            statusLabel = "APPLE MUSIC : ACCÈS NON AUTORISÉ"
             return false
         }
 
         do {
+            statusLabel = "APPLE MUSIC : ABONNEMENT…"
             let subscription = try await MusicSubscription.current
             guard subscription.canPlayCatalogContent else {
-                print("XavPac TV : abonnement de lecture Apple Music indisponible.")
+                statusLabel = "APPLE MUSIC : ABONNEMENT INDISPONIBLE"
+                print("XavPac TV : abonnement Apple Music non disponible pour MusicKit.")
                 return false
             }
 
+            statusLabel = "APPLE MUSIC : RECHERCHE FAVORIS…"
             guard let playlist = await findSharedPlaylist() else {
-                print("XavPac TV : playlist Morceaux préférés introuvable pour ce compte.")
+                statusLabel = "APPLE MUSIC : PLAYLIST INTROUVABLE"
+                print("XavPac TV : Favorite Songs introuvable via l'identifiant partagé et la bibliothèque.")
                 return false
             }
             let populated = try await playlist.with([.tracks])
             guard let tracks = populated.tracks, !tracks.isEmpty else {
-                print("XavPac TV : playlist sans morceaux lisibles.")
+                statusLabel = "APPLE MUSIC : PLAYLIST SANS PISTES"
+                print("XavPac TV : Apple Music n'a retourné aucun morceau de la playlist.")
                 return false
             }
 
+            statusLabel = "APPLE MUSIC : DÉMARRAGE…"
             player.queue = ApplicationMusicPlayer.Queue(for: tracks)
             player.state.repeatMode = .all
             try await player.play()
+
             isPlaying = true
+            statusLabel = "FAVORIS APPLE MUSIC"
             return true
         } catch {
-            print("XavPac TV : Apple Music indisponible : \(error.localizedDescription)")
+            // Ce message s'affiche à la TV afin de distinguer le service
+            // MusicKit refusé d'un simple problème de données radar.
+            statusLabel = "APPLE MUSIC : SERVICE OU LECTURE INDISPONIBLE"
+            print("XavPac TV : échec MusicKit : \(error.localizedDescription)")
             return false
         }
     }
