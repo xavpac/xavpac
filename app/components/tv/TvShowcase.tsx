@@ -189,7 +189,7 @@ export default function TvShowcase() {
       })
       .catch(() => { if (mediaRequest.current === requestId && !controller.signal.aborted) setMediaStatus("empty"); });
     return () => controller.abort();
-  }, [destinationKey, city, destination?.iata]);
+  }, [destinationKey, city, destination?.iata, destination?.icao, destination?.name]);
 
   const playableMedia = useMemo(() => media.filter((item) => !badMedia.includes(item.url)), [media, badMedia]);
   const activeMedia = playableMedia.length ? playableMedia[mediaIndex % playableMedia.length] : null;
