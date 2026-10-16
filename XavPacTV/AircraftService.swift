@@ -54,21 +54,20 @@ final class AircraftService: ObservableObject {
         aircraft.trafficProfile(enrichment: enrichment(for: aircraft))
     }
 
+    // La scène immersive n'affiche Bâgé-Dommartin que si aucun des trois
+    // aéronefs les plus proches ne possède une destination exploitable.
     var featuredAircraft: Aircraft? {
-        // La destination garde sa place ; une alerte opérationnelle apparaît
-        // indépendamment dans sa propre carte à droite.
-        // Privilégier le vol qui passe près de HOME
-        // et dont la ville d'arrivée est réellement identifiée.
-        let closeIdentifiedFlight = aircraft
-            .filter { item in
-                item.distanceKilometers(from: center) <= 12
-                    && enrichment(for: item)?.arrivalAirport != nil
-                    && enrichment(for: item)?.routeConfidence != "unavailable"
+        let podium = Array(aircraft.prefix(3))
+        let identifiable = podium.filter { item in
+            guard let info = enrichment(for: item),
+                  info.routeConfidence != "unavailable",
+                  let destination = info.arrivalAirport else {
+                return false
             }
-            .min { left, right in
-                left.distanceKilometers(from: center) < right.distanceKilometers(from: center)
-            }
-        return closeIdentifiedFlight ?? aircraft.first
+            return destination.iata != nil || destination.icao != nil
+                || destination.municipality != nil || destination.name != nil
+        }
+        return identifiable.first ?? podium.first
     }
 
     var displayAircraft: [Aircraft] {
@@ -417,6 +416,26 @@ private extension Optional where Wrapped == Bool {
 
 
  
+// Direction D'OÙ vient le vent, avec le nom français et la vitesse en km/h.
+// Les vitesses des observations aéroportuaires sont converties de kt en km/h.
+enum WindFrenchFormatter {
+    static func label(speedKmh: Double, directionDegrees: Double?) -> String {
+        guard speedKmh.isFinite, speedKmh >= 0 else { return "Vent indisponible" }
+        let speed = Int(speedKmh.rounded())
+        if speed == 0 { return "Vent calme · 0 km/h" }
+        guard let degrees = directionDegrees, degrees.isFinite else {
+            return "Vent variable · \(speed) km/h"
+        }
+        let names = [
+            "Nord", "Nord-est", "Est", "Sud-est",
+            "Sud", "Sud-ouest", "Ouest", "Nord-ouest"
+        ]
+        let bearing = degrees.truncatingRemainder(dividingBy: 360)
+        let index = Int(((bearing + 360).truncatingRemainder(dividingBy: 360) + 22.5) / 45) % 8
+        return names[index] + " · \(speed) km/h"
+    }
+}
+
 // Température observée (METAR) : aucune météo inventée si la station ne répond pas.
 private struct METARReading: Decodable {
     let raw: String
@@ -446,10 +465,16 @@ struct TVAirportWeather: Decodable {
     private let obsTime: METARReading?
 
     var windLabel: String {
-        guard let speed = wspd?.raw, speed != "—" else { return "VENT —" }
-        let direction = wdir?.raw ?? "VRB"
-        let bearing = Double(direction).map { "\(Int($0.rounded()))°" } ?? direction
-        return "VENT \(bearing) · \(speed) kt"
+        guard let knotsText = wspd?.raw,
+              let knots = Double(knotsText), knots.isFinite, knots >= 0 else {
+            return "Vent indisponible"
+        }
+        let kmh = knots * 1.852
+        let rawDirection = wdir?.raw.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard let degrees = Double(rawDirection), degrees.isFinite else {
+            return WindFrenchFormatter.label(speedKmh: kmh, directionDegrees: nil)
+        }
+        return WindFrenchFormatter.label(speedKmh: kmh, directionDegrees: degrees)
     }
 
     var visibilityLabel: String {
@@ -466,9 +491,9 @@ struct TVAirportWeather: Decodable {
         if observation == nil, let epoch = obsTime?.raw, let seconds = Double(epoch) {
             observation = Date(timeIntervalSince1970: seconds)
         }
-        guard let observation else { return "METAR" }
+        guard let observation else { return "Obs. indisponible" }
         let text = observation.formatted(date: .omitted, time: .shortened)
-        return "METAR \(text)"
+        return "Obs. \(text)"
     }
 
     var temperatureLabel: String {
