@@ -43,7 +43,7 @@ struct ContentView: View {
             kinds.filter { $0 == .civilSecurity }.count,
             kinds.filter { $0 == .military }.count,
             kinds.filter { $0 == .medical }.count,
-            kinds.filter { $0 == .helicopter }.count
+            service.specialAircraftInZone.filter { service.trafficProfile(for: $0).isRotorcraft }.count
         )
     }
 
@@ -371,7 +371,7 @@ struct ContentView: View {
     }
 
 
-    // Le trafic Sécurité civile / Armée prend naturellement la place de l'escale.
+    // Les trafics Sécurité civile / Armée / SAMU prennent la place de l'escale.
     // Photo réellement rattachée à l'appareil si disponible, jamais inventée.
     private func cinemaPrioritySpotlight(_ aircraft: Aircraft) -> some View {
         let enrichment = service.enrichment(for: aircraft)
@@ -433,7 +433,7 @@ struct ContentView: View {
 
                     Spacer()
 
-                    Text(profile.label)
+                    Text(profile.isRotorcraft ? "HÉLICOPTÈRE · \(profile.label)" : profile.label)
                         .font(.system(size: 28, weight: .black, design: .rounded))
                         .tracking(3)
                         .foregroundStyle(alertTint)
@@ -445,6 +445,15 @@ struct ContentView: View {
                         .minimumScaleFactor(0.62)
                         .foregroundStyle(.white)
                         .shadow(color: .black.opacity(0.6), radius: 8)
+
+                    if let operatorName = enrichment?.operatorName ?? aircraft.operatorName,
+                       !operatorName.isEmpty {
+                        Text(operatorName)
+                            .font(.system(size: 24, weight: .semibold))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.70)
+                            .foregroundStyle(.white.opacity(0.88))
+                    }
 
                     HStack(alignment: .firstTextBaseline, spacing: 12) {
                         Text(aircraft.displayName)
@@ -659,7 +668,7 @@ struct ContentView: View {
                         .lineLimit(1)
                 }
 
-                Text("SÉCURITÉ CIVILE \(counts.civil)   ·   ARMÉE \(counts.military)   ·   SAMU \(counts.medical)   ·   HÉLICOS \(counts.helicopters)")
+                Text("SÉCURITÉ CIVILE \(counts.civil)   ·   ARMÉE \(counts.military)   ·   SAMU \(counts.medical)   ·   HÉLICOS OPÉRATIONNELS \(counts.helicopters)")
                     .font(.system(size: 15, weight: .heavy))
                     .lineLimit(1)
                     .minimumScaleFactor(0.68)
