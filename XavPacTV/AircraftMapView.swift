@@ -391,8 +391,8 @@ struct AircraftMapView: UIViewRepresentable {
 
         let region = MKCoordinateRegion(
             center: center,
-            latitudinalMeters: 92_000,
-            longitudinalMeters: 92_000
+            latitudinalMeters: 116_000,
+            longitudinalMeters: 116_000
         )
         map.setRegion(region, animated: false)
         // MapKit tvOS ajoute parfois un curseur de zoom blanc malgré le verrouillage.
@@ -426,21 +426,56 @@ struct AircraftMapView: UIViewRepresentable {
             }
         )
 
-        [10_000.0, 20_000.0, 40_000.0].forEach { radius in
+        [10_000.0, 20_000.0, 40_000.0, 50_000.0].forEach { radius in
             map.addOverlay(MKCircle(center: center, radius: radius))
         }
 
+        // Trajectoires historiques vérifiées, segment par segment :
+        // fondu du plus ancien au plus récent. Aucun trajet fictif vers la ville.
+        var highlightedIDs = aircraft.prefix(3).map(\.id)
+        if let selectedID, !highlightedIDs.contains(selectedID) {
+            highlightedIDs.append(selectedID)
+        }
+        for id in highlightedIDs {
+            guard let trace = trails[id], trace.count >= 2 else { continue }
+            let featured = id == selectedID
+            let recent = Array(trace.suffix(featured ? 20 : 10))
+            let count = recent.count - 1
+            for index in 1..<recent.count {
+                var coords = [recent[index - 1], recent[index]]
+                if featured {
+                    let glow = MKPolyline(coordinates: &coords, count: 2)
+                    glow.title = "history-halo-\(index)-\(count)"
+                    map.addOverlay(glow)
+                }
+                let line = MKPolyline(coordinates: &coords, count: 2)
+                line.title = featured
+                    ? "history-core-\(index)-\(count)"
+                    : "history-nearby-\(index)-\(count)"
+                map.addOverlay(line)
+            }
+        }
+
+        // Le vecteur en avant est un simple indicateur de cap (pointillés),
+        // volontairement distinct des positions historiques constatées.
         if let selectedID,
-           let points = trails[selectedID],
-           points.count >= 2 {
-            // Uniquement des points ADS-B réellement observés : ni prédiction
-            // trompeuse, ni droite artificielle vers l'aéroport.
-            var coordinates = Array(points.suffix(24))
-            let glow = MKPolyline(coordinates: &coordinates, count: coordinates.count)
-            glow.title = "observed-halo"
-            let core = MKPolyline(coordinates: &coordinates, count: coordinates.count)
-            core.title = "observed-core"
-            map.addOverlays([glow, core])
+           let highlighted = aircraft.first(where: { $0.id == selectedID }),
+           let heading = highlighted.trueTrack,
+           heading.isFinite {
+            let radians = heading * .pi / 180
+            let latitude = highlighted.latitude * .pi / 180
+            let latitudeDelta = 2.0 * cos(radians) / 111.32
+            let longitudeDelta = 2.0 * sin(radians) / (111.32 * max(0.25, cos(latitude)))
+            var vector: [CLLocationCoordinate2D] = [
+                highlighted.coordinate,
+                CLLocationCoordinate2D(
+                    latitude: highlighted.latitude + latitudeDelta,
+                    longitude: highlighted.longitude + longitudeDelta
+                )
+            ]
+            let course = MKPolyline(coordinates: &vector, count: vector.count)
+            course.title = "heading-vector"
+            map.addOverlay(course)
         }
 
         if context.coordinator.lastCenter.latitude != center.latitude
@@ -448,8 +483,8 @@ struct AircraftMapView: UIViewRepresentable {
             context.coordinator.lastCenter = center
             let region = MKCoordinateRegion(
                 center: center,
-                latitudinalMeters: 92_000,
-                longitudinalMeters: 92_000
+                latitudinalMeters: 116_000,
+                longitudinalMeters: 116_000
             )
             map.setRegion(region, animated: false)
         }
@@ -514,14 +549,40 @@ struct AircraftMapView: UIViewRepresentable {
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
             if let polyline = overlay as? MKPolyline {
                 let renderer = MKPolylineRenderer(polyline: polyline)
-                // Trait turquoise précis posé sur un halo discret : visible
-                // à plusieurs mètres mais moins lourd que l'ancien trait bleu.
-                if polyline.title == "observed-halo" {
-                    renderer.strokeColor = UIColor(red: 0.03, green: 0.72, blue: 0.94, alpha: 0.21)
-                    renderer.lineWidth = 13
+                let title = polyline.title ?? ""
+                let parts = title.split(separator: "-")
+                if parts.count == 4 && parts[0] == "history" {
+                    let newest = CGFloat(Int(parts[2]) ?? 1)
+                    let total = CGFloat(max(1, Int(parts[3]) ?? 1))
+                    let fade = max(CGFloat(0.15), newest / total)
+                    if parts[1] == "halo" {
+                        renderer.strokeColor = UIColor(
+                            red: 0.09, green: 0.79, blue: 1.0,
+                            alpha: 0.09 + fade * 0.25
+                        )
+                        renderer.lineWidth = 9
+                    } else if parts[1] == "nearby" {
+                        renderer.strokeColor = UIColor(
+                            red: 0.14, green: 0.63, blue: 0.89,
+                            alpha: 0.12 + fade * 0.47
+                        )
+                        renderer.lineWidth = 2.5
+                    } else {
+                        renderer.strokeColor = UIColor(
+                            red: 0.00, green: 0.48, blue: 0.80,
+                            alpha: 0.22 + fade * 0.77
+                        )
+                        renderer.lineWidth = 3.6
+                    }
+                } else if title == "heading-vector" {
+                    renderer.strokeColor = UIColor(
+                        red: 0.90, green: 0.55, blue: 0.06, alpha: 0.86
+                    )
+                    renderer.lineDashPattern = [7, 6]
+                    renderer.lineWidth = 3
                 } else {
-                    renderer.strokeColor = UIColor(red: 0.00, green: 0.53, blue: 0.80, alpha: 0.96)
-                    renderer.lineWidth = 3.5
+                    renderer.strokeColor = UIColor.systemCyan
+                    renderer.lineWidth = 3
                 }
                 renderer.lineJoin = .round
                 renderer.lineCap = .round
