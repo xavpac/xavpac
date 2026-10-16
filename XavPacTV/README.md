@@ -13,6 +13,16 @@ Cette application **native tvOS** est distincte de l'écran web Vercel. Elle uti
 
 Le classement est fondé sur la proximité, pas sur une estimation de l'heure de passage. Les positions, vidéos et destinations dépendent des sources disponibles.
 
+## Musique Apple Music — « Morceaux préférés »
+
+- La playlist partagée `https://music.apple.com/fr/playlist/morceaux-pr%C3%A9f%C3%A9r%C3%A9s/pl.u-7jUWNk8oEy` est référencée dans `AppleMusicSoundtrack.swift`.
+- À l'ouverture, XavPac TV tente la lecture automatique **dans l'application**, via MusicKit, sans modifier les panneaux existants.
+- Au premier lancement, **accepter l'autorisation Apple Music** sur l'Apple TV. L'abonnement Apple Music doit permettre la lecture du catalogue.
+- **Configuration indispensable du compte développeur** : activer le service MusicKit pour l'App ID correspondant à `fr.xavpac.XavPacTV` dans le portail Apple Developer. La signature Personal Team gratuite peut ne pas donner accès au service. L'ajout de code seul ne suffit pas à garantir la lecture.
+- La recherche utilise l'identifiant de playlist partagée en premier, puis la playlist « Favorite Songs / Morceaux préférés » de la bibliothèque Apple Music associée à l'Apple TV.
+- Si MusicKit ne peut pas être autorisé ou ne retrouve pas la playlist, l'ambiance musicale synthétique préexistante reste active et le radar continue.
+- Le son d'ambiance de secours s'arrête après démarrage réussi d'Apple Music ; les alertes des moyens prioritaires restent prévues indépendamment.
+
 ## Mettre à jour l'application déjà installée sur Apple TV
 
 Avec une installation réalisée depuis Xcode :
