@@ -184,21 +184,6 @@ private final class AircraftAnnotationView: MKAnnotationView {
                 addPriorityPulse(color: tint)
             }
         } else {
-                title = item.routeLabel ?? "TRAJET À CONFIRMER"
-            }
-
-            tagLabel.text = " \(title) · \(String(format: "%.1f", item.distanceKm)) km "
-            tagLabel.adjustsFontSizeToFitWidth = true
-            tagLabel.minimumScaleFactor = 0.65
-            tagLabel.frame = CGRect(x: 78, y: 17, width: 242, height: 46)
-            tagLabel.layer.borderColor = tint.withAlphaComponent(0.90).cgColor
-            tagLabel.isHidden = false
-            centerOffset = CGPoint(x: 102, y: 0)
-
-            if item.profile.isPriorityTraffic {
-                addPriorityPulse(color: tint)
-            }
-        } else {
             let viewSize = max(56, 62 * scale)
             frame = CGRect(x: 0, y: 0, width: viewSize, height: viewSize)
 
