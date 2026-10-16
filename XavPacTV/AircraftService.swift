@@ -268,6 +268,7 @@ final class DestinationMediaService: ObservableObject {
 
     private var destinationKey = ""
     private var cycle = 0
+    private var destinationICAO: String?
 
     var current: DestinationMedia? {
         guard items.indices.contains(currentIndex) else { return nil }
@@ -281,6 +282,7 @@ final class DestinationMediaService: ObservableObject {
             city = ""
             provider = ""
             destinationKey = ""
+            destinationICAO = nil
             return
         }
 
@@ -290,8 +292,9 @@ final class DestinationMediaService: ObservableObject {
         }
 
         destinationKey = key
+        destinationICAO = airport.icao
         cycle = 0
-        await fetch(city: airport.city, iata: airport.iata ?? airport.icao, airportName: airport.name)
+        await fetch(city: airport.city, iata: airport.iata ?? airport.icao, icao: airport.icao, airportName: airport.name)
     }
 
     func preferVideo() {
@@ -317,10 +320,10 @@ final class DestinationMediaService: ObservableObject {
         let code = parts.first
         let city = parts.count > 1 ? parts[1] : self.city
         let airportName = parts.count > 2 ? parts[2] : nil
-        await fetch(city: city, iata: code, airportName: airportName)
+        await fetch(city: city, iata: code, icao: destinationICAO, airportName: airportName)
     }
 
-    private func fetch(city: String, iata: String?, airportName: String?) async {
+    private func fetch(city: String, iata: String?, icao: String?, airportName: String?) async {
         guard var components = URLComponents(string: "\(xavPacBaseURL.absoluteString)/api/tv/destination-media") else {
             return
         }
@@ -334,6 +337,9 @@ final class DestinationMediaService: ObservableObject {
         }
         if let airportName, !airportName.isEmpty {
             queryItems.append(URLQueryItem(name: "airport", value: airportName))
+        }
+        if let icao, !icao.isEmpty {
+            queryItems.append(URLQueryItem(name: "icao", value: icao))
         }
         components.queryItems = queryItems
 
