@@ -419,6 +419,36 @@ function normalized(value: string) {
     .replace(/[\u0300-\u036f]/g, "").replace(/[_-]+/g, " ").toLowerCase();
 }
 
+// ICAO prefixes give a reliable geographical hint without geocoding
+// or inventing a country when the airport code is not recognized.
+function countrySearchHint(icao: string) {
+  const countries: Record<string, string> = {
+    EG: "England", EI: "Ireland", LF: "France", LI: "Italy",
+    LE: "Spain", LP: "Portugal", ED: "Germany", EB: "Belgium",
+    EH: "Netherlands", LS: "Switzerland", LO: "Austria",
+    EK: "Denmark", EN: "Norway", ES: "Sweden", EF: "Finland",
+    LG: "Greece", LT: "Turkey", EP: "Poland", LK: "Czechia",
+    LZ: "Slovakia", LH: "Hungary", LR: "Romania", LD: "Croatia",
+    LY: "Serbia"
+  };
+  return countries[icao.slice(0, 2).toUpperCase()] || "";
+}
+
+function hasWrongCityContext(title: string, city: string, country: string) {
+  const name = normalized(city);
+  const text = normalized(title);
+  if (name === "manchester" && country === "England") {
+    return /jamaica|indiana|new hampshire|connecticut|manchester parish|manchester township/.test(text);
+  }
+  if (name === "naples" && country === "Italy") {
+    return /florida|maine|united states|naples new york/.test(text);
+  }
+  if (name === "paris" && country === "France") {
+    return /texas|kentucky|illinois|tennessee|paris, ontario|paris township/.test(text);
+  }
+  return false;
+}
+
 function scenicScore(title: string, scene: TVScene) {
   const text = normalized(title);
   let score = 0;
@@ -426,7 +456,7 @@ function scenicScore(title: string, scene: TVScene) {
   if (/airport|aeroport|aerodrome|terminal|runway|airfield|landing|approach|takeoff|take.off|control tower|piste/.test(text)) {
     score += scene === "airport" || scene === "approach" ? 15 : -4;
   }
-  if (/tram|train|berthing|container|cargo ship|msc |interview|news report|march|protest|conference|football|soccer|poster|logo|coat of arms|map of|battle|world war/.test(text)) score -= 24;
+  if (/tram|train|berthing|container|cargo ship|msc |interview|news|afn |military|army|march|protest|conference|football|soccer|poster|logo|coat of arms|map of|battle|world war/.test(text)) score -= 35;
   if (scene === "approach" && /landing|approach|takeoff|aircraft|plane|aeroplane|flight/.test(text)) score += 10;
   if (/\.webm$/.test(text)) score += 1;
   return score;
@@ -436,24 +466,30 @@ type CommonsMode = "image" | "video";
 const commonsAgent = "XavPacTV/5.0 (https://github.com/xavpac/xavpac)";
 
 async function fetchCommonsScene(
-  city: string, airport: string, iata: string,
+  city: string, airport: string, iata: string, icao: string,
   scene: TVScene, mode: CommonsMode
 ): Promise<DestinationMediaItem[]> {
+  const country = countrySearchHint(icao);
+  const localCity = country ? city + " " + country : city;
+  const airportDistinctive = normalized(airport)
+    .replace(normalized(city), "")
+    .replace(/international|regional|airport|aeroport|aerodrome|de |du |of |the |\s+/g, " ")
+    .trim();
   const querySets: string[] = (() => {
     if (mode === "video" && scene === "city") return [
-      city + " timelapse filetype:video", city + " aerial filetype:video", city + " filetype:video"
+      localCity + " timelapse filetype:video", localCity + " aerial filetype:video", city + " filetype:video"
     ];
     if (mode === "video") return [
-      city + " airport landing filetype:video",
+      (airport || city + " airport") + " landing filetype:video",
       (airport || city + " airport") + " filetype:video"
     ];
     if (scene === "airport") return [
       (airport || city + " airport") + " runway terminal", city + " airport"
     ];
     if (scene === "ambience") return [
-      city + " monument landmark", city + " panorama"
+      localCity + " monument landmark", localCity + " panorama"
     ];
-    return [city + " skyline panorama", city + " city panorama", city];
+    return [localCity + " skyline panorama", localCity + " city panorama", city + " panorama"];
   })();
 
   const unique = new Map<string, DestinationMediaItem>();
@@ -491,7 +527,13 @@ async function fetchCommonsScene(
           const title = normalized(entry.title ?? "");
           const isLocal = title.includes(normalized(city))
             || (airport.length >= 4 && title.includes(normalized(airport)));
-          if (!isLocal) return false;
+          if (!isLocal || hasWrongCityContext(entry.title ?? "", city, country)) return false;
+          if ((scene === "airport" || scene === "approach") && airportDistinctive.length >= 5) {
+            // Paris-CDG must never display Paris-Orly, for example.
+            if (!title.includes(airportDistinctive)
+              && !title.includes(normalized(iata))
+              && !title.includes(normalized(icao))) return false;
+          }
           if (scene === "airport" || scene === "approach") {
             return /airport|aeroport|aerodrome|runway|terminal|airfield|landing|approach|takeoff|take.off|flight|aircraft/.test(title)
               || (iata.length === 3 && title.includes(normalized(iata) + " airport"));
@@ -503,7 +545,7 @@ async function fetchCommonsScene(
 
       for (const page of ranked) {
         const title = page.title ?? "";
-        if (scenicScore(title, scene) < -7) continue;
+        if (scenicScore(title, scene) < 0) continue;
         let item: DestinationMediaItem | null = null;
         if (mode === "video") {
           const info = page.videoinfo?.[0];
@@ -559,6 +601,7 @@ export async function GET(request: NextRequest) {
   const city = cleanText(request.nextUrl.searchParams.get("city"), 80);
   const iata = cleanText(request.nextUrl.searchParams.get("iata"), 8).toUpperCase();
   const airport = cleanText(request.nextUrl.searchParams.get("airport"), 100);
+  const icao = cleanText(request.nextUrl.searchParams.get("icao"), 8).toUpperCase();
   const cycle = clampInteger(request.nextUrl.searchParams.get("cycle"), 0, 99);
 
   if (city.length < 2) {
@@ -575,11 +618,11 @@ export async function GET(request: NextRequest) {
       await Promise.all([
         fetchPexels(city, iata, page, theme).catch(() => null),
         fetchPixabay(city, iata, page, theme).catch(() => null),
-        fetchCommonsScene(city, airport, iata, "city", "video"),
-        fetchCommonsScene(city, airport, iata, "approach", "video"),
-        fetchCommonsScene(city, airport, iata, "city", "image"),
-        fetchCommonsScene(city, airport, iata, "airport", "image"),
-        fetchCommonsScene(city, airport, iata, "ambience", "image")
+        fetchCommonsScene(city, airport, iata, icao, "city", "video"),
+        fetchCommonsScene(city, airport, iata, icao, "approach", "video"),
+        fetchCommonsScene(city, airport, iata, icao, "city", "image"),
+        fetchCommonsScene(city, airport, iata, icao, "airport", "image"),
+        fetchCommonsScene(city, airport, iata, icao, "ambience", "image")
       ]);
 
     const raw = [
