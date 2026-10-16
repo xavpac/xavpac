@@ -2252,3 +2252,128 @@ private struct LoopingVideoView: UIViewRepresentable {
         }
     }
 }
+
+
+// Données locales pour la scène de repos du grand panneau « Escale immersive ».
+// Aucun temps, aucune photographie d'une autre commune n'est inventé.
+private struct HomeScenePayload: Decodable {
+    let weather: HomeSceneWeather?
+    let photos: [HomeScenePhoto]
+}
+
+private struct HomeScenePhoto: Decodable, Identifiable {
+    let id: String
+    let url: String
+    let caption: String
+    let author: String
+    let license: String
+    let source: String
+}
+
+private struct HomeSceneWeather: Decodable {
+    let observedAt: String?
+    let temperature: Double
+    let feelsLike: Double?
+    let humidity: Double?
+    let weatherCode: Int?
+    let isDay: Bool
+    let windSpeed: Double?
+    let windDirection: Double?
+    let windGusts: Double?
+    let pressure: Double?
+    let cloudCover: Double?
+    let high: Double?
+    let low: Double?
+    let rainChance: Double?
+
+    var temperatureLabel: String { "\(Int(temperature.rounded()))°" }
+    var humidityLabel: String {
+        humidity.map { "\(Int($0.rounded())) %" } ?? "—"
+    }
+    var pressureLabel: String {
+        pressure.map { "\(Int($0.rounded())) hPa" } ?? "—"
+    }
+    var minMaxLabel: String {
+        guard let high, let low else { return "Prévisions indisponibles" }
+        return "Max \(Int(high.rounded()))°  ·  Min \(Int(low.rounded()))°"
+    }
+    var windLabel: String {
+        guard let windSpeed else { return "—" }
+        guard let windDirection else { return "\(Int(windSpeed.rounded())) km/h" }
+        let compass = ["N", "NE", "E", "SE", "S", "SO", "O", "NO"]
+        let heading = Int((windDirection.truncatingRemainder(dividingBy: 360) + 22.5) / 45) % 8
+        return compass[heading] + "  " + "\(Int(windSpeed.rounded())) km/h"
+    }
+    var conditionLabel: String {
+        guard let weatherCode else { return "Conditions indisponibles" }
+        switch weatherCode {
+        case 0: return "Ciel dégagé"
+        case 1, 2: return "Quelques nuages"
+        case 3: return "Nuageux"
+        case 45, 48: return "Brouillard"
+        case 51...57: return "Bruine"
+        case 61...67: return "Pluie"
+        case 71...77: return "Neige"
+        case 80...82: return "Averses"
+        case 85, 86: return "Averses de neige"
+        case 95...99: return "Orages"
+        default: return "Météo locale"
+        }
+    }
+    var symbolName: String {
+        guard let weatherCode else { return "cloud.sun.fill" }
+        switch weatherCode {
+        case 0: return isDay ? "sun.max.fill" : "moon.stars.fill"
+        case 1, 2: return isDay ? "cloud.sun.fill" : "cloud.moon.fill"
+        case 3: return "cloud.fill"
+        case 45, 48: return "cloud.fog.fill"
+        case 51...67, 80...82: return "cloud.rain.fill"
+        case 71...77, 85, 86: return "cloud.snow.fill"
+        case 95...99: return "cloud.bolt.rain.fill"
+        default: return "cloud.sun.fill"
+        }
+    }
+}
+
+@MainActor
+private final class HomeSceneService: ObservableObject {
+    @Published private(set) var weather: HomeSceneWeather?
+    @Published private(set) var photos: [HomeScenePhoto] = []
+    @Published private(set) var photoIndex = 0
+
+    var currentPhoto: HomeScenePhoto? {
+        guard photos.indices.contains(photoIndex) else { return nil }
+        return photos[photoIndex]
+    }
+
+    func advancePhoto() {
+        guard photos.count > 1 else { return }
+        photoIndex = (photoIndex + 1) % photos.count
+    }
+
+    func refresh() async {
+        guard let url = URL(
+            string: "\(xavPacBaseURL.absoluteString)/api/tv/home-scene"
+        ) else { return }
+
+        do {
+            var request = URLRequest(url: url)
+            request.cachePolicy = .reloadIgnoringLocalCacheData
+            request.timeoutInterval = 24
+            request.setValue("XavPacTV/4.0", forHTTPHeaderField: "User-Agent")
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse,
+                  (200..<300).contains(http.statusCode) else { return }
+            let payload = try JSONDecoder().decode(HomeScenePayload.self, from: data)
+            if let newWeather = payload.weather {
+                weather = newWeather
+            }
+            if !payload.photos.isEmpty {
+                photos = payload.photos
+                photoIndex = min(photoIndex, payload.photos.count - 1)
+            }
+        } catch {
+            // Conserver la dernière météo valable ; ne jamais afficher une valeur inventée.
+        }
+    }
+}
