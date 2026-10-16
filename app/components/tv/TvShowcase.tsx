@@ -169,7 +169,10 @@ export default function TvShowcase() {
     if (!destinationKey) return;
     const controller = new AbortController();
     const endpoint = "/api/tv/destination-media?city=" + encodeURIComponent(city)
-      + "&iata=" + encodeURIComponent(destination?.iata || "") + "&cycle=" + Math.floor(Date.now() / 21600000) % 10;
+      + "&iata=" + encodeURIComponent(destination?.iata || "")
+      + "&icao=" + encodeURIComponent(destination?.icao || "")
+      + "&airport=" + encodeURIComponent(destination?.name || "")
+      + "&cycle=" + Math.floor(Date.now() / 21600000) % 10;
     void fetch(endpoint, { cache: "no-store", signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error("médias indisponibles");
