@@ -55,12 +55,9 @@ final class AircraftService: ObservableObject {
     }
 
     var featuredAircraft: Aircraft? {
-        // Une escale vidéo cède toujours la place aux moyens spéciaux détectés.
-        if let special = specialAircraftInZone.first {
-            return special
-        }
-
-        // Sans moyen spécial, privilégier le vol qui passe près de HOME
+        // La destination garde sa place ; une alerte opérationnelle apparaît
+        // indépendamment dans sa propre carte à droite.
+        // Privilégier le vol qui passe près de HOME
         // et dont la ville d'arrivée est réellement identifiée.
         let closeIdentifiedFlight = aircraft
             .filter { item in
@@ -178,9 +175,14 @@ final class AircraftService: ObservableObject {
             let coordinate = item.coordinate
 
             if let last = points.last {
-                let moved = abs(last.latitude - coordinate.latitude) > 0.00008
-                    || abs(last.longitude - coordinate.longitude) > 0.00008
-                if moved {
+                let previous = CLLocation(latitude: last.latitude, longitude: last.longitude)
+                let latest = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+                let separation = previous.distance(from: latest)
+                // Reject ADS-B teleports: keep only consecutive plausible
+                // positions; an implausible jump starts a new trail.
+                if separation > 8_000 {
+                    points = [coordinate]
+                } else if separation > 12 {
                     points.append(coordinate)
                 }
             } else {
