@@ -284,14 +284,14 @@ final class DestinationMediaService: ObservableObject {
             return
         }
 
-        let key = "\(airport.code)|\(airport.city)"
+        let key = "\(airport.code)|\(airport.city)|\(airport.name ?? "")"
         if key == destinationKey, !items.isEmpty {
             return
         }
 
         destinationKey = key
         cycle = 0
-        await fetch(city: airport.city, iata: airport.iata ?? airport.icao)
+        await fetch(city: airport.city, iata: airport.iata ?? airport.icao, airportName: airport.name)
     }
 
     func preferVideo() {
@@ -313,13 +313,14 @@ final class DestinationMediaService: ObservableObject {
         }
 
         cycle += 1
-        let parts = destinationKey.split(separator: "|", maxSplits: 1).map(String.init)
+        let parts = destinationKey.split(separator: "|", maxSplits: 2, omittingEmptySubsequences: false).map(String.init)
         let code = parts.first
         let city = parts.count > 1 ? parts[1] : self.city
-        await fetch(city: city, iata: code)
+        let airportName = parts.count > 2 ? parts[2] : nil
+        await fetch(city: city, iata: code, airportName: airportName)
     }
 
-    private func fetch(city: String, iata: String?) async {
+    private func fetch(city: String, iata: String?, airportName: String?) async {
         guard var components = URLComponents(string: "\(xavPacBaseURL.absoluteString)/api/tv/destination-media") else {
             return
         }
@@ -330,6 +331,9 @@ final class DestinationMediaService: ObservableObject {
         ]
         if let iata, !iata.isEmpty {
             queryItems.append(URLQueryItem(name: "iata", value: iata))
+        }
+        if let airportName, !airportName.isEmpty {
+            queryItems.append(URLQueryItem(name: "airport", value: airportName))
         }
         components.queryItems = queryItems
 
@@ -355,7 +359,10 @@ final class DestinationMediaService: ObservableObject {
                 return item.mediaURL != nil
             }
             let unseen = available.filter { !seen.contains($0.id) }
-            let chosen = unseen.isEmpty ? available : unseen
+            // Même si toutes les vidéos sont déjà vues, elles restent candidates
+            // pour le prochain passage proche : pas d’animation bloquée sur les photos.
+            let playedVideos = available.filter { $0.isVideo && seen.contains($0.id) }
+            let chosen = unseen.isEmpty ? available : unseen + playedVideos
 
             self.city = payload.city
             self.provider = payload.provider
@@ -369,23 +376,37 @@ final class DestinationMediaService: ObservableObject {
     }
 
     private func cinematicSequence(_ candidates: [DestinationMedia]) -> [DestinationMedia] {
-        let videos = candidates.filter { $0.isVideo && $0.televisionVideoURL != nil }
-        let photos = candidates.filter { !$0.isVideo && $0.mediaURL != nil }
-        var sequence: [DestinationMedia] = []
-        var videoIndex = 0
-        var photoIndex = 0
+        // Séquence autonome : ville → aéroport → ville → approche → ambiance.
+        // Les catégories non disponibles sont simplement sautées.
+        let program: [(scene: String, video: Bool)] = [
+            ("city", true), ("airport", false), ("city", false),
+            ("approach", true), ("ambience", false), ("airport", true),
+            ("city", false), ("airport", false), ("ambience", true),
+            ("ambience", false)
+        ]
+        var remaining = candidates
+        var result: [DestinationMedia] = []
+        var step = 0
 
-        while videoIndex < videos.count || photoIndex < photos.count {
-            if videoIndex < videos.count {
-                sequence.append(videos[videoIndex])
-                videoIndex += 1
+        while !remaining.isEmpty && result.count < 48 {
+            let target = program[step % program.count]
+            var index = remaining.firstIndex {
+                ($0.scene ?? "city") == target.scene && $0.isVideo == target.video
             }
-            for _ in 0..<2 where photoIndex < photos.count {
-                sequence.append(photos[photoIndex])
-                photoIndex += 1
+            if index == nil {
+                let previous = result.last
+                index = remaining.firstIndex {
+                    $0.isVideo != previous?.isVideo && $0.scene != previous?.scene
+                }
             }
+            if index == nil {
+                index = remaining.firstIndex { $0.isVideo != result.last?.isVideo }
+            }
+            let chosenIndex = index ?? 0
+            result.append(remaining.remove(at: chosenIndex))
+            step += 1
         }
-        return sequence
+        return result
     }
 
     private func seenKey(for city: String) -> String {
