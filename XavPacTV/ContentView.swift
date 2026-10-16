@@ -818,7 +818,7 @@ struct ContentView: View {
                     .font(.title3.bold())
                     .foregroundStyle(.cyan)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("Ambiance voyage ✦")
+                    Text("Électro-pop solaire ✦")
                         .font(.headline.bold())
                         .foregroundStyle(.white)
                     Text("Lounge aérien · dynamique douce")
@@ -1848,7 +1848,7 @@ private final class AmbientSoundscape: ObservableObject {
                 audioFormat = format
                 engine.connect(player, to: engine.mainMixerNode, format: format)
                 engine.connect(alertPlayer, to: engine.mainMixerNode, format: format)
-                buffer = makeAmbientBuffer(format: format, duration: 24)
+                buffer = makeAmbientBuffer(format: format)
                 configured = true
             }
 
@@ -1859,7 +1859,7 @@ private final class AmbientSoundscape: ObservableObject {
             if let buffer {
                 player.scheduleBuffer(buffer, at: nil, options: .loops)
                 engine.mainMixerNode.outputVolume = 0.62
-                player.volume = 0.18
+                player.volume = 0.24
                 player.play()
             }
         } catch {
@@ -1931,64 +1931,77 @@ private final class AmbientSoundscape: ObservableObject {
         return buffer
     }
 
-    private func makeAmbientBuffer(
-        format: AVAudioFormat,
-        duration: Double
-    ) -> AVAudioPCMBuffer? {
+    private func makeAmbientBuffer(format: AVAudioFormat) -> AVAudioPCMBuffer? {
+        // Ambiance électro-pop originale, solaire et entraînante : 116 BPM.
+        // Huit mesures bouclées sans piste externe et sans compte Apple Music.
         let sampleRate = format.sampleRate
-        let frameCount = AVAudioFrameCount(sampleRate * duration)
+        let twoPi = Double.pi * 2
+        let beatDuration = 60.0 / 116.0
+        let barDuration = beatDuration * 4.0
+        let loopDuration = barDuration * 8.0
+        let frameCount = AVAudioFrameCount((sampleRate * loopDuration).rounded())
 
-        guard let buffer = AVAudioPCMBuffer(
-            pcmFormat: format,
-            frameCapacity: frameCount
-        ) else { return nil }
-
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else {
+            return nil
+        }
         buffer.frameLength = frameCount
         guard let channels = buffer.floatChannelData else { return nil }
 
-        let twoPi = Double.pi * 2
-        // Palette majeure C → F → G → C, sans le long accord mineur
-        // de l'ancienne version. Pulsation légère pour un voyage joyeux,
-        // chaleureux, jamais agressif ni mélancolique.
+        // Accords majeurs sans la longue coloration mélancolique précédente.
         let chords: [[Double]] = [
-            [130.81, 164.81, 196.00, 246.94, 293.66], // Do majeur 9
-            [174.61, 220.00, 261.63, 329.63, 392.00], // Fa majeur 9
-            [196.00, 246.94, 293.66, 392.00, 440.00], // Sol 6/9
-            [130.81, 164.81, 196.00, 261.63, 329.63] // Do lumineux
+            [130.81, 164.81, 196.00, 246.94, 293.66], // Cmaj9
+            [174.61, 220.00, 261.63, 329.63, 392.00], // Fmaj9
+            [196.00, 246.94, 293.66, 329.63, 440.00], // G6/9
+            [130.81, 164.81, 196.00, 261.63, 329.63]  // Cmaj9
         ]
-        let chordDuration = duration / Double(chords.count)
-        let beatDuration = 0.60 // 100 BPM : mouvement discret de lounge aérien
+        let melodySteps = [0, 2, 4, 2, 1, 3, 4, 3]
+        let chordDuration = barDuration * 2.0
 
         for frame in 0..<Int(frameCount) {
             let time = Double(frame) / sampleRate
-            let chordIndex = min(chords.count - 1, Int(time / chordDuration))
-            let localTime = time.truncatingRemainder(dividingBy: chordDuration)
-            let edge = max(0.0, min(1.0,
-                min(localTime / 0.65, (chordDuration - localTime) / 0.65)))
-            let breathe = 0.88 + 0.12 * sin(twoPi * time / 7.0)
+            let chordIndex = min(3, Int(time / chordDuration))
+            let chord = chords[chordIndex]
+            let chordTime = time.truncatingRemainder(dividingBy: chordDuration)
+            let chordFade = max(0.0, min(1.0, chordTime / 0.16, (chordDuration - chordTime) / 0.16))
 
-            var pad = 0.0
-            for (index, frequency) in chords[chordIndex].enumerated() {
-                let weight = index == 0 ? 0.20 : 0.115
-                pad += sin(twoPi * frequency * time) * weight
-                pad += sin(twoPi * frequency * 2.0 * time) * weight * 0.055
-            }
+            // Nappe discrète, basse rebondissante et pulsation douce.
+            let pad = (
+                sin(twoPi * chord[1] * time) * 0.105
+                + sin(twoPi * chord[2] * time) * 0.075
+                + sin(twoPi * chord[3] * time) * 0.052
+            ) * chordFade
 
-            let step = Int(localTime / beatDuration) % chords[chordIndex].count
-            let noteTime = localTime.truncatingRemainder(dividingBy: beatDuration)
-            let note = chords[chordIndex][step] * 4
-            let pluck = exp(-noteTime * 8.5)
-            let glimmer = sin(twoPi * note * time) * pluck * 0.135
-            let shimmer = sin(twoPi * note * 1.5 * time) * pluck * 0.026
-            let bass = sin(twoPi * chords[chordIndex][0] * 0.5 * time) * 0.12
-            let sample = Float(((pad * breathe + bass) * edge + glimmer + shimmer) * 0.22)
+            let beatPhase = time.truncatingRemainder(dividingBy: beatDuration)
+            let beatIndex = Int(time / beatDuration) % 4
+            let halfBeat = beatDuration / 2.0
+            let halfPhase = time.truncatingRemainder(dividingBy: halfBeat)
+            let bass = sin(twoPi * chord[0] * 0.5 * time) * exp(-beatPhase * 5.5) * 0.26
+            let kick = sin(twoPi * (61.0 + 22.0 * exp(-beatPhase * 22)) * time)
+                * exp(-beatPhase * 20) * 0.22
 
-            channels[0][frame] = sample
-            channels[1][frame] = sample * Float(0.95 + 0.025 * sin(twoPi * time / 10.0))
+            // Chapeau et claquement doux sur les temps 2 et 4.
+            let noise = sin(Double(frame) * 12.9898) * sin(Double(frame) * 78.233)
+            let clap = beatIndex % 2 == 1
+                ? noise * exp(-beatPhase * 26) * 0.15 : 0.0
+            let hiHat = noise * exp(-halfPhase * 46) * 0.072
+
+            // Notes scintillantes sur les contretemps.
+            let melodyStep = Int(time / halfBeat) % melodySteps.count
+            let note = chord[melodySteps[melodyStep]] * 4.0
+            let sparkle = (
+                sin(twoPi * note * time) * 0.15
+                + sin(twoPi * note * 2.0 * time) * 0.035
+            ) * exp(-halfPhase * 11.0)
+
+            // Transition douce à chaque répétition du morceau.
+            let loopFade = max(0.0, min(1.0, time / 0.045, (loopDuration - time) / 0.045))
+            let mix = (pad + bass + kick + clap + hiHat + sparkle) * 0.36 * loopFade
+            channels[0][frame] = Float(mix)
+            channels[1][frame] = Float(mix * (0.95 + 0.05 * sin(twoPi * time / 11)))
         }
-
         return buffer
     }
+
 }
 
 private final class PlayerLayerHostView: UIView {
