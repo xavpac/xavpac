@@ -97,8 +97,8 @@ final class AircraftService: ObservableObject {
     }
 
     var specialAircraftInZone: [Aircraft] {
-        // Les avions commerciaux ne sont pas des moyens spéciaux.
-        // Tous les hélicoptères, le SAMU, l'Armée et la Sécurité civile le sont.
+        // N'afficher ici que les moyens opérationnels identifiés :
+        // Sécurité civile, Armée et SAMU/SMUR. Aucun hélicoptère civil.
         displayAircraft.filter { item in
             item.distanceKilometers(from: center) <= 50
                 && trafficProfile(for: item).isPriorityTraffic
