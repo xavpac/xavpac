@@ -418,6 +418,20 @@ private extension Optional where Wrapped == Bool {
 
  
 // Température observée (METAR) : aucune météo inventée si la station ne répond pas.
+private struct METARReading: Decodable {
+    let raw: String
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let text = try? container.decode(String.self) {
+            raw = text
+        } else if let number = try? container.decode(Double.self) {
+            raw = String(format: "%g", number)
+        } else {
+            raw = "—"
+        }
+    }
+}
+
 struct TVAirportWeather: Decodable {
     struct CloudLayer: Decodable { let cover: String? }
     let icaoId: String?
@@ -425,6 +439,37 @@ struct TVAirportWeather: Decodable {
     let wxString: String?
     let clouds: [CloudLayer]?
     let fltCat: String?
+    private let wdir: METARReading?
+    private let wspd: METARReading?
+    private let visib: METARReading?
+    private let reportTime: String?
+    private let obsTime: METARReading?
+
+    var windLabel: String {
+        guard let speed = wspd?.raw, speed != "—" else { return "VENT —" }
+        let direction = wdir?.raw ?? "VRB"
+        let bearing = Double(direction).map { "\(Int($0.rounded()))°" } ?? direction
+        return "VENT \(bearing) · \(speed) kt"
+    }
+
+    var visibilityLabel: String {
+        guard let visibility = visib?.raw, visibility != "—" else { return "VIS. —" }
+        // AWC METAR encodes visib in statute miles.
+        return "VIS. \(visibility) SM"
+    }
+
+    var observationLabel: String {
+        var observation: Date?
+        if let reportTime {
+            observation = ISO8601DateFormatter().date(from: reportTime)
+        }
+        if observation == nil, let epoch = obsTime?.raw, let seconds = Double(epoch) {
+            observation = Date(timeIntervalSince1970: seconds)
+        }
+        guard let observation else { return "METAR" }
+        let text = observation.formatted(date: .omitted, time: .shortened)
+        return "METAR \(text)"
+    }
 
     var temperatureLabel: String {
         guard let temp, temp.isFinite else { return "—" }
@@ -439,7 +484,8 @@ struct TVAirportWeather: Decodable {
         let covers = (clouds ?? []).compactMap(\.cover).map { $0.uppercased() }
         if covers.contains("OVC") || covers.contains("BKN") { return "cloud.fill" }
         if covers.contains("SCT") || covers.contains("FEW") { return "cloud.sun.fill" }
-        return "sun.max.fill"
+        if covers.contains("SKC") || covers.contains("CLR") || covers.contains("NSC") { return "sun.max.fill" }
+        return "cloud"
     }
 
     var conditionLabel: String {
@@ -450,7 +496,8 @@ struct TVAirportWeather: Decodable {
         let covers = (clouds ?? []).compactMap(\.cover).map { $0.uppercased() }
         if covers.contains("OVC") || covers.contains("BKN") { return "Nuageux" }
         if covers.contains("SCT") || covers.contains("FEW") { return "Éclaircies" }
-        return "Ciel dégagé"
+        if covers.contains("SKC") || covers.contains("CLR") || covers.contains("NSC") { return "Ciel dégagé" }
+        return "Conditions non précisées"
     }
 }
 
