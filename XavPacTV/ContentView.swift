@@ -130,9 +130,10 @@ struct ContentView: View {
                     cinemaHeader
                         .frame(height: 94)
 
-                    // V3 TV : carte fixe et traînées ADS-B à gauche ; sous la
-                    // carte, les rangs 2 et 3. À droite, la destination
-                    // et ses deux METAR restent visibles même durant une alerte.
+                    // V4 tvOS : le trafic Armée / Sécurité civile occupe
+                    // TOUTE la colonne de droite tant qu'il est détecté.
+                    // En temps normal : escale immersive + statut des moyens.
+                    // La carte reste fixe et visible en permanence à gauche.
                     HStack(alignment: .top, spacing: 20) {
                         VStack(spacing: 18) {
                             cinemaMap
@@ -144,15 +145,28 @@ struct ContentView: View {
                         .frame(width: mapWidth)
                         .frame(maxHeight: .infinity)
 
-                        VStack(spacing: 18) {
-                            cinemaDestination
-                                .frame(maxHeight: .infinity)
-
-                            // Alerte sans masquer la vidéo ni les METAR.
-                            cinemaPriorityStatus
-                                .frame(height: 132)
+                        Group {
+                            if radarIsLive, let special = priorityAircraft {
+                                // Une alerte dans le rayon de 50 km prend aussitôt
+                                // la place des DEUX panneaux (météo/escale + statut).
+                                // Ne pas attendre 12 km : l'alerte à 32 km doit
+                                // déjà montrer la photo et l'identification.
+                                cinemaPrioritySpotlight(special)
+                                    .id(special.id)
+                                    .frame(maxHeight: .infinity)
+                                    .transition(.opacity)
+                            } else {
+                                VStack(spacing: 18) {
+                                    cinemaDestination
+                                        .frame(maxHeight: .infinity)
+                                    cinemaPriorityStatus
+                                        .frame(height: 132)
+                                }
+                                .transition(.opacity)
+                            }
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .animation(.easeInOut(duration: 0.45), value: radarIsLive ? priorityAlertKey : "none")
                     }
                     .frame(maxHeight: .infinity)
 
@@ -678,8 +692,8 @@ struct ContentView: View {
     }
 
 
-    // Bandeaux prioritaires réservés à la Sécurité civile et l'Armée.
-    // La destination continue d'être diffusée pendant les alertes.
+    // Météo aéroportuaire utilisée en mode Escale normale.
+    // Elle cède sa place à la fiche opérationnelle lors d'une alerte.
     private func cinemaAirportWeatherTile(title: String, airport: TVAirport?) -> some View {
         let weather = airportWeather.weather(for: airport)
         let name = airport?.city ?? "Non identifié"
@@ -778,7 +792,9 @@ struct ContentView: View {
                     HStack(spacing: 12) {
                         Image(systemName: "exclamationmark.triangle.fill")
                             .font(.system(size: 30, weight: .black))
-                        Text("✦  PASSAGE EXCEPTIONNEL")
+                        Text(profile.kind == .military
+                             ? "✦  MOYEN MILITAIRE DÉTECTÉ"
+                             : "✦  SÉCURITÉ CIVILE DÉTECTÉE")
                             .font(.system(size: 22, weight: .black, design: .rounded))
                             .tracking(1.3)
                         Spacer(minLength: 0)
@@ -816,7 +832,16 @@ struct ContentView: View {
                     }
 
                     HStack(alignment: .firstTextBaseline, spacing: 12) {
-                        Text(aircraft.displayName)
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(aircraft.displayName)
+                            if let registration = enrichment?.registration ?? aircraft.registration,
+                               !registration.isEmpty,
+                               registration != aircraft.displayName {
+                                Text(registration)
+                                    .font(.system(size: 18, weight: .semibold))
+                                    .foregroundStyle(.white.opacity(0.82))
+                            }
+                        }
                             .font(.system(size: 28, weight: .bold))
                             .lineLimit(1)
                         Spacer(minLength: 5)
