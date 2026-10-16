@@ -254,21 +254,21 @@ enum TVTrafficKind: String, Hashable {
         }
     }
 
-    // Un moyen spécial présent dans les 50 km remplace l'escale immersive.
-    // La Sécurité civile et l'Armée passent avant le SAMU et les autres hélicoptères.
+    // Le grand pavé opérationnel est réservé aux appareils de la
+    // Sécurité civile, de l'Armée et du SAMU/SMUR.
+    // Un hélicoptère civil reste visible sur la carte, sans alerte.
     var priorityTier: Int {
         switch self {
         case .civilSecurity: return 0
         case .military: return 1
         case .medical: return 2
-        case .helicopter: return 3
         default: return 9
         }
     }
 
     var isPriorityTraffic: Bool {
         switch self {
-        case .civilSecurity, .military, .medical, .helicopter: return true
+        case .civilSecurity, .military, .medical: return true
         default: return false
         }
     }
