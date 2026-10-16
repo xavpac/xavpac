@@ -97,11 +97,11 @@ final class AircraftService: ObservableObject {
     }
 
     var specialAircraftInZone: [Aircraft] {
-        // N'afficher ici que les moyens opérationnels identifiés :
-        // Sécurité civile, Armée et SAMU/SMUR. Aucun hélicoptère civil.
+        // Seules la Sécurité civile et l'Armée sont prioritaires.
         displayAircraft.filter { item in
-            item.distanceKilometers(from: center) <= 50
-                && trafficProfile(for: item).isPriorityTraffic
+            let category = trafficProfile(for: item).kind
+            return item.distanceKilometers(from: center) <= 50
+                && (category == .civilSecurity || category == .military)
         }
     }
 
@@ -349,16 +349,42 @@ final class DestinationMediaService: ObservableObject {
 
             let payload = try JSONDecoder().decode(DestinationMediaPayload.self, from: data)
             let seen = seenIDs(for: city)
-            let unseen = payload.items.filter { !seen.contains($0.id) }
-            let chosen = unseen.isEmpty ? payload.items : unseen
+            let available = payload.items.filter { item in
+                if item.isVideo { return item.televisionVideoURL != nil }
+                return item.mediaURL != nil
+            }
+            let unseen = available.filter { !seen.contains($0.id) }
+            let chosen = unseen.isEmpty ? available : unseen
 
             self.city = payload.city
             self.provider = payload.provider
-            self.items = chosen
+            // Un film, puis deux clichés : chaque escale devient un vrai
+            // diaporama vidéo/photo et non une image répétée.
+            self.items = cinematicSequence(chosen)
             self.currentIndex = 0
         } catch {
             // En cas de panne média, la carte et le trafic restent pleinement disponibles.
         }
+    }
+
+    private func cinematicSequence(_ candidates: [DestinationMedia]) -> [DestinationMedia] {
+        let videos = candidates.filter { $0.isVideo && $0.televisionVideoURL != nil }
+        let photos = candidates.filter { !$0.isVideo && $0.mediaURL != nil }
+        var sequence: [DestinationMedia] = []
+        var videoIndex = 0
+        var photoIndex = 0
+
+        while videoIndex < videos.count || photoIndex < photos.count {
+            if videoIndex < videos.count {
+                sequence.append(videos[videoIndex])
+                videoIndex += 1
+            }
+            for _ in 0..<2 where photoIndex < photos.count {
+                sequence.append(photos[photoIndex])
+                photoIndex += 1
+            }
+        }
+        return sequence
     }
 
     private func seenKey(for city: String) -> String {
