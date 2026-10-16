@@ -338,6 +338,23 @@ struct ContentView: View {
         }
     }
 
+    // Statut discret au-dessus de la météo : le panneau reste identique,
+    // seul le message change en fonction du trafic effectivement reçu.
+    private var homeTrafficStatus: (icon: String, message: String) {
+        guard radarIsLive else {
+            return ("antenna.radiowaves.left.and.right.slash", "RADAR EN ATTENTE DE DONNÉES")
+        }
+        if service.aircraft.isEmpty {
+            return ("checkmark.circle.fill", "AUCUN AVION DANS LA ZONE")
+        }
+        return (
+            "airplane",
+            service.aircraft.count == 1
+                ? "AVION DÉTECTÉ · DESTINATION NON IDENTIFIÉE"
+                : "\(service.aircraft.count) AVIONS DÉTECTÉS · DESTINATION NON IDENTIFIÉE"
+        )
+    }
+
     private var cinemaHomeWeather: some View {
         GeometryReader { geometry in
             ZStack(alignment: .bottomLeading) {
@@ -387,6 +404,29 @@ struct ContentView: View {
                         .lineLimit(1)
                         .minimumScaleFactor(0.62)
                         .shadow(color: .black.opacity(0.45), radius: 9)
+
+                    // Un message informatif seulement, jamais un bouton.
+                    // Conserver la météo et le diaporama, avec ou sans avion.
+                    HStack(spacing: 12) {
+                        Image(systemName: homeTrafficStatus.icon)
+                            .font(.system(size: 22, weight: .black))
+                            .foregroundStyle(Color(red: 0.89, green: 0.96, blue: 1.0))
+                        Text(homeTrafficStatus.message)
+                            .font(.system(size: 21, weight: .heavy, design: .rounded))
+                            .tracking(0.25)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.72)
+                    }
+                    .padding(.horizontal, 15)
+                    .padding(.vertical, 12)
+                    .background(
+                        Color(red: 0.04, green: 0.23, blue: 0.38).opacity(0.84),
+                        in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .stroke(Color.white.opacity(0.42), lineWidth: 1)
+                    )
 
                     if let weather = homeScene.weather {
                         HStack(alignment: .center, spacing: 16) {
