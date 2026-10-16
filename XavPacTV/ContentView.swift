@@ -7,6 +7,7 @@ struct ContentView: View {
     @StateObject private var service = AircraftService()
     @StateObject private var mediaService = DestinationMediaService()
     @StateObject private var airportWeather = AirportWeatherService()
+    @StateObject private var homeScene = HomeSceneService()
     @StateObject private var soundscape = AmbientSoundscape()
     @State private var displayClock = Date()
 
@@ -192,6 +193,22 @@ struct ContentView: View {
         .task(id: podiumWeatherKey) {
             await airportWeather.refresh(for: podiumAirports)
         }
+        .task {
+            // Vraie météo de Bâgé-Dommartin actualisée toutes les 15 minutes.
+            while !Task.isCancelled {
+                await homeScene.refresh()
+                do { try await Task.sleep(nanoseconds: 900_000_000_000) }
+                catch { break }
+            }
+        }
+        .task {
+            // Rotation automatique des photographies locales.
+            while !Task.isCancelled {
+                do { try await Task.sleep(nanoseconds: 15_000_000_000) }
+                catch { break }
+                homeScene.advancePhoto()
+            }
+        }
         .task(id: destinationTaskKey) {
             await mediaService.load(for: featuredEnrichment)
             if isOverheadPass {
@@ -309,7 +326,172 @@ struct ContentView: View {
                 radius: 22, y: 7)
     }
 
+    @ViewBuilder
     private var cinemaDestination: some View {
+        // L'escale reste un spectacle même sans avion ou destination connue.
+        // Le trafic non identifié continue d'être visible sur le radar.
+        if featuredEnrichment?.arrivalAirport == nil
+            || featuredEnrichment?.routeConfidence == "unavailable" {
+            cinemaHomeWeather
+        } else {
+            cinemaFlightDestination
+        }
+    }
+
+    private var cinemaHomeWeather: some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .bottomLeading) {
+                if let photo = homeScene.currentPhoto,
+                   let url = URL(string: photo.url) {
+                    CinematicDestinationImage(
+                        url: url,
+                        fallback: AnyView(homeScenicFallback)
+                    )
+                    .frame(width: geometry.size.width, height: geometry.size.height)
+                    .clipped()
+                    .id(photo.id)
+                    .transition(.opacity)
+                } else {
+                    homeScenicFallback
+                        .frame(width: geometry.size.width, height: geometry.size.height)
+                }
+
+                LinearGradient(
+                    stops: [
+                        .init(color: Color(red: 0.01, green: 0.13, blue: 0.25).opacity(0.30), location: 0),
+                        .init(color: .clear, location: 0.28),
+                        .init(color: Color(red: 0.01, green: 0.10, blue: 0.22).opacity(0.94), location: 0.69),
+                        .init(color: Color(red: 0.01, green: 0.10, blue: 0.22).opacity(0.98), location: 1)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                VStack(alignment: .leading, spacing: 11) {
+                    HStack {
+                        Label("✦  ESCALE IMMERSIVE", systemImage: "sun.horizon.fill")
+                            .font(.system(size: 22, weight: .black))
+                            .tracking(1.1)
+                        Spacer()
+                        Text("MÉTÉO LOCALE")
+                            .font(.system(size: 17, weight: .heavy))
+                            .tracking(1.6)
+                            .padding(.horizontal, 13)
+                            .padding(.vertical, 7)
+                            .background(.white.opacity(0.22), in: Capsule())
+                    }
+
+                    Spacer(minLength: 8)
+
+                    Text("Bâgé-Dommartin")
+                        .font(.system(size: 53, weight: .black, design: .rounded))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.62)
+                        .shadow(color: .black.opacity(0.45), radius: 9)
+
+                    if let weather = homeScene.weather {
+                        HStack(alignment: .center, spacing: 16) {
+                            Image(systemName: weather.symbolName)
+                                .symbolRenderingMode(.hierarchical)
+                                .font(.system(size: 58, weight: .regular))
+                                .foregroundStyle(Color(red: 0.95, green: 0.82, blue: 0.41))
+                            Text(weather.temperatureLabel)
+                                .font(.system(size: 83, weight: .black, design: .rounded))
+                                .monospacedDigit()
+                                .minimumScaleFactor(0.72)
+                            VStack(alignment: .leading, spacing: 5) {
+                                Text(weather.conditionLabel)
+                                    .font(.system(size: 25, weight: .heavy))
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.68)
+                                Text(weather.minMaxLabel)
+                                    .font(.system(size: 19, weight: .semibold))
+                                    .foregroundStyle(.white.opacity(0.86))
+                            }
+                        }
+                        HStack(spacing: 10) {
+                            localWeatherMetric("VENT", value: weather.windLabel, icon: "wind")
+                            localWeatherMetric("HUMIDITÉ", value: weather.humidityLabel, icon: "humidity.fill")
+                            localWeatherMetric("PRESSION", value: weather.pressureLabel, icon: "barometer")
+                        }
+                        .padding(.top, 10)
+                    } else {
+                        Text("Météo en cours de chargement…")
+                            .font(.system(size: 25, weight: .bold))
+                        Text("Les observations locales s'affichent automatiquement.")
+                            .font(.system(size: 19))
+                            .foregroundStyle(.white.opacity(0.78))
+                    }
+
+                    HStack(spacing: 6) {
+                        if let photo = homeScene.currentPhoto {
+                            Text(photo.caption + " · " + photo.author)
+                                .lineLimit(1)
+                        } else {
+                            Text("Paysages de Bâgé-Dommartin")
+                        }
+                        Spacer(minLength: 6)
+                        Text("Météo : Open-Meteo · Photos : Wikimedia Commons")
+                            .lineLimit(1)
+                    }
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.69))
+                    .padding(.top, 4)
+                }
+                .padding(26)
+                .foregroundStyle(.white)
+            }
+        }
+        .background(Color(red: 0.09, green: 0.38, blue: 0.57))
+        .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 26)
+                .stroke(Color.white, lineWidth: 4)
+        }
+        .shadow(color: .cyan.opacity(0.25), radius: 25, y: 6)
+    }
+
+    private var homeScenicFallback: some View {
+        GeometryReader { geometry in
+            ZStack {
+                LinearGradient(
+                    colors: [
+                        Color(red: 0.51, green: 0.83, blue: 0.97),
+                        Color(red: 0.16, green: 0.57, blue: 0.76),
+                        Color(red: 0.15, green: 0.41, blue: 0.45)
+                    ], startPoint: .topLeading, endPoint: .bottomTrailing
+                )
+                Image(systemName: "house.lodge.fill")
+                    .font(.system(size: 195, weight: .ultraLight))
+                    .foregroundStyle(.white.opacity(0.36))
+                    .position(x: geometry.size.width * 0.60, y: geometry.size.height * 0.37)
+            }
+        }
+    }
+
+    private func localWeatherMetric(_ label: String, value: String, icon: String) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 7) {
+                Image(systemName: icon)
+                Text(label)
+            }
+            .font(.system(size: 15, weight: .heavy))
+            .tracking(0.9)
+            .foregroundStyle(Color(red: 0.72, green: 0.94, blue: 1.0))
+            Text(value)
+                .font(.system(size: 23, weight: .black, design: .rounded))
+                .minimumScaleFactor(0.6)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 13)
+        .padding(.vertical, 11)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            Color(red: 0.03, green: 0.19, blue: 0.31).opacity(0.78),
+            in: RoundedRectangle(cornerRadius: 15, style: .continuous)
+        )
+    }
+
+    private var cinemaFlightDestination: some View {
         GeometryReader { geometry in
             ZStack(alignment: .bottomLeading) {
                 cinemaMedia
