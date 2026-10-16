@@ -257,7 +257,9 @@ struct ContentView: View {
                     .tracking(3)
                     .foregroundStyle(Color(red: 0.25, green: 0.48, blue: 0.64))
             }
-            Spacer(minLength: 24)
+            Spacer(minLength: 8)
+            cinemaNearestIdentity
+            Spacer(minLength: 8)
 
             HStack(spacing: 14) {
                 Circle()
@@ -286,6 +288,72 @@ struct ContentView: View {
             .padding(.horizontal, 20)
             .frame(height: 69)
             .background(Color.white, in: RoundedRectangle(cornerRadius: 20))
+        }
+    }
+
+    // Une signature sobre pour le plus proche, hors de la carte :
+    // logo réel si présent, compagnie, constructeur/modèle connu, distance.
+    @ViewBuilder
+    private var cinemaNearestIdentity: some View {
+        if let aircraft = service.aircraft.first {
+            let details = service.enrichment(for: aircraft)
+            let company = details?.operatorName ?? aircraft.operatorName ?? "Compagnie non renseignée"
+            let model = details?.aircraftModel ?? details?.aircraftType
+                ?? aircraft.description ?? aircraft.aircraftType ?? "Modèle non renseigné"
+            HStack(spacing: 11) {
+                Group {
+                    if let logo = details?.logoURL {
+                        AsyncImage(url: logo) { phase in
+                            if let image = phase.image {
+                                image.resizable().scaledToFit()
+                            } else {
+                                Image(systemName: "airplane")
+                                    .resizable().scaledToFit()
+                                    .foregroundStyle(Color(red: 0.04, green: 0.55, blue: 0.73))
+                                    .padding(8)
+                            }
+                        }
+                    } else {
+                        Image(systemName: service.trafficProfile(for: aircraft).isRotorcraft ? "helicopter" : "airplane")
+                            .resizable().scaledToFit()
+                            .foregroundStyle(Color(red: 0.04, green: 0.55, blue: 0.73))
+                            .padding(8)
+                    }
+                }
+                .frame(width: 54, height: 51)
+                .padding(3)
+                .background(.white, in: RoundedRectangle(cornerRadius: 12))
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("✦  AVION LE PLUS PROCHE")
+                        .font(.system(size: 13, weight: .black))
+                        .tracking(0.8)
+                        .foregroundStyle(Color(red: 0.06, green: 0.50, blue: 0.69))
+                    Text(company)
+                        .font(.system(size: 22, weight: .black, design: .rounded))
+                        .foregroundStyle(Color(red: 0.07, green: 0.23, blue: 0.39))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.68)
+                    Text(model)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(Color(red: 0.32, green: 0.48, blue: 0.61))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                }
+                Spacer(minLength: 0)
+                Text(String(format: "%.0f km", aircraft.distanceKilometers(from: service.center)))
+                    .font(.system(size: 17, weight: .black, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(Color(red: 0.05, green: 0.49, blue: 0.68))
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, 12)
+            .frame(width: 425, height: 74)
+            .background(Color.white.opacity(0.94), in: RoundedRectangle(cornerRadius: 18))
+            .overlay {
+                RoundedRectangle(cornerRadius: 18)
+                    .stroke(Color(red: 0.56, green: 0.82, blue: 0.93).opacity(0.64), lineWidth: 1.5)
+            }
         }
     }
 

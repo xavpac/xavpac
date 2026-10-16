@@ -40,42 +40,41 @@ final class RadarHomeAnnotation: NSObject, MKAnnotation {
     }
 }
 
+// HOME est une épingle miniature ; jamais un bandeau sur l'aéronef voisin.
 private final class RadarHomeAnnotationView: MKAnnotationView {
-    private let bubble = UIView()
-    private let icon = UIImageView()
-    private let title = UILabel()
+    private let pin = UIView()
+    private let homeIcon = UIImageView()
 
     override init(annotation: MKAnnotation?, reuseIdentifier: String?) {
         super.init(annotation: annotation, reuseIdentifier: reuseIdentifier)
-        frame = CGRect(x: 0, y: 0, width: 155, height: 72)
-        centerOffset = CGPoint(x: 45, y: -17)
-        collisionMode = .rectangle
+        frame = CGRect(x: 0, y: 0, width: 44, height: 50)
+        centerOffset = CGPoint(x: 0, y: -17)
+        collisionMode = .circle
         displayPriority = .required
         canShowCallout = false
         isUserInteractionEnabled = false
 
-        bubble.frame = CGRect(x: 0, y: 7, width: 155, height: 58)
-        bubble.backgroundColor = UIColor(red: 0.02, green: 0.24, blue: 0.43, alpha: 0.97)
-        bubble.layer.cornerRadius = 22
-        bubble.layer.borderWidth = 2.8
-        bubble.layer.borderColor = UIColor(red: 0.13, green: 0.89, blue: 0.96, alpha: 1).cgColor
-        bubble.layer.shadowColor = UIColor.systemCyan.cgColor
-        bubble.layer.shadowOpacity = 0.9
-        bubble.layer.shadowRadius = 13
-        bubble.layer.shadowOffset = .zero
-        addSubview(bubble)
+        pin.frame = CGRect(x: 4, y: 3, width: 36, height: 36)
+        pin.backgroundColor = UIColor(red: 0.01, green: 0.45, blue: 0.66, alpha: 0.96)
+        pin.layer.cornerRadius = 18
+        pin.layer.borderWidth = 2.5
+        pin.layer.borderColor = UIColor.white.cgColor
+        pin.layer.shadowColor = UIColor.systemTeal.cgColor
+        pin.layer.shadowOpacity = 0.55
+        pin.layer.shadowRadius = 7
+        pin.layer.shadowOffset = .zero
+        addSubview(pin)
 
-        icon.frame = CGRect(x: 12, y: 19, width: 33, height: 34)
-        icon.contentMode = .scaleAspectFit
-        icon.image = UIImage(systemName: "house.fill")?.withTintColor(.white, renderingMode: .alwaysOriginal)
-        addSubview(icon)
+        homeIcon.frame = CGRect(x: 12, y: 12, width: 20, height: 19)
+        homeIcon.contentMode = .scaleAspectFit
+        homeIcon.image = UIImage(systemName: "house.fill")?
+            .withTintColor(.white, renderingMode: .alwaysOriginal)
+        addSubview(homeIcon)
 
-        title.frame = CGRect(x: 51, y: 13, width: 95, height: 45)
-        title.text = "HOME"
-        title.font = .systemFont(ofSize: 22, weight: .black)
-        title.textColor = .white
-        title.textAlignment = .left
-        addSubview(title)
+        let tail = UIView(frame: CGRect(x: 19, y: 36, width: 6, height: 10))
+        tail.backgroundColor = UIColor(red: 0.01, green: 0.45, blue: 0.66, alpha: 0.96)
+        tail.layer.cornerRadius = 2
+        addSubview(tail)
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -84,7 +83,6 @@ private final class RadarHomeAnnotationView: MKAnnotationView {
 private final class AircraftAnnotationView: MKAnnotationView {
     private let glyphView = UIImageView()
     private let haloView = UIView()
-    private let tagLabel = UILabel()
 
     override init(annotation: MKAnnotation?, reuseIdentifier: String?) {
         super.init(annotation: annotation, reuseIdentifier: reuseIdentifier)
@@ -98,14 +96,7 @@ private final class AircraftAnnotationView: MKAnnotationView {
         glyphView.layer.shadowOffset = .zero
         addSubview(glyphView)
 
-        tagLabel.font = .systemFont(ofSize: 19, weight: .heavy)
-        tagLabel.textColor = .white
-        tagLabel.textAlignment = .center
-        tagLabel.backgroundColor = UIColor(red: 0.025, green: 0.13, blue: 0.26, alpha: 0.93)
-        tagLabel.layer.cornerRadius = 11
-        tagLabel.layer.borderWidth = 1.5
-        tagLabel.clipsToBounds = true
-        addSubview(tagLabel)
+
     }
 
     required init?(coder: NSCoder) {
@@ -171,41 +162,23 @@ private final class AircraftAnnotationView: MKAnnotationView {
         }
 
         if item.isSelected {
-            frame = CGRect(x: 0, y: 0, width: 332, height: 80)
+            // Une seule silhouette lumineuse ; les infos sont dans le bandeau
+            // dédié hors de la carte, plus jamais sur d'autres avions.
+            let size = max(78, 85 * scale)
+            frame = CGRect(x: 0, y: 0, width: size, height: size)
 
-            let haloSize = max(63, 72 * scale)
-            haloView.frame = CGRect(
-                x: 0,
-                y: (80 - haloSize) / 2,
-                width: haloSize,
-                height: haloSize
-            )
-            haloView.layer.cornerRadius = haloSize / 2
+            haloView.frame = bounds.insetBy(dx: 2, dy: 2)
+            haloView.layer.cornerRadius = haloView.bounds.width / 2
             haloView.backgroundColor = tint.withAlphaComponent(
-                item.profile.isPriorityTraffic ? 0.24 : 0.16
+                item.profile.isPriorityTraffic ? 0.24 : 0.15
             )
-
             glyphView.frame = CGRect(
-                x: 5,
-                y: (80 - selectedSize) / 2,
+                x: (size - selectedSize) / 2,
+                y: (size - selectedSize) / 2,
                 width: selectedSize,
                 height: selectedSize
             )
-
-            let title: String
-            if item.profile.isPriorityTraffic {
-                title = item.profile.label
-            } else {
-                title = item.routeLabel ?? "TRAJET À CONFIRMER"
-            }
-
-            tagLabel.text = " \(title) · \(String(format: "%.1f", item.distanceKm)) km "
-            tagLabel.adjustsFontSizeToFitWidth = true
-            tagLabel.minimumScaleFactor = 0.65
-            tagLabel.frame = CGRect(x: 78, y: 17, width: 242, height: 46)
-            tagLabel.layer.borderColor = tint.withAlphaComponent(0.90).cgColor
-            tagLabel.isHidden = false
-            centerOffset = CGPoint(x: 102, y: 0)
+            centerOffset = .zero
 
             if item.profile.isPriorityTraffic {
                 addPriorityPulse(color: tint)
@@ -222,7 +195,6 @@ private final class AircraftAnnotationView: MKAnnotationView {
 
             let inset = max(3, 6 / scale)
             glyphView.frame = bounds.insetBy(dx: inset, dy: inset)
-            tagLabel.isHidden = true
             centerOffset = .zero
 
             if item.profile.isPriorityTraffic {
