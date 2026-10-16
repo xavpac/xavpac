@@ -244,43 +244,17 @@ struct ContentView: View {
 
     private var cinemaHeader: some View {
         HStack(spacing: 22) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 23, style: .continuous)
-                    .fill(LinearGradient(
-                        colors: [Color(red: 0.15, green: 0.75, blue: 0.98),
-                                 Color(red: 0.03, green: 0.37, blue: 0.80)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing))
-                Image(systemName: "airplane")
-                    .font(.system(size: 43, weight: .black))
-                    .foregroundStyle(.white)
-            }
-            .frame(width: 86, height: 84)
-            .shadow(color: .cyan.opacity(0.32), radius: 14, y: 5)
-
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 12) {
-                    Text("XavPac")
-                        .foregroundStyle(Color(red: 0.06, green: 0.21, blue: 0.39))
-                    Text("TV")
-                        .foregroundStyle(Color(red: 0.01, green: 0.59, blue: 0.82))
-                }
-                .font(.system(size: 52, weight: .black, design: .rounded))
-                Text("LE CIEL S'ANIME  ✦  LE SPECTACLE EST EN DIRECT")
-                    .font(.system(size: 20, weight: .bold))
-                    .tracking(3)
-                    .foregroundStyle(Color(red: 0.25, green: 0.48, blue: 0.64))
-            }
-            Spacer(minLength: 8)
-            cinemaNearestIdentity
-            Spacer(minLength: 8)
+            // Le bandeau ne montre plus « XavPac TV » :
+            // vraie photo de l'appareil suivi + logo de sa compagnie.
+            cinemaFeaturedIdentity
+                .frame(maxWidth: .infinity, alignment: .leading)
 
             HStack(spacing: 14) {
                 Circle()
-                    .fill(service.errorMessage == nil ? Color.green : Color.orange)
+                    .fill(radarIsLive ? Color.green : Color.orange)
                     .frame(width: 19, height: 19)
-                    .shadow(color: .green.opacity(0.6), radius: 8)
-                Text(service.errorMessage == nil ? "EN DIRECT" : "RECONNEXION")
+                    .shadow(color: Color.green.opacity(0.6), radius: 8)
+                Text(radarIsLive ? "EN DIRECT" : "RECONNEXION")
                     .font(.system(size: 24, weight: .black))
                     .foregroundStyle(Color(red: 0.04, green: 0.39, blue: 0.53))
             }
@@ -305,70 +279,109 @@ struct ContentView: View {
         }
     }
 
-    // Une signature sobre pour le plus proche, hors de la carte :
-    // logo réel si présent, compagnie, constructeur/modèle connu, distance.
+    // Identité du vol mis en avant, mise à jour automatiquement :
+    // une photo de l'aéronef, le logo réel de son opérateur et son nom.
     @ViewBuilder
-    private var cinemaNearestIdentity: some View {
-        if let aircraft = service.aircraft.first {
-            let details = service.enrichment(for: aircraft)
+    private var cinemaFeaturedIdentity: some View {
+        if let aircraft = featuredAircraft {
+            let details = featuredEnrichment
+            let profile = featuredProfile
             let company = details?.operatorName ?? aircraft.operatorName ?? "Compagnie non renseignée"
             let model = details?.aircraftModel ?? details?.aircraftType
-                ?? aircraft.description ?? aircraft.aircraftType ?? "Modèle non renseigné"
-            HStack(spacing: 11) {
+                ?? aircraft.description ?? aircraft.aircraftType ?? "Aéronef en direct"
+
+            HStack(spacing: 15) {
+                Group {
+                    if let photoURL = details?.photoURL, details?.photo.kind != "generic" {
+                        AsyncImage(url: photoURL) { phase in
+                            if let image = phase.image {
+                                image.resizable().scaledToFill()
+                            } else {
+                                cinemaHeaderAircraftFallback(isHelicopter: profile?.isRotorcraft ?? false)
+                            }
+                        }
+                    } else {
+                        cinemaHeaderAircraftFallback(isHelicopter: profile?.isRotorcraft ?? false)
+                    }
+                }
+                .frame(width: 170, height: 79)
+                .clipped()
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(Color.white.opacity(0.94), lineWidth: 2))
+                .shadow(color: Color(red: 0.10, green: 0.47, blue: 0.68).opacity(0.17), radius: 8)
+
                 Group {
                     if let logo = details?.logoURL {
                         AsyncImage(url: logo) { phase in
                             if let image = phase.image {
-                                image.resizable().scaledToFit()
+                                image.resizable().scaledToFit().padding(5)
                             } else {
-                                Image(systemName: "airplane")
-                                    .resizable().scaledToFit()
-                                    .foregroundStyle(Color(red: 0.04, green: 0.55, blue: 0.73))
-                                    .padding(8)
+                                cinemaHeaderLogoFallback(isHelicopter: profile?.isRotorcraft ?? false)
                             }
                         }
                     } else {
-                        Image(systemName: service.trafficProfile(for: aircraft).isRotorcraft ? "helicopter" : "airplane")
-                            .resizable().scaledToFit()
-                            .foregroundStyle(Color(red: 0.04, green: 0.55, blue: 0.73))
-                            .padding(8)
+                        cinemaHeaderLogoFallback(isHelicopter: profile?.isRotorcraft ?? false)
                     }
                 }
-                .frame(width: 54, height: 51)
-                .padding(3)
-                .background(.white, in: RoundedRectangle(cornerRadius: 12))
+                .frame(width: 77, height: 73)
+                .background(Color.white, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(Color(red: 0.70, green: 0.86, blue: 0.95), lineWidth: 1.5))
 
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("✦  AVION LE PLUS PROCHE")
-                        .font(.system(size: 13, weight: .black))
-                        .tracking(0.8)
-                        .foregroundStyle(Color(red: 0.06, green: 0.50, blue: 0.69))
                     Text(company)
-                        .font(.system(size: 22, weight: .black, design: .rounded))
-                        .foregroundStyle(Color(red: 0.07, green: 0.23, blue: 0.39))
+                        .font(.system(size: 29, weight: .black, design: .rounded))
+                        .foregroundStyle(Color(red: 0.06, green: 0.23, blue: 0.40))
                         .lineLimit(1)
                         .minimumScaleFactor(0.68)
                     Text(model)
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(Color(red: 0.32, green: 0.48, blue: 0.61))
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(Color(red: 0.24, green: 0.43, blue: 0.59))
                         .lineLimit(1)
-                        .minimumScaleFactor(0.7)
+                        .minimumScaleFactor(0.72)
                 }
-                Spacer(minLength: 0)
-                Text(String(format: "%.0f km", aircraft.distanceKilometers(from: service.center)))
-                    .font(.system(size: 17, weight: .black, design: .rounded))
-                    .monospacedDigit()
-                    .foregroundStyle(Color(red: 0.05, green: 0.49, blue: 0.68))
-                    .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(.horizontal, 12)
-            .frame(width: 425, height: 74)
-            .background(Color.white.opacity(0.94), in: RoundedRectangle(cornerRadius: 18))
-            .overlay {
-                RoundedRectangle(cornerRadius: 18)
-                    .stroke(Color(red: 0.56, green: 0.82, blue: 0.93).opacity(0.64), lineWidth: 1.5)
+            .frame(height: 84)
+        } else {
+            HStack(spacing: 16) {
+                cinemaHeaderAircraftFallback(isHelicopter: false)
+                    .frame(width: 170, height: 79)
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("LE CIEL EN DIRECT")
+                        .font(.system(size: 27, weight: .black, design: .rounded))
+                    Text("Recherche du prochain aéronef…")
+                        .font(.system(size: 19, weight: .medium))
+                }
+                .foregroundStyle(Color(red: 0.08, green: 0.34, blue: 0.50))
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    private func cinemaHeaderAircraftFallback(isHelicopter: Bool) -> some View {
+        ZStack {
+            LinearGradient(
+                colors: [Color(red: 0.73, green: 0.92, blue: 1.0),
+                         Color(red: 0.25, green: 0.66, blue: 0.88)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            Image(systemName: isHelicopter ? "helicopter" : "airplane")
+                .font(.system(size: 57, weight: .semibold))
+                .foregroundStyle(.white)
+                .shadow(color: .blue.opacity(0.25), radius: 8)
+        }
+    }
+
+    private func cinemaHeaderLogoFallback(isHelicopter: Bool) -> some View {
+        Image(systemName: isHelicopter ? "helicopter" : "airplane")
+            .resizable()
+            .scaledToFit()
+            .foregroundStyle(Color(red: 0.02, green: 0.52, blue: 0.76))
+            .padding(17)
     }
 
     private var cinemaMap: some View {
