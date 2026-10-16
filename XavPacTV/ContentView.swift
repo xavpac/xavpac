@@ -174,7 +174,16 @@ struct ContentView: View {
                     HStack {
                         Text("✦ XAVPAC TV  •  SKY SHOW  •  LE CIEL EN SPECTACLE")
                         Spacer()
-                        Text("BÂGÉ-DOMMARTIN  •  RAYON 50 KM  •  DIRECT")
+                        Text(appleMusicSoundtrack.isPlaying
+                             ? "♫ FAVORIS APPLE MUSIC"
+                             : "♫ " + appleMusicSoundtrack.statusLabel)
+                            .foregroundStyle(appleMusicSoundtrack.isPlaying
+                                ? Color(red: 0.05, green: 0.52, blue: 0.30)
+                                : Color(red: 0.48, green: 0.38, blue: 0.19))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                        Spacer(minLength: 8)
+                        Text("BÂGÉ-DOMMARTIN  •  50 KM  •  DIRECT")
                     }
                     .font(.system(size: 17, weight: .heavy, design: .rounded))
                     .tracking(1.4)
@@ -189,7 +198,7 @@ struct ContentView: View {
         .onAppear {
             UIApplication.shared.isIdleTimerDisabled = true
             service.start()
-            soundscape.start()
+            // Priorité à la playlist Apple Music, sans musique concurrente.
         }
         .onDisappear {
             UIApplication.shared.isIdleTimerDisabled = false
@@ -198,11 +207,16 @@ struct ContentView: View {
             appleMusicSoundtrack.stop()
         }
         .task {
-            // Permission unique MusicKit lors du premier lancement. En cas de
-            // refus, d’absence d’abonnement ou de playlist, l’ambiance sonore
-            // originale continue à jouer sans interrompre le radar.
-            if await appleMusicSoundtrack.start() {
-                soundscape.disableAmbientButKeepAlerts()
+            // Démarrer Apple Music en premier. En cas de synchronisation lente,
+            // réessayer automatiquement sans aucune commande sur la TV.
+            while !Task.isCancelled {
+                if await appleMusicSoundtrack.start() {
+                    soundscape.disableAmbientButKeepAlerts()
+                } else {
+                    soundscape.start()
+                }
+                do { try await Task.sleep(nanoseconds: 180_000_000_000) }
+                catch { break }
             }
         }
         .task {
@@ -741,14 +755,14 @@ struct ContentView: View {
                 .font(.system(size: 21, weight: .bold))
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
-            Text(weather?.windLabel ?? "VENT —")
+            Text(weather?.windLabel ?? "Vent indisponible")
                 .font(.system(size: 17, weight: .bold))
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
             HStack(spacing: 10) {
                 Text(weather?.visibilityLabel ?? "VIS. —")
                 Spacer(minLength: 0)
-                Text(weather?.observationLabel ?? "METAR indisponible")
+                Text(weather?.observationLabel ?? "Obs. indisponible")
             }
             .font(.system(size: 14, weight: .bold))
             .lineLimit(1)
@@ -2167,42 +2181,36 @@ private final class AmbientSoundscape: ObservableObject {
     private var audioFormat: AVAudioFormat?
     private var configured = false
 
-    func start() {
-        guard !player.isPlaying else { return }
-
+    func prepareAlertsOnly() {
+        guard !configured else { return }
         do {
             let session = AVAudioSession.sharedInstance()
             try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
             try session.setActive(true)
-
-            if !configured {
-                engine.attach(player)
-                engine.attach(alertPlayer)
-                guard let format = AVAudioFormat(
-                    standardFormatWithSampleRate: 44_100,
-                    channels: 2
-                ) else { return }
-
-                audioFormat = format
-                engine.connect(player, to: engine.mainMixerNode, format: format)
-                engine.connect(alertPlayer, to: engine.mainMixerNode, format: format)
-                buffer = makeAmbientBuffer(format: format)
-                configured = true
-            }
-
-            if !engine.isRunning {
-                try engine.start()
-            }
-
-            if let buffer {
-                player.scheduleBuffer(buffer, at: nil, options: .loops)
-                engine.mainMixerNode.outputVolume = 0.62
-                player.volume = 0.24
-                player.play()
-            }
+            engine.attach(player)
+            engine.attach(alertPlayer)
+            guard let format = AVAudioFormat(
+                standardFormatWithSampleRate: 44_100, channels: 2
+            ) else { return }
+            audioFormat = format
+            engine.connect(player, to: engine.mainMixerNode, format: format)
+            engine.connect(alertPlayer, to: engine.mainMixerNode, format: format)
+            buffer = makeAmbientBuffer(format: format)
+            configured = true
+            try engine.start()
         } catch {
-            // La musique reste optionnelle : le radar continue même si l'audio n'est pas disponible.
+            print("XavPac TV : signal sonore d'alerte indisponible : \(error)")
         }
+    }
+
+    func start() {
+        guard !player.isPlaying else { return }
+        prepareAlertsOnly()
+        guard configured, let buffer else { return }
+        player.scheduleBuffer(buffer, at: nil, options: .loops)
+        engine.mainMixerNode.outputVolume = 0.62
+        player.volume = 0.24
+        player.play()
     }
 
     func stop() {
@@ -2219,7 +2227,7 @@ private final class AmbientSoundscape: ObservableObject {
 
     func playPriorityAlert() {
         if !configured {
-            start()
+            prepareAlertsOnly()
         }
 
         guard let format = audioFormat,
@@ -2459,11 +2467,10 @@ private struct HomeSceneWeather: Decodable {
         return "Max \(Int(high.rounded()))°  ·  Min \(Int(low.rounded()))°"
     }
     var windLabel: String {
-        guard let windSpeed else { return "—" }
-        guard let windDirection else { return "\(Int(windSpeed.rounded())) km/h" }
-        let compass = ["N", "NE", "E", "SE", "S", "SO", "O", "NO"]
-        let heading = Int((windDirection.truncatingRemainder(dividingBy: 360) + 22.5) / 45) % 8
-        return compass[heading] + "  " + "\(Int(windSpeed.rounded())) km/h"
+        guard let windSpeed else { return "Vent indisponible" }
+        return WindFrenchFormatter.label(
+            speedKmh: windSpeed, directionDegrees: windDirection
+        )
     }
     var conditionLabel: String {
         guard let weatherCode else { return "Conditions indisponibles" }
