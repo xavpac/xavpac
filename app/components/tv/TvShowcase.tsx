@@ -363,10 +363,10 @@ export default function TvShowcase() {
             <span className="tv-incident-icon">{showEmergency ? "🚨" : "⚠"}</span>
             <div>
               <b>{showEmergency ? "ALERTE EN TEMPS RÉEL" : displayLatest ? "DERNIÈRE PANNE SIGNALÉE · PRESSE" : lastEmergency ? "DERNIER SIGNAL D’URGENCE" : "VEILLE DES INCIDENTS"}</b>
-              <strong>{showEmergency && activeEmergency ? incidentLabel(activeEmergency.squawk ?? "") : displayLatest ? latestTechnicalArticle.title : lastEmergency ? incidentLabel(lastEmergency.code) : "Aucun incident connu dans les sources disponibles"}</strong>
+              <strong>{showEmergency && activeEmergency ? incidentLabel(activeEmergency.squawk ?? "") : displayLatest ? displayLatest.title : lastEmergency ? incidentLabel(lastEmergency.code) : "Aucun incident connu dans les sources disponibles"}</strong>
               <small>{showEmergency && activeEmergency
                 ? (activeEmergency.callsign || activeEmergency.registration || activeEmergency.id) + " · " + (activeEmergency.squawk ?? "") + " · détecté le " + alertDate(lastEmergency?.key === activeEmergency.id + "-" + activeEmergency.squawk ? lastEmergency.detectedAt : updatedAt)
-                : displayLatest ? latestTechnicalArticle.source + " · " + alertDate(latestTechnicalArticle.date)
+                : displayLatest ? displayLatest.source + " · " + alertDate(displayLatest.date)
                 : lastEmergency ? lastEmergency.aircraft + " · ADS-B · détecté le " + alertDate(lastEmergency.detectedAt)
                 : "Codes 7700 / 7600 / 7500 · pas de panne supposée"}</small>
             </div>
