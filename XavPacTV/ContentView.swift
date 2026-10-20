@@ -2172,6 +2172,55 @@ struct ContentView: View {
     }
 }
 
+// Flux d'actualités aéronautiques : ce sont des TITRES DE PRESSE,
+// jamais des alertes de transpondeur inventées. Aucune interaction.
+@MainActor
+private final class AviationTickerService: ObservableObject {
+    struct Article: Decodable, Identifiable {
+        let title: String
+        let source: String
+        let date: String
+
+        var id: String { title + "|" + date }
+
+        var dateLabel: String {
+            guard let date = ISO8601DateFormatter().date(from: self.date) else {
+                return "Date indisponible"
+            }
+            return date.formatted(.dateTime.day().month(.abbreviated).hour().minute())
+        }
+    }
+
+    private struct Payload: Decodable {
+        let news: [Article]
+    }
+
+    @Published private(set) var news: [Article] = []
+    @Published private(set) var updatedAt: Date?
+
+    func refresh() async {
+        guard let url = URL(string: "https://xavpac-ty3i.vercel.app/api/aviation-news") else {
+            return
+        }
+
+        do {
+            var request = URLRequest(url: url)
+            request.timeoutInterval = 14
+            request.cachePolicy = .reloadIgnoringLocalCacheData
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let response = response as? HTTPURLResponse,
+                  (200..<300).contains(response.statusCode) else {
+                return
+            }
+            let result = try JSONDecoder().decode(Payload.self, from: data)
+            news = Array(result.news.prefix(8))
+            updatedAt = Date()
+        } catch {
+            // Le diaporama, la carte et le radar ne dépendent pas des actualités.
+        }
+    }
+}
+
 // Lumières d'ambiance tvOS : peu d'éléments, aucune interaction, visibles au vidéoprojecteur.
 private struct SkyShowBackdrop: View {
     @State private var drift = false
