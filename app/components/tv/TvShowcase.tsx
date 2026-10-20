@@ -19,6 +19,19 @@ type DestinationMedia = { id: string; type: "video" | "image"; url: string; prev
 type MediaPayload = { items?: DestinationMedia[]; provider?: string };
 type EnrichmentPayload = { enriched?: EnrichedAircraft[] };
 type TrafficPayload = { aircraft?: LiveAircraft[]; fetchedAt?: string; source?: string };
+type AviationArticle = { title: string; date: string; source: string; link?: string };
+type NewsPayload = { news?: AviationArticle[] };
+type ObservedAlert = { key: string; aircraft: string; code: string; detectedAt: string };
+type ObservedPriority = { key: string; label: string; aircraft: string; detectedAt: string };
+const TECHNICAL_REPORT = /panne|avarie|probl[eè]me technique|incident technique|pressurisation|d[eé]pressurisation|panne moteur/i;
+const EMERGENCY_CODES = ["7700", "7600", "7500"];
+const incidentLabel = (code: string) => code === "7700"
+  ? "URGENCE SIGNALÉE · CAUSE NON CONFIRMÉE"
+  : code === "7600" ? "DÉFAILLANCE RADIO SIGNALÉE" : "INTERVENTION ILLICITE SIGNALÉE";
+const alertDate = (value?: string | null) => {
+  if (!value || !Number.isFinite(Date.parse(value))) return "Date/heure indisponibles";
+  return new Date(value).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+};
 
 const formatNumber = (value: number | null | undefined, suffix: string) =>
   typeof value === "number" && Number.isFinite(value) ? Math.round(value).toLocaleString("fr-FR") + suffix : "—";
@@ -55,6 +68,11 @@ export default function TvShowcase() {
   const [updatedAt, setUpdatedAt] = useState<string | null>(null);
   const [connection, setConnection] = useState("Connexion au trafic...");
   const [now, setNow] = useState<Date | null>(null);
+  const [news, setNews] = useState<AviationArticle[]>([]);
+  const [lastEmergency, setLastEmergency] = useState<ObservedAlert | null>(null);
+  const [lastPriority, setLastPriority] = useState<ObservedPriority | null>(null);
+  const seenEmergency = useRef<string | null>(null);
+  const seenPriority = useRef<string | null>(null);
   const enrichTime = useRef(0);
   const mediaRequest = useRef(0);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -123,9 +141,44 @@ export default function TvShowcase() {
     return () => { disposed = true; window.clearInterval(timer); };
   }, []);
 
+  // Une actualité n'est pas une alerte transpondeur, ni une panne confirmée.
+  useEffect(() => {
+    let disposed = false;
+    async function refreshNews() {
+      try {
+        const response = await fetch("/api/aviation-news", { cache: "no-store" });
+        if (!response.ok) return;
+        const payload = await response.json() as NewsPayload;
+        if (!disposed) setNews((payload.news ?? []).filter((item) => item.title && item.date && item.source));
+      } catch { /* Pas d'évènement fabriqué si la veille presse est indisponible. */ }
+    }
+    void refreshNews();
+    const timer = window.setInterval(() => { void refreshNews(); }, 900000);
+    return () => { disposed = true; window.clearInterval(timer); };
+  }, []);
+
+  const feedFresh = connection === "DONNÉES EN DIRECT"
+    && Boolean(updatedAt && Number.isFinite(Date.parse(updatedAt)))
+    && Boolean(now && Date.now() - Date.parse(updatedAt ?? "") < 40000);
+
+  useEffect(() => {
+    if (!feedFresh) return;
+    const emergency = traffic.find((item) =>
+      EMERGENCY_CODES.includes(item.squawk ?? "") && (item.positionAgeSeconds ?? 0) < 90);
+    const key = emergency ? emergency.id + "-" + emergency.squawk : null;
+    if (key && key !== seenEmergency.current && emergency) {
+      seenEmergency.current = key;
+      setLastEmergency({
+        key, aircraft: emergency.callsign || emergency.registration || emergency.id,
+        code: emergency.squawk ?? "", detectedAt: new Date().toISOString()
+      });
+    }
+    if (!key) seenEmergency.current = null;
+  }, [traffic, feedFresh]);
+
   const mapPoints = useMemo<MapPoint[]>(() => [
     { id: "home-tv", lat: HOME[0], lon: HOME[1], name: "HOME", category: "home", detail: "Bâgé-Dommartin" },
-    ...traffic.map((item) => {
+    ...traffic.map((item, index) => {
       const details = enriched[item.id.replace(/^~/, "").toUpperCase()];
       const priority = specialLabel(item, details);
       const route = details?.departureAirport && details?.arrivalAirport
@@ -134,6 +187,7 @@ export default function TvShowcase() {
       const helicopter = aircraftGlyph(item, details) === "🚁";
       return {
         id: item.id, lat: item.latitude, lon: item.longitude, name: route,
+        rank: index < 3 ? (index + 1) as 1 | 2 | 3 : undefined,
         category: priority === "ARMÉE" ? "national-military" : priority === "SÉCURITÉ CIVILE" ? "national-dragon" : helicopter ? "helicopter" : "aircraft",
         color: priority ? "#ffce46" : "#138ad0",
         heading: item.trueTrack,
@@ -152,7 +206,21 @@ export default function TvShowcase() {
 
   const nearbyAlert = useMemo(() => traffic
     .map((item) => ({ item, priority: specialLabel(item, enriched[item.id.replace(/^~/, "").toUpperCase()]) }))
-    .find(({ priority }) => priority !== null) ?? null, [traffic, enriched]);
+    .find(({ priority }) => priority !== null && (item.positionAgeSeconds ?? 0) < 90) ?? null, [traffic, enriched]);
+
+  useEffect(() => {
+    if (!feedFresh) return;
+    const key = nearbyAlert ? nearbyAlert.item.id + "-" + nearbyAlert.priority : null;
+    if (key && key !== seenPriority.current && nearbyAlert) {
+      seenPriority.current = key;
+      setLastPriority({
+        key, label: nearbyAlert.priority || "MOYEN PRIORITAIRE",
+        aircraft: nearbyAlert.item.callsign || nearbyAlert.item.registration || nearbyAlert.item.id,
+        detectedAt: new Date().toISOString()
+      });
+    }
+    if (!key) seenPriority.current = null;
+  }, [nearbyAlert, feedFresh]);
 
   const featured = candidate?.item ?? traffic[0] ?? null;
   const featuredInfo = featured ? enriched[featured.id.replace(/^~/, "").toUpperCase()] : null;
@@ -207,6 +275,13 @@ export default function TvShowcase() {
   }, [activeMedia]);
 
   const clock = now ? now.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "--:--:--";
+  const activeEmergency = feedFresh ? traffic.find((item) =>
+    EMERGENCY_CODES.includes(item.squawk ?? "") && (item.positionAgeSeconds ?? 0) < 90) : null;
+  const latestTechnicalArticle = news.filter((item) => TECHNICAL_REPORT.test(item.title))
+    .sort((a, b) => Date.parse(b.date) - Date.parse(a.date))[0] ?? null;
+  const showEmergency = Boolean(activeEmergency)
+    && (!latestTechnicalArticle || !now || Math.floor(now.getTime() / 9000) % 2 === 0);
+  const displayLatest = !showEmergency && latestTechnicalArticle;
   const showFlight = Boolean(candidate && destination);
   const nearFlightName = candidate?.details?.flightNumberIata || candidate?.details?.callsignIcao || candidate?.item.callsign || "VOL IDENTIFIÉ";
 
@@ -218,13 +293,6 @@ export default function TvShowcase() {
         <div className="tv-brand"><span className="tv-brand-symbol">✦</span><div><strong>XAVPAC <em>TV</em></strong><small>LE CIEL EN DIRECT • BÂGÉ-DOMMARTIN</small></div></div>
         <div className="tv-livebar"><span className="tv-signal"><i /> {connection}</span><span className="tv-utc">{clock}</span></div>
       </header>
-
-      {nearbyAlert && <div className="tv-priority-alert" role="status">
-        <span className="tv-alert-icon">{aircraftGlyph(nearbyAlert.item)}</span>
-        <strong>TRAFIC PRIORITAIRE · {nearbyAlert.priority}</strong>
-        <span>{nearbyAlert.item.callsign || nearbyAlert.item.registration || "AÉRONEF"} · {nearbyAlert.item.distance.toFixed(1)} KM DE HOME</span>
-        <i className="tv-alert-light" />
-      </div>}
 
       <section className="tv-main">
         <div className="tv-map-panel">
@@ -275,20 +343,36 @@ export default function TvShowcase() {
         </div>
       </section>
 
-      <section className="tv-bottom">
-        <div className="tv-bottom-intro"><span className="tv-eyebrow">✦ LES PROCHAINS DANS LE CIEL</span><strong>Le spectacle continue</strong></div>
-        <div className="tv-flight-cards">{traffic.slice(0, 3).map((item, index) => {
+      <section className="tv-bottom" aria-label="Avions 2 et 3, moyens prioritaires et incidents">
+        <div className="tv-flight-cards">{traffic.slice(1, 3).map((item, index) => {
           const info = enriched[item.id.replace(/^~/, "").toUpperCase()];
           const priority = specialLabel(item, info);
-          return <article key={item.id} className={"tv-flight-card" + (priority ? " tv-special" : "")}>
-            <div className="tv-flight-card-index">0{index + 1}</div>
+          return <article key={item.id} className={"tv-flight-card tv-rank-card-" + (index + 2) + (priority ? " tv-special" : "")}>
+            <div className="tv-flight-card-index">AVION {index + 2} · SUR LA CARTE</div>
             <span className="tv-flight-card-glyph">{aircraftGlyph(item, info)}</span>
-            <div className="tv-flight-card-main"><small>{priority || info?.operator || item.operator || "TRAFIC AÉRIEN"}</small><strong>{info?.flightNumberIata || item.callsign || item.registration || "ADS-B"}</strong><span>{info?.departureAirport && info?.arrivalAirport ? code(info.departureAirport) + " → " + code(info.arrivalAirport) : info?.aircraftType || item.aircraftType || "Trajet en cours d'identification"}</span></div>
+            <div className="tv-flight-card-main"><small>{priority || info?.operator || item.operator || "TRAFIC AÉRIEN"}</small><strong>{info?.flightNumberIata || item.callsign || item.registration || "ADS-B"}</strong><span>{info?.departureAirport && info?.arrivalAirport ? code(info.departureAirport) + " → " + code(info.arrivalAirport) : info?.aircraftType || item.aircraftType || "Trajet non identifié"}</span></div>
             <div className="tv-flight-card-distance">{item.distance.toFixed(1)} <small>KM</small></div>
           </article>;
-        })}{!traffic.length && <div className="tv-empty-cards">Le radar est à l&apos;écoute… les prochains aéronefs apparaîtront ici automatiquement.</div>}</div>
+        })}{traffic.length < 2 && <div className="tv-empty-cards">Avions 2 et 3 : en attente du trafic réellement détecté.</div>}</div>
+        <div className="tv-alert-stack">
+          <div className={"tv-status-priority" + (feedFresh && nearbyAlert ? " is-active" : "")} role="status">
+            <span>🚁</span><div><b>MOYENS PRIORITAIRES</b><strong>{feedFresh && nearbyAlert ? nearbyAlert.priority + " · " + (nearbyAlert.item.callsign || nearbyAlert.item.registration || "AÉRONEF") : feedFresh ? "Aucun moyen prioritaire identifié" : "Liaison radar à actualiser"}</strong>
+              <small>{feedFresh && nearbyAlert && lastPriority?.key === nearbyAlert.item.id + "-" + nearbyAlert.priority ? "Détecté le " + alertDate(lastPriority.detectedAt) : "Sécurité civile / Armée · ADS-B non exhaustif"}</small></div>
+          </div>
+          <div className={"tv-incident-card" + (showEmergency ? " is-live" : "")} role="status" aria-live="polite">
+            <span className="tv-incident-icon">{showEmergency ? "🚨" : "⚠"}</span>
+            <div>
+              <b>{showEmergency ? "ALERTE EN TEMPS RÉEL" : displayLatest ? "DERNIÈRE PANNE SIGNALÉE · PRESSE" : lastEmergency ? "DERNIER SIGNAL D’URGENCE" : "VEILLE DES INCIDENTS"}</b>
+              <strong>{showEmergency && activeEmergency ? incidentLabel(activeEmergency.squawk ?? "") : displayLatest ? latestTechnicalArticle.title : lastEmergency ? incidentLabel(lastEmergency.code) : "Aucun incident connu dans les sources disponibles"}</strong>
+              <small>{showEmergency && activeEmergency
+                ? (activeEmergency.callsign || activeEmergency.registration || activeEmergency.id) + " · " + (activeEmergency.squawk ?? "") + " · détecté le " + alertDate(lastEmergency?.key === activeEmergency.id + "-" + activeEmergency.squawk ? lastEmergency.detectedAt : updatedAt)
+                : displayLatest ? latestTechnicalArticle.source + " · " + alertDate(latestTechnicalArticle.date)
+                : lastEmergency ? lastEmergency.aircraft + " · ADS-B · détecté le " + alertDate(lastEmergency.detectedAt)
+                : "Codes 7700 / 7600 / 7500 · pas de panne supposée"}</small>
+            </div>
+          </div>
+        </div>
       </section>
-      <footer className="tv-footer"><span>✦ XAVPAC TV · LE MONDE VU DU CIEL</span><span>Destination affichée uniquement lorsqu&apos;elle est identifiée · photographies et vidéos selon disponibilité</span></footer>
     </main>
   );
 }
