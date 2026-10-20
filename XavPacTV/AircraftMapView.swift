@@ -83,6 +83,10 @@ private final class RadarHomeAnnotationView: MKAnnotationView {
 private final class AircraftAnnotationView: MKAnnotationView {
     private let glyphView = UIImageView()
     private let haloView = UIView()
+    // Numéro identique au podium : 1 or, 2 cyan, 3 violet.
+    // L'étiquette désigne uniquement le vrai aéronef mis en avant.
+    private let rankBadge = UILabel()
+    private let followedLabel = UILabel()
 
     override init(annotation: MKAnnotation?, reuseIdentifier: String?) {
         super.init(annotation: annotation, reuseIdentifier: reuseIdentifier)
@@ -96,7 +100,31 @@ private final class AircraftAnnotationView: MKAnnotationView {
         glyphView.layer.shadowOffset = .zero
         addSubview(glyphView)
 
+        rankBadge.textAlignment = .center
+        rankBadge.font = .systemFont(ofSize: 21, weight: .black)
+        rankBadge.layer.borderColor = UIColor.white.cgColor
+        rankBadge.layer.borderWidth = 2.5
+        rankBadge.layer.shadowColor = UIColor.black.cgColor
+        rankBadge.layer.shadowOpacity = 0.35
+        rankBadge.layer.shadowRadius = 5
+        rankBadge.layer.shadowOffset = CGSize(width: 0, height: 3)
+        rankBadge.isUserInteractionEnabled = false
+        addSubview(rankBadge)
 
+        followedLabel.text = "AVION SUIVI"
+        followedLabel.font = .systemFont(ofSize: 15, weight: .heavy)
+        followedLabel.textAlignment = .center
+        followedLabel.textColor = .white
+        followedLabel.layer.cornerRadius = 11
+        followedLabel.layer.borderWidth = 1.5
+        followedLabel.layer.borderColor = UIColor.white.cgColor
+        followedLabel.layer.shadowColor = UIColor.black.cgColor
+        followedLabel.layer.shadowOpacity = 0.28
+        followedLabel.layer.shadowRadius = 6
+        followedLabel.layer.shadowOffset = CGSize(width: 0, height: 3)
+        followedLabel.clipsToBounds = false
+        followedLabel.isUserInteractionEnabled = false
+        addSubview(followedLabel)
     }
 
     required init?(coder: NSCoder) {
@@ -111,6 +139,11 @@ private final class AircraftAnnotationView: MKAnnotationView {
 
         haloView.layer.removeAllAnimations()
         glyphView.layer.removeAllAnimations()
+        rankBadge.layer.removeAllAnimations()
+        followedLabel.layer.removeAllAnimations()
+        haloView.layer.borderWidth = 0
+        haloView.layer.shadowOpacity = 0
+        haloView.layer.shadowRadius = 0
 
         let tint: UIColor
         if item.profile.isPriorityTraffic {
@@ -147,6 +180,22 @@ private final class AircraftAnnotationView: MKAnnotationView {
 
         glyphView.layer.shadowColor = tint.cgColor
 
+        // Le numéro reste lisible sur tous les types d'avions, même pour
+        // un hélicoptère prioritaire dont la silhouette conserve son orange/rouge.
+        let rankColor: UIColor
+        switch item.approachRank {
+        case 1: rankColor = UIColor(red: 1.0, green: 0.76, blue: 0.20, alpha: 1)
+        case 2: rankColor = UIColor(red: 0.08, green: 0.72, blue: 0.99, alpha: 1)
+        case 3: rankColor = UIColor(red: 0.69, green: 0.39, blue: 1.0, alpha: 1)
+        default: rankColor = UIColor(red: 0.02, green: 0.57, blue: 0.84, alpha: 1)
+        }
+        rankBadge.isHidden = item.approachRank == nil
+        rankBadge.text = item.approachRank.map(String.init)
+        rankBadge.backgroundColor = rankColor
+        rankBadge.textColor = item.approachRank == 1 ? UIColor(red: 0.12, green: 0.20, blue: 0.34, alpha: 1) : .white
+        followedLabel.isHidden = !item.isSelected
+        followedLabel.backgroundColor = UIColor(red: 0.02, green: 0.28, blue: 0.49, alpha: 0.97)
+
         if let track = item.aircraft.trueTrack {
             let angle: CGFloat
             if item.profile.isRotorcraft {
@@ -180,8 +229,16 @@ private final class AircraftAnnotationView: MKAnnotationView {
             )
             centerOffset = .zero
 
+            let badgeSize: CGFloat = 38
+            rankBadge.frame = CGRect(x: size * 0.5 + 15, y: -9,
+                                     width: badgeSize, height: badgeSize)
+            rankBadge.layer.cornerRadius = badgeSize / 2
+            followedLabel.frame = CGRect(x: (size - 148) / 2, y: size - 4,
+                                         width: 148, height: 33)
             if item.profile.isPriorityTraffic {
                 addPriorityPulse(color: tint)
+            } else {
+                addFeaturedPulse(color: rankColor)
             }
         } else {
             let viewSize = max(56, 62 * scale)
@@ -197,10 +254,40 @@ private final class AircraftAnnotationView: MKAnnotationView {
             glyphView.frame = bounds.insetBy(dx: inset, dy: inset)
             centerOffset = .zero
 
+            let badgeSize: CGFloat = 33
+            rankBadge.frame = CGRect(x: viewSize * 0.5 + 9, y: -5,
+                                     width: badgeSize, height: badgeSize)
+            rankBadge.layer.cornerRadius = badgeSize / 2
+            followedLabel.frame = .zero
             if item.profile.isPriorityTraffic {
                 addPriorityPulse(color: tint)
             }
         }
+    }
+
+    private func addFeaturedPulse(color: UIColor) {
+        haloView.layer.borderWidth = 3.0
+        haloView.layer.borderColor = color.withAlphaComponent(0.92).cgColor
+        haloView.layer.shadowColor = color.cgColor
+        haloView.layer.shadowOpacity = 0.72
+        haloView.layer.shadowRadius = 19
+        haloView.layer.shadowOffset = .zero
+
+        let breathe = CABasicAnimation(keyPath: "transform.scale")
+        breathe.fromValue = 0.92
+        breathe.toValue = 1.15
+        breathe.duration = 1.7
+        breathe.autoreverses = true
+        breathe.repeatCount = .infinity
+        haloView.layer.add(breathe, forKey: "featuredBreathe")
+
+        let shine = CABasicAnimation(keyPath: "opacity")
+        shine.fromValue = 0.40
+        shine.toValue = 1.0
+        shine.duration = 1.7
+        shine.autoreverses = true
+        shine.repeatCount = .infinity
+        haloView.layer.add(shine, forKey: "featuredShine")
     }
 
     private func addPriorityPulse(color: UIColor) {
