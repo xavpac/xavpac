@@ -109,6 +109,7 @@ private final class AircraftAnnotationView: MKAnnotationView {
         rankBadge.layer.shadowRadius = 5
         rankBadge.layer.shadowOffset = CGSize(width: 0, height: 3)
         rankBadge.isUserInteractionEnabled = false
+        rankBadge.clipsToBounds = true
         addSubview(rankBadge)
 
         followedLabel.text = "AVION SUIVI"
@@ -122,7 +123,7 @@ private final class AircraftAnnotationView: MKAnnotationView {
         followedLabel.layer.shadowOpacity = 0.28
         followedLabel.layer.shadowRadius = 6
         followedLabel.layer.shadowOffset = CGSize(width: 0, height: 3)
-        followedLabel.clipsToBounds = false
+        followedLabel.clipsToBounds = true
         followedLabel.isUserInteractionEnabled = false
         addSubview(followedLabel)
     }
@@ -190,11 +191,12 @@ private final class AircraftAnnotationView: MKAnnotationView {
         default: rankColor = UIColor(red: 0.02, green: 0.57, blue: 0.84, alpha: 1)
         }
         rankBadge.isHidden = item.approachRank == nil
-        rankBadge.text = item.approachRank.map(String.init)
+        rankBadge.text = item.approachRank.map { String($0) }
         rankBadge.backgroundColor = rankColor
         rankBadge.textColor = item.approachRank == 1 ? UIColor(red: 0.12, green: 0.20, blue: 0.34, alpha: 1) : .white
         followedLabel.isHidden = !item.isSelected
         followedLabel.backgroundColor = UIColor(red: 0.02, green: 0.28, blue: 0.49, alpha: 0.97)
+        followedLabel.layer.borderColor = rankColor.cgColor
 
         if let track = item.aircraft.trueTrack {
             let angle: CGFloat
