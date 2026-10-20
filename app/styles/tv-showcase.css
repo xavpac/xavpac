@@ -23,3 +23,66 @@
 @media(max-width:950px){.tv-main{grid-template-columns:1fr}.tv-map-wrap{min-height:430px}.tv-media-screen{min-height:390px}.tv-bottom{grid-template-columns:1fr}.tv-flight-cards{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:650px){.xavpac-tv{padding:12px 11px}.tv-brand-symbol{height:45px;width:45px;font-size:27px;border-radius:15px}.tv-brand strong{font-size:23px}.tv-brand small{font-size:7px}.tv-livebar{flex-direction:column;gap:6px;align-items:flex-end}.tv-signal{padding:7px 9px;font-size:8px}.tv-utc{font-size:14px}.tv-panel-head h1{font-size:21px}.tv-main{gap:11px}.tv-map-wrap{min-height:330px}.tv-media-screen{min-height:330px}.tv-flight-cards{grid-template-columns:1fr}.tv-flight-card{min-height:82px}.tv-bottom{gap:4px}.tv-story-strip{grid-template-columns:1.3fr 1fr 1fr}.tv-story-strip>div{padding:9px 6px}.tv-story-strip strong{font-size:12px}.tv-footer{flex-direction:column}.tv-priority-alert{gap:8px;flex-wrap:wrap}.tv-priority-alert>span:nth-of-type(2){flex:1}}
 @media(prefers-reduced-motion:reduce){.xavpac-tv *, .xavpac-tv *:before,.xavpac-tv *:after{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+
+
+/* SKY SHOW 20/10 : grande carte + deux cartes avion + double alerte, sans bandeau de presse */
+@media (min-width: 1051px) {
+ .xavpac-tv {height:100vh;min-height:0;display:flex;flex-direction:column;padding:10px clamp(12px,1.15vw,24px) 12px}
+ .tv-topbar {flex:0 0 62px;padding:0 0 9px;min-height:0}
+ .tv-brand-symbol {height:46px;width:46px;font-size:29px;border-radius:13px}
+ .tv-brand strong {font-size:clamp(23px,1.8vw,33px)}
+ .tv-main {flex:1 1 auto;min-height:0;grid-template-columns:minmax(0,1.55fr) minmax(0,1fr);gap:12px}
+ .tv-map-panel,.tv-destination-panel {min-height:0;height:100%;padding:12px;border-radius:18px}
+ .tv-panel-head {margin-bottom:9px}
+ .tv-panel-head h1 {font-size:clamp(21px,1.5vw,31px);margin:3px 0}
+ .tv-map-wrap,.tv-media-screen {min-height:0!important;flex:1;overflow:hidden}
+ .tv-map-footer {padding-top:6px}
+ .tv-media-head {margin-bottom:9px}
+ .tv-story-strip {margin-top:8px}
+ .tv-story-strip>div {padding:8px 10px}
+ .tv-media-credit {margin-top:5px;min-height:10px}
+ .tv-bottom {flex:0 0 clamp(140px,15.5vh,180px);min-height:0;display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr);gap:12px;margin-top:10px}
+ .tv-flight-cards {min-height:0;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+ .tv-flight-card {height:100%;min-height:0;border-radius:18px;padding:15px 13px;gap:10px}
+ .tv-flight-card-main strong {font-size:clamp(15px,1.14vw,24px)}
+ .tv-flight-card-distance {font-size:clamp(15px,1.15vw,26px)}
+ .tv-alert-stack {display:grid;grid-template-rows:1fr 1.25fr;gap:7px;min-height:0}
+ .tv-status-priority,.tv-incident-card {display:flex;align-items:center;gap:10px;min-height:0;min-width:0;padding:6px 13px;border-radius:15px;overflow:hidden}
+ .tv-status-priority>span,.tv-incident-icon {flex:none;font-size:23px;line-height:1}
+ .tv-status-priority>div,.tv-incident-card>div {min-width:0;display:flex;flex-direction:column;gap:2px}
+ .tv-status-priority {border:1px solid #b6dfef;background:linear-gradient(120deg,#e9f8ff,#fff);color:#175478}
+ .tv-status-priority.is-active {background:linear-gradient(120deg,#fff2dc,#ffd39d);color:#7e3811;border:2px solid #ff962f;animation:tv-alert-breathe 2.1s ease infinite}
+ .tv-incident-card {color:white;border:1px solid #f3b65e;background:linear-gradient(105deg,#132842,#553323)}
+ .tv-incident-card.is-live {border:2px solid #ff4f4f;background:linear-gradient(120deg,#38202d,#8e2130);animation:tv-alert-breathe 2.1s ease infinite}
+ .tv-status-priority b,.tv-incident-card b {display:block;letter-spacing:.05em;font-weight:950;font-size:clamp(10px,.73vw,15px)}
+ .tv-status-priority strong,.tv-incident-card strong {display:block;font-weight:900;font-size:clamp(11px,.85vw,18px);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+ .tv-status-priority small,.tv-incident-card small {display:block;font-size:clamp(9px,.64vw,13px);overflow:hidden;white-space:nowrap;text-overflow:ellipsis;opacity:.86}
+ .tv-flight-card-index {position:absolute;right:8px;top:5px;font-size:clamp(8px,.62vw,12px);letter-spacing:.08em}
+ .tv-rank-card-2 {border:2px solid #19baf2}
+ .tv-rank-card-3 {border:2px solid #ae69ff}
+}
+.xavpac-tv .xavpac-silhouette-marker {position:relative;overflow:visible!important}
+.xavpac-tv .tv-map-rank {position:absolute;z-index:5;top:-14px;right:-11px;display:grid;place-items:center;border:2px solid white;border-radius:50%;height:32px;width:32px;font-size:18px;font-weight:950;line-height:1;color:white;box-shadow:0 2px 12px #102c4c8a}
+.xavpac-tv .tv-map-rank-1 {background:#e5a616;color:#142941}
+.xavpac-tv .tv-map-rank-2 {background:#00a9eb}
+.xavpac-tv .tv-map-rank-3 {background:#944ce5}
+.tv-alert-stack {min-width:0}
+@media (max-width:1050px) {
+ .tv-bottom {display:flex;flex-direction:column;gap:10px}
+ .tv-flight-cards {grid-template-columns:repeat(2,minmax(0,1fr))}
+ .tv-alert-stack {display:grid;grid-template-columns:1fr 1fr;gap:10px}
+ .tv-status-priority,.tv-incident-card {min-width:0;min-height:95px;display:flex;align-items:center;gap:10px;padding:12px;border:1px solid #d8e7f0;border-radius:16px;background:#f4fbff}
+ .tv-status-priority>span,.tv-incident-icon {font-size:26px}
+ .tv-status-priority>div,.tv-incident-card>div {min-width:0;display:grid;gap:3px}
+ .tv-status-priority b,.tv-incident-card b {font-size:12px;font-weight:950}
+ .tv-status-priority strong,.tv-incident-card strong {font-size:15px}
+ .tv-status-priority small,.tv-incident-card small {font-size:11px}
+ .tv-incident-card {background:#38212c;color:white}
+ .tv-status-priority.is-active {background:#fff2d2;color:#783812}
+ .tv-rank-card-2 {border:2px solid #19baf2}
+ .tv-rank-card-3 {border:2px solid #ae69ff}
+}
+@media (max-width:650px) {
+ .tv-flight-cards,.tv-alert-stack {grid-template-columns:1fr}
+ .tv-status-priority,.tv-incident-card {min-height:94px}
+}
