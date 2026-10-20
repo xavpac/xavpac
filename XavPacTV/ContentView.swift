@@ -2605,12 +2605,21 @@ private final class AmbientSoundscape: ObservableObject {
     }
 
     func playPriorityAlert() {
+        playAlert(emergency: false)
+    }
+
+    func playEmergencyAlert() {
+        // Son distinct des moyens prioritaires ; la playlist MusicKit reste intacte.
+        playAlert(emergency: true)
+    }
+
+    private func playAlert(emergency: Bool) {
         if !configured {
             prepareAlertsOnly()
         }
 
         guard let format = audioFormat,
-              let alertBuffer = makePriorityAlertBuffer(format: format) else {
+              let alertBuffer = makePriorityAlertBuffer(format: format, emergency: emergency) else {
             return
         }
 
@@ -2620,14 +2629,14 @@ private final class AmbientSoundscape: ObservableObject {
             }
             alertPlayer.stop()
             alertPlayer.scheduleBuffer(alertBuffer, at: nil, options: [])
-            alertPlayer.volume = 0.42
+            alertPlayer.volume = emergency ? 0.54 : 0.42
             alertPlayer.play()
         } catch {
             // L'alerte visuelle reste active même si la sortie audio est indisponible.
         }
     }
 
-    private func makePriorityAlertBuffer(format: AVAudioFormat) -> AVAudioPCMBuffer? {
+    private func makePriorityAlertBuffer(format: AVAudioFormat, emergency: Bool) -> AVAudioPCMBuffer? {
         let duration = 0.72
         let sampleRate = format.sampleRate
         let frameCount = AVAudioFrameCount(sampleRate * duration)
@@ -2645,7 +2654,9 @@ private final class AmbientSoundscape: ObservableObject {
         for frame in 0..<Int(frameCount) {
             let time = Double(frame) / sampleRate
             let firstTone = time < 0.28
-            let frequency = firstTone ? 880.0 : 1_175.0
+            let frequency = emergency
+                ? (firstTone ? 700.0 : 525.0)
+                : (firstTone ? 880.0 : 1_175.0)
             let phaseTime = firstTone ? time : time - 0.28
             let attack = min(1.0, phaseTime / 0.025)
             let releaseStart = firstTone ? 0.22 : 0.62
