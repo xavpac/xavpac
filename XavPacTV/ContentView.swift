@@ -29,6 +29,23 @@ struct ContentView: View {
         return service.trafficProfile(for: featuredAircraft)
     }
 
+    // Même numéro sur la fiche et sur la position réelle de l'avion dans la carte.
+    // Le vol présenté peut être le n° 2 ou le n° 3 si sa destination est connue.
+    private var followedRank: Int? {
+        guard let featuredAircraft else { return nil }
+        return service.aircraft.prefix(3).firstIndex(where: { $0.id == featuredAircraft.id })
+            .map { $0 + 1 }
+    }
+
+    private var followedRankColor: Color {
+        switch followedRank {
+        case 1: return Color(red: 1.0, green: 0.76, blue: 0.20)
+        case 2: return Color(red: 0.08, green: 0.72, blue: 0.99)
+        case 3: return Color(red: 0.69, green: 0.39, blue: 1.0)
+        default: return Color(red: 0.02, green: 0.57, blue: 0.84)
+        }
+    }
+
     // Conserver les moyens nationaux en alerte pendant les escales vidéo.
     private var priorityAircraft: Aircraft? {
         service.specialAircraftInZone.first
@@ -331,9 +348,21 @@ struct ContentView: View {
                 .frame(width: 170, height: 79)
                 .clipped()
                 .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(alignment: .topLeading) {
+                    if let rank = followedRank {
+                        Text(String(rank))
+                            .font(.system(size: 24, weight: .black, design: .rounded))
+                            .foregroundStyle(rank == 1 ? Color(red: 0.12, green: 0.20, blue: 0.34) : .white)
+                            .frame(width: 43, height: 43)
+                            .background(followedRankColor, in: Circle())
+                            .overlay(Circle().stroke(Color.white, lineWidth: 3))
+                            .shadow(color: followedRankColor.opacity(0.7), radius: 8)
+                            .padding(5)
+                    }
+                }
                 .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .stroke(Color.white.opacity(0.94), lineWidth: 2))
-                .shadow(color: Color(red: 0.10, green: 0.47, blue: 0.68).opacity(0.17), radius: 8)
+                    .stroke(followedRankColor.opacity(0.96), lineWidth: 3))
+                .shadow(color: followedRankColor.opacity(0.42), radius: 12)
 
                 Group {
                     if let logo = details?.logoURL {
@@ -364,6 +393,16 @@ struct ContentView: View {
                         .foregroundStyle(Color(red: 0.24, green: 0.43, blue: 0.59))
                         .lineLimit(1)
                         .minimumScaleFactor(0.72)
+                    if let rank = followedRank {
+                        HStack(spacing: 7) {
+                            Image(systemName: "scope")
+                            Text("AVION SUIVI · REPÈRE " + String(rank) + " SUR LA CARTE")
+                        }
+                        .font(.system(size: 15, weight: .heavy, design: .rounded))
+                        .foregroundStyle(Color(red: 0.02, green: 0.37, blue: 0.58))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.70)
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -418,8 +457,34 @@ struct ContentView: View {
                 profiles: trafficProfiles,
                 routes: trafficRoutes
             )
-            .overlay(alignment: .bottomLeading) {
-                EmptyView()
+            .overlay(alignment: .bottomTrailing) {
+                if let aircraft = featuredAircraft, let rank = followedRank {
+                    HStack(spacing: 9) {
+                        Text(String(rank))
+                            .foregroundStyle(rank == 1
+                                ? Color(red: 0.12, green: 0.20, blue: 0.34) : .white)
+                            .font(.system(size: 23, weight: .black))
+                            .frame(width: 42, height: 42)
+                            .background(followedRankColor, in: Circle())
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("AVION SUIVI SUR LA CARTE")
+                                .font(.system(size: 14, weight: .black))
+                                .tracking(1)
+                            Text(aircraft.displayName)
+                                .font(.system(size: 22, weight: .heavy, design: .rounded))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
+                        }
+                        .foregroundStyle(Color(red: 0.07, green: 0.28, blue: 0.45))
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 9)
+                    .background(Color.white.opacity(0.96), in: RoundedRectangle(cornerRadius: 17))
+                    .overlay(RoundedRectangle(cornerRadius: 17)
+                        .stroke(followedRankColor, lineWidth: 2.5))
+                    .shadow(color: followedRankColor.opacity(0.3), radius: 13)
+                    .padding(19)
+                }
             }
 
             HStack(spacing: 12) {
