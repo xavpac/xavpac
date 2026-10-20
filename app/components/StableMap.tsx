@@ -26,6 +26,8 @@ export type MapPoint = {
   color?: string;
   category?: "home" | "weather" | "commercial" | "military" | "light" | "aircraft" | "helicopter" | "warning" | string;
   heading?: number | null;
+  // Optional TV-only podium number, tied to the real aircraft position.
+  rank?: 1 | 2 | 3;
   weatherIcon?: string;
   temperature?: number | null;
   thumbnailUrl?: string | null;
@@ -353,7 +355,7 @@ function operationalIcon(point: MapPoint, selected: boolean, faded: boolean, lab
   const label = labelMode === "none" ? "" : `<div class="xavpac-silhouette-label"><strong>${escapeHtml(point.name)}</strong>${labelMode === "detail" ? `<span>${escapeHtml(labels[category] ?? labels.unknown)}</span>` : ""}</div>`;
   return L.divIcon({
     className: "xavpac-map-icon-root",
-    html: `<div class="xavpac-silhouette-marker is-operational ${selected ? "is-selected" : ""} ${faded ? "is-faded" : ""}" style="--aircraft-color:${color}"><span class="xavpac-marker-accessible-name">${escapeHtml(point.name)}</span><div class="xavpac-silhouette-svg" aria-hidden="true">${aircraftSvg(color, point.heading ?? 0, category)}</div>${label}</div>`,
+    html: `<div class="xavpac-silhouette-marker is-operational ${selected ? "is-selected" : ""} ${faded ? "is-faded" : ""}" style="--aircraft-color:${color}"><span class="xavpac-marker-accessible-name">${escapeHtml(point.name)}</span><div class="xavpac-silhouette-svg" aria-hidden="true">${aircraftSvg(color, point.heading ?? 0, category)}</div>${point.rank ? `<span class="tv-map-rank tv-map-rank-${point.rank}">${point.rank}</span>` : ""}${label}</div>`,
     iconSize: [48, 48],
     iconAnchor: [24, 24],
     popupAnchor: [0, -25]
@@ -385,7 +387,7 @@ function pointIcon(point: MapPoint, selected: boolean, faded: boolean, labelMode
 
   return L.divIcon({
     className: "xavpac-map-icon-root",
-    html: `<div class="xavpac-silhouette-marker ${selected ? "is-selected" : ""} ${point.category === "remarkable" ? "is-remarkable" : ""} ${faded ? "is-faded" : ""}" style="--aircraft-color:${color}"><span class="xavpac-marker-accessible-name">${escapeHtml(point.name || "ADS-B")}</span><div class="xavpac-silhouette-svg" aria-hidden="true">${aircraftSvg(color, heading, point.category)}</div>${label}</div>`,
+    html: `<div class="xavpac-silhouette-marker ${selected ? "is-selected" : ""} ${point.category === "remarkable" ? "is-remarkable" : ""} ${faded ? "is-faded" : ""}" style="--aircraft-color:${color}"><span class="xavpac-marker-accessible-name">${escapeHtml(point.name || "ADS-B")}</span><div class="xavpac-silhouette-svg" aria-hidden="true">${aircraftSvg(color, heading, point.category)}</div>${point.rank ? `<span class="tv-map-rank tv-map-rank-${point.rank}">${point.rank}</span>` : ""}${label}</div>`,
     iconSize: [48, 48],
     iconAnchor: [24, 24],
     popupAnchor: [0, -25]
