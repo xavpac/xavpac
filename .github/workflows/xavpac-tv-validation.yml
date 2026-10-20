@@ -9,17 +9,41 @@ on:
     paths:
       - "XavPacTV/**"
       - "XavPacTV.xcodeproj/**"
+      - "app/components/tv/**"
+      - "app/components/StableMap.tsx"
+      - "app/styles/tv-showcase.css"
       - ".github/workflows/xavpac-tv-validation.yml"
   pull_request:
     paths:
       - "XavPacTV/**"
       - "XavPacTV.xcodeproj/**"
+      - "app/components/tv/**"
+      - "app/components/StableMap.tsx"
+      - "app/styles/tv-showcase.css"
       - ".github/workflows/xavpac-tv-validation.yml"
 
 permissions:
   contents: read
 
 jobs:
+  validate-web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Récupère le projet Web
+        uses: actions/checkout@v4
+      - name: Installe Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Installe les dépendances
+        run: npm ci --no-audit --no-fund
+      - name: Vérifie TypeScript
+        run: npm run typecheck
+      - name: Compile la version Vercel
+        run: npm run build
+
   build-tvos:
     runs-on: macos-15
     timeout-minutes: 30
