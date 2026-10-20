@@ -494,25 +494,37 @@ struct ContentView: View {
             && (latestTechnicalArticle == nil || Int(displayClock.timeIntervalSince1970 / 9) % 2 == 0)
         let article = latestTechnicalArticle
         let prior = lastEmergency
-        let heading = showLive ? "🚨 ALERTE EN TEMPS RÉEL"
-            : article != nil ? "⚠ DERNIÈRE PANNE SIGNALÉE · PRESSE"
-            : prior != nil ? "⚠ DERNIÈRE URGENCE OBSERVÉE"
-            : "✓ SURVEILLANCE DES URGENCES"
-        let title = showLive
-            ? emergencyTitle(emergency?.squawk ?? "")
-            : article?.title ?? (prior.map { "Code " + $0.code + " · " + $0.aircraft }
-                ?? "Aucun incident connu dans les données disponibles")
-        let source = showLive
-            ? (emergency?.displayName ?? "Vol inconnu") + " · code " + (emergency?.squawk ?? "—")
-            : article.map { $0.source + " · " + $0.dateLabel }
-                ?? prior.map {
-                    "ADS-B · détecté le " + $0.detectedAt.formatted(.dateTime.day().month().year().hour().minute())
-                } ?? "ADS-B · couverture partielle"
-        let date = showLive
-            ? (prior?.key == activeEmergencyKey
-                ? prior?.detectedAt.formatted(.dateTime.day().month().year().hour().minute())
-                : nil)
-            : nil
+        let heading: String
+        let title: String
+        let source: String
+        let date: String?
+
+        if showLive {
+            heading = "🚨 ALERTE EN TEMPS RÉEL"
+            title = emergencyTitle(emergency?.squawk ?? "")
+            source = (emergency?.displayName ?? "Vol inconnu") + " · code " + (emergency?.squawk ?? "—")
+            if let observation = prior, observation.key == activeEmergencyKey {
+                date = observation.detectedAt.formatted(.dateTime.day().month().year().hour().minute())
+            } else {
+                date = nil
+            }
+        } else if let article = article {
+            heading = "⚠ DERNIÈRE PANNE SIGNALÉE · PRESSE"
+            title = article.title
+            source = article.source + " · " + article.dateLabel
+            date = nil
+        } else if let observation = prior {
+            heading = "⚠ DERNIÈRE URGENCE OBSERVÉE"
+            title = "Code " + observation.code + " · " + observation.aircraft
+            source = "ADS-B · détecté le "
+                + observation.detectedAt.formatted(.dateTime.day().month().year().hour().minute())
+            date = nil
+        } else {
+            heading = "✓ SURVEILLANCE DES URGENCES"
+            title = "Aucun incident connu dans les données disponibles"
+            source = "ADS-B · couverture partielle"
+            date = nil
+        }
 
         return HStack(spacing: 12) {
             Image(systemName: showLive ? "exclamationmark.triangle.fill"
