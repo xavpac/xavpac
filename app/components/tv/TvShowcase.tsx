@@ -206,7 +206,7 @@ export default function TvShowcase() {
 
   const nearbyAlert = useMemo(() => traffic
     .map((item) => ({ item, priority: specialLabel(item, enriched[item.id.replace(/^~/, "").toUpperCase()]) }))
-    .find(({ priority }) => priority !== null && (item.positionAgeSeconds ?? 0) < 90) ?? null, [traffic, enriched]);
+    .find(({ item, priority }) => priority !== null && (item.positionAgeSeconds ?? 0) < 90) ?? null, [traffic, enriched]);
 
   useEffect(() => {
     if (!feedFresh) return;
