@@ -36,13 +36,16 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
+      - name: Installe pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.13.1
       - name: Installe les dépendances
-        run: npm ci --no-audit --no-fund
+        run: pnpm install --frozen-lockfile
       - name: Vérifie TypeScript
-        run: npm run typecheck
+        run: pnpm run typecheck
       - name: Compile la version Vercel
-        run: npm run build
+        run: pnpm run build
 
   build-tvos:
     runs-on: macos-15
