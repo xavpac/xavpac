@@ -12,6 +12,16 @@ struct ContentView: View {
     @StateObject private var appleMusicSoundtrack = AppleMusicSoundtrack()
     @StateObject private var aviationTicker = AviationTickerService()
     @State private var displayClock = Date()
+    @State private var lastEmergency: ObservedEmergency?
+
+    // Heure de première observation locale : ne pas confondre avec l'heure
+    // de survenue réelle de l'évènement aéronautique.
+    private struct ObservedEmergency {
+        let key: String
+        let code: String
+        let aircraft: String
+        let detectedAt: Date
+    }
 
     private let navy = Color(red: 0.018, green: 0.075, blue: 0.16)
     private let deepBlue = Color(red: 0.02, green: 0.16, blue: 0.31)
@@ -127,10 +137,47 @@ struct ContentView: View {
     }
 
     private var priorityAlertKey: String {
-        // Ne pas interrompre l'ambiance pour un simple hélicoptère privé.
-        guard let aircraft = priorityAircraft else { return "none" }
+        // L'alerte concerne une position ADS-B fraîche et un moyen identifié.
+        guard radarIsLive, let aircraft = priorityAircraft,
+              (aircraft.positionAgeSeconds ?? 0) < 90 else { return "none" }
         let kind = service.trafficProfile(for: aircraft).kind
         return kind == .helicopter ? "none" : aircraft.id
+    }
+
+    private var activeEmergency: Aircraft? {
+        guard radarIsLive else { return nil }
+        return service.aircraft.first {
+            ["7700", "7600", "7500"].contains($0.squawk ?? "")
+                && ($0.positionAgeSeconds ?? 0) < 90
+        }
+    }
+
+    private var activeEmergencyKey: String {
+        guard let aircraft = activeEmergency else { return "none" }
+        return aircraft.id + "-" + (aircraft.squawk ?? "")
+    }
+
+    private var latestTechnicalArticle: AviationTickerService.Article? {
+        // Il s'agit d'articles de presse : les titres ne prouvent pas une panne.
+        // On ne présente aucun évènement fictif si le flux n'en fournit pas.
+        aviationTicker.news
+            .filter {
+                $0.title.range(
+                    of: "panne|avarie|problème technique|probleme technique|incident technique|pressurisation|dépressurisation|depressurisation|panne moteur",
+                    options: [.regularExpression, .caseInsensitive]
+                ) != nil
+            }
+            .sorted { $0.date > $1.date }
+            .first
+    }
+
+    private func emergencyTitle(_ code: String) -> String {
+        switch code {
+        case "7700": return "URGENCE TRANSPONDEUR · CAUSE NON CONFIRMÉE"
+        case "7600": return "DÉFAILLANCE RADIO SIGNALÉE"
+        case "7500": return "CODE D'INTERVENTION ILLICITE"
+        default: return "CODE D'URGENCE SIGNALÉ"
+        }
     }
 
     // Mode cinéma tvOS : tout doit rester lisible depuis la table, à plusieurs mètres.
@@ -153,14 +200,16 @@ struct ContentView: View {
 
                     HStack(spacing: 14) {
                         cinemaTwoClosest
-                            .frame(width: contentWidth * 0.645, height: 190)
-                        cinemaPriorityStatus
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .frame(width: contentWidth * 0.58, height: 190)
+                        VStack(spacing: 9) {
+                            cinemaPriorityStatus
+                                .frame(height: 87)
+                            cinemaIncidentPanel
+                                .frame(height: 94)
+                        }
+                        .frame(maxWidth: .infinity)
                     }
                     .frame(height: 190)
-
-                    cinemaGlobalTicker
-                        .frame(height: 91)
                 }
                 .padding(.horizontal, 30)
                 .padding(.vertical, 20)
@@ -236,6 +285,18 @@ struct ContentView: View {
             guard priorityAlertKey != "none" else { return }
             soundscape.playPriorityAlert()
         }
+        .task(id: activeEmergencyKey) {
+            guard let aircraft = activeEmergency,
+                  let code = aircraft.squawk else { return }
+            guard lastEmergency?.key != activeEmergencyKey else { return }
+            lastEmergency = ObservedEmergency(
+                key: activeEmergencyKey,
+                code: code,
+                aircraft: aircraft.displayName,
+                detectedAt: Date()
+            )
+            soundscape.playEmergencyAlert()
+        }
         .task {
             // Information aéronautique provenant de la presse (jamais de
             // fausses alertes 7700/7600/7500 attribuées à des vols).
@@ -247,10 +308,8 @@ struct ContentView: View {
         }
     }
 
-    // Nouvelle composition visiblement différente de la V4 :
-    // 1 : carte grand format, informations dans ses quatre coins ;
-    // 2 et 3 : deux fiches en-dessous ;
-    // 3 : bandeau mondial au bas de la télévision.
+    // Carte agrandie : suppression de l'ancien bandeau presse inférieur.
+    // Avions 2/3 identifiés ici et sur la carte ; alertes regroupées en bas à droite.
     private var cinemaSkyStage: some View {
         GeometryReader { geometry in
             let width = geometry.size.width
@@ -285,16 +344,8 @@ struct ContentView: View {
                         cinemaSkyIdentity
                             .frame(width: width * 0.415, height: min(190, height * 0.34))
                         Spacer(minLength: 20)
-                        Group {
-                            if radarIsLive, let special = priorityAircraft {
-                                cinemaPrioritySpotlight(special)
-                                    .id(special.id)
-                            } else {
-                                cinemaDestination
-                            }
-                        }
-                        .frame(width: width * 0.34, height: height * 0.57)
-                        .animation(.easeInOut(duration: 0.45), value: radarIsLive ? priorityAlertKey : "none")
+                        cinemaDestination
+                            .frame(width: width * 0.38, height: height * 0.59)
                     }
 
                     Spacer(minLength: 15)
@@ -434,74 +485,73 @@ struct ContentView: View {
         .frame(maxWidth: .infinity)
     }
 
-    private var cinemaGlobalTicker: some View {
-        HStack(spacing: 14) {
-            Image(systemName: "globe.europe.africa.fill")
-                .font(.system(size: 36, weight: .heavy))
-                .foregroundStyle(.white)
-            VStack(alignment: .leading, spacing: 1) {
-                Text("SITUATIONS AÉRIENNES")
-                    .font(.system(size: 18, weight: .black))
-                Text("DANS LE MONDE · PRESSE")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.72))
-            }
-            .frame(width: 265, alignment: .leading)
+    // La veille de presse reste disponible au service AviationTickerService.
+    // À l'écran : les seules remontées affichées concernent les incidents.
+    private var cinemaIncidentPanel: some View {
+        let emergency = activeEmergency
+        let isLive = emergency != nil
+        let showLive = isLive
+            && (latestTechnicalArticle == nil || Int(displayClock.timeIntervalSince1970 / 9) % 2 == 0)
+        let article = latestTechnicalArticle
+        let prior = lastEmergency
+        let heading = showLive ? "🚨 ALERTE EN TEMPS RÉEL"
+            : article != nil ? "⚠ DERNIÈRE PANNE SIGNALÉE · PRESSE"
+            : prior != nil ? "⚠ DERNIÈRE URGENCE OBSERVÉE"
+            : "✓ SURVEILLANCE DES URGENCES"
+        let title = showLive
+            ? emergencyTitle(emergency?.squawk ?? "")
+            : article?.title ?? (prior.map { "Code " + $0.code + " · " + $0.aircraft }
+                ?? "Aucun incident connu dans les données disponibles")
+        let source = showLive
+            ? (emergency?.displayName ?? "Vol inconnu") + " · code " + (emergency?.squawk ?? "—")
+            : article.map { $0.source + " · " + $0.dateLabel }
+                ?? prior.map {
+                    "ADS-B · détecté le " + $0.detectedAt.formatted(.dateTime.day().month().year().hour().minute())
+                } ?? "ADS-B · couverture partielle"
+        let date = showLive
+            ? (prior?.key == activeEmergencyKey
+                ? prior?.detectedAt.formatted(.dateTime.day().month().year().hour().minute())
+                : nil)
+            : nil
 
-            Rectangle().fill(.white.opacity(0.35)).frame(width: 2)
-
-            if !aviationTicker.news.isEmpty {
-                let index = Int(displayClock.timeIntervalSince1970 / 12) % aviationTicker.news.count
-                let headline = aviationTicker.news[index]
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(headline.title)
-                        .font(.system(size: 22, weight: .heavy, design: .rounded))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.73)
-                    Text(headline.source + "  ·  " + headline.dateLabel)
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.72))
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            } else {
-                Text("Veille aéronautique en cours · aucun titre récent disponible")
-                    .font(.system(size: 22, weight: .bold))
-                    .frame(maxWidth: .infinity, alignment: .leading)
+        return HStack(spacing: 12) {
+            Image(systemName: showLive ? "exclamationmark.triangle.fill"
+                : article != nil || prior != nil ? "clock.badge.exclamationmark" : "checkmark.shield.fill")
+                .font(.system(size: 27, weight: .black))
+                .foregroundStyle(showLive ? Color.red : Color.orange)
+                .frame(width: 36)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(heading)
+                    .font(.system(size: 14, weight: .black))
+                    .foregroundStyle(showLive ? Color(red: 1, green: 0.42, blue: 0.42) : Color(red: 1, green: 0.76, blue: 0.31))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                Text(title)
+                    .font(.system(size: 16, weight: .heavy))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                Text(source + (date.map { " · détecté le " + $0 } ?? ""))
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.81))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.73)
             }
-
-            Rectangle().fill(.white.opacity(0.35)).frame(width: 2)
-            HStack(spacing: 14) {
-                cinemaSquawk("7700", label: "URGENCE")
-                cinemaSquawk("7600", label: "RADIO")
-                cinemaSquawk("7500", label: "INTERVENTION ILLICITE")
-            }
+            Spacer(minLength: 0)
         }
-        .padding(.horizontal, 24)
+        .padding(.horizontal, 14)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .foregroundStyle(.white)
         .background(
             LinearGradient(
-                colors: [Color(red: 0.46, green: 0.02, blue: 0.10),
-                         Color(red: 0.82, green: 0.06, blue: 0.09),
-                         Color(red: 0.42, green: 0.02, blue: 0.10)],
+                colors: [Color(red: 0.08, green: 0.12, blue: 0.22),
+                         Color(red: showLive ? 0.40 : 0.23, green: 0.07, blue: 0.12)],
                 startPoint: .leading, endPoint: .trailing
             ),
-            in: RoundedRectangle(cornerRadius: 22, style: .continuous)
+            in: RoundedRectangle(cornerRadius: 20, style: .continuous)
         )
-        .overlay(RoundedRectangle(cornerRadius: 22).stroke(Color.red.opacity(0.9), lineWidth: 2.5))
-        .shadow(color: .red.opacity(0.34), radius: 17, y: 5)
-    }
-
-    private func cinemaSquawk(_ code: String, label: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(code)
-                .font(.system(size: 22, weight: .black, design: .rounded))
-                .foregroundStyle(.white)
-            Text(label)
-                .font(.system(size: 12, weight: .heavy))
-                .foregroundStyle(.white.opacity(0.77))
-        }
-        .frame(width: 132, alignment: .leading)
+        .overlay(RoundedRectangle(cornerRadius: 20)
+            .stroke(showLive ? Color.red : Color.orange.opacity(0.65), lineWidth: 2))
+        .modifier(CinemaAlertPulse(isEnabled: showLive))
     }
 
     private var cinemaHeader: some View {
@@ -1357,59 +1407,43 @@ struct ContentView: View {
     // à cet emplacement, même lorsque le vol vedette est un avion de ligne.
     private var cinemaPriorityStatus: some View {
         let counts = specialCounts
-        let active = priorityAircraft != nil
-
-        return HStack(spacing: 17) {
+        let active = radarIsLive && priorityAircraft != nil
+        return HStack(spacing: 11) {
             Image(systemName: priorityProfile?.isRotorcraft == true ? "helicopter" : "cross.case.fill")
-                .font(.system(size: 49, weight: .bold))
-                .frame(width: 61)
-                .foregroundStyle(active ? Color.white : Color(red: 0.01, green: 0.58, blue: 0.80))
-
-            VStack(alignment: .leading, spacing: 7) {
-                Text("MOYENS PRIORITAIRES · SÉCURITÉ CIVILE ET ARMÉE")
-                    .font(.system(size: 26, weight: .black))
+                .font(.system(size: 29, weight: .heavy))
+                .frame(width: 36)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("MOYENS PRIORITAIRES · ALERTE DISTINCTE")
+                    .font(.system(size: 14, weight: .black))
                     .lineLimit(1)
-                    .minimumScaleFactor(0.70)
-
-                if let aircraft = priorityAircraft {
-                    Text("\(service.trafficProfile(for: aircraft).label)  ·  \(aircraft.displayName)  ·  \(distanceText(aircraft))")
-                        .font(.system(size: 22, weight: .bold))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.70)
-                } else {
-                    Text(radarIsLive ? "Aucun moyen prioritaire détecté" : "En attente de données actualisées")
-                        .font(.system(size: 21, weight: .medium))
-                        .lineLimit(1)
-                }
-
-                Text("SÉCURITÉ CIVILE \(counts.civil)   ·   ARMÉE \(counts.military)")
-                    .font(.system(size: 15, weight: .heavy))
+                    .minimumScaleFactor(0.7)
+                Text(active && priorityAircraft != nil
+                     ? (priorityProfile?.label ?? "MOYEN") + " · " + priorityAircraft!.displayName + " · " + distanceText(priorityAircraft!)
+                     : radarIsLive ? "Aucun moyen prioritaire identifié" : "Données radar non actualisées")
+                    .font(.system(size: 15, weight: .bold))
                     .lineLimit(1)
-                    .minimumScaleFactor(0.68)
+                    .minimumScaleFactor(0.7)
+                Text("SÉCURITÉ CIVILE " + String(counts.civil) + " · ARMÉE " + String(counts.military))
+                    .font(.system(size: 11, weight: .semibold))
+                    .lineLimit(1)
             }
             Spacer(minLength: 0)
             Image(systemName: active ? "dot.radiowaves.left.and.right" : "checkmark.shield.fill")
-                .font(.system(size: 29, weight: .bold))
+                .font(.system(size: 23, weight: .bold))
         }
-        .padding(.horizontal, 19)
+        .padding(.horizontal, 13)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .foregroundStyle(active ? Color.white : Color(red: 0.08, green: 0.37, blue: 0.55))
+        .foregroundStyle(active ? .white : Color(red: 0.08, green: 0.37, blue: 0.55))
         .background(
             LinearGradient(
-                colors: active
-                    ? [Color(red: 0.84, green: 0.19, blue: 0.26), Color(red: 0.22, green: 0.18, blue: 0.40)]
-                    : [Color.white, Color(red: 0.87, green: 0.96, blue: 1.0)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
+                colors: active ? [Color(red: 0.90, green: 0.35, blue: 0.10), Color(red: 0.32, green: 0.19, blue: 0.30)]
+                  : [.white, Color(red: 0.87, green: 0.96, blue: 1.0)],
+                startPoint: .leading, endPoint: .trailing
             ),
-            in: RoundedRectangle(cornerRadius: 24, style: .continuous)
+            in: RoundedRectangle(cornerRadius: 20, style: .continuous)
         )
-        .overlay {
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(active ? Color.white.opacity(0.95) : Color.cyan.opacity(0.35),
-                        lineWidth: active ? 3 : 2)
-        }
-        .shadow(color: active ? .red.opacity(0.26) : .cyan.opacity(0.10), radius: 15, y: 4)
+        .overlay(RoundedRectangle(cornerRadius: 20)
+            .stroke(active ? Color.orange : Color.cyan.opacity(0.35), lineWidth: 2))
         .modifier(CinemaAlertPulse(isEnabled: active))
     }
 
