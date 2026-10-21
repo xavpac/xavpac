@@ -411,6 +411,192 @@ struct ContentView: View {
         }
     }
 
+    // Grande fiche unique à la place des avions 1, 2, 3 pendant le
+    // passage local (au maximum cinq minutes). Pas de vol fictif affiché.
+    private func priorityTakeover(_ aircraft: Aircraft) -> some View {
+        let details = service.enrichment(for: aircraft)
+        let profile = service.trafficProfile(for: aircraft)
+        let remaining = prioritySecondsLeft
+        let minutes = remaining / 60
+        let seconds = remaining % 60
+        let started = priorityWindow?.startedAt ?? displayClock
+        return VStack(alignment: .leading, spacing: 11) {
+            HStack(spacing: 9) {
+                Image(systemName: "siren.fill")
+                    .font(.system(size: 29, weight: .black))
+                Text("MOYEN PRIORITAIRE DÉTECTÉ")
+                    .font(.system(size: 29, weight: .black, design: .rounded))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.60)
+                Spacer(minLength: 0)
+                Text(String(format: "%02d:%02d", minutes, seconds))
+                    .font(.system(size: 25, weight: .black).monospacedDigit())
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(Color.red.opacity(0.79), in: RoundedRectangle(cornerRadius: 13))
+
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(aircraft.displayName)
+                        .font(.system(size: 43, weight: .black, design: .rounded))
+                        .lineLimit(1).minimumScaleFactor(0.6)
+                    Text(profile.label.uppercased())
+                        .font(.system(size: 19, weight: .heavy))
+                        .foregroundStyle(Color(red: 1, green: 0.71, blue: 0.30))
+                        .lineLimit(1).minimumScaleFactor(0.65)
+                    Text(details?.aircraftModel ?? aircraft.aircraftType ?? "TYPE NON PRÉCISÉ")
+                        .font(.system(size: 17, weight: .semibold))
+                        .lineLimit(1)
+                    Text(aircraft.registration ?? "Immatriculation indisponible")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.79))
+                        .lineLimit(1)
+                    priorityRoute(aircraft, details: details)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                priorityPhoto(details, profile: profile)
+                    .frame(width: 340, height: 215)
+            }
+            .frame(maxWidth: .infinity)
+
+            priorityMetrics(aircraft)
+            HStack(spacing: 6) {
+                Image(systemName: "location.circle.fill")
+                    .foregroundStyle(.red)
+                Text("Secteur Bâgé-Dommartin · détection le "
+                    + started.formatted(.dateTime.day().month().year().hour().minute()))
+                    .font(.system(size: 13, weight: .bold))
+                    .lineLimit(1).minimumScaleFactor(0.7)
+                Spacer(minLength: 0)
+                Text("ADS-B · positions publiques non exhaustives")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.70))
+                    .lineLimit(1).minimumScaleFactor(0.7)
+            }
+        }
+        .foregroundStyle(.white)
+        .padding(14)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(
+            LinearGradient(
+                colors: [Color(red: 0.37, green: 0.025, blue: 0.070),
+                         Color(red: 0.055, green: 0.055, blue: 0.12)],
+                startPoint: .topLeading, endPoint: .bottomTrailing
+            ), in: RoundedRectangle(cornerRadius: 20))
+        .overlay(RoundedRectangle(cornerRadius: 20)
+            .stroke(Color.red, lineWidth: 3))
+        .modifier(CinemaAlertPulse(isEnabled: true))
+    }
+
+    private func priorityPhoto(
+        _ details: TVAircraftEnrichment?, profile: TVTrafficProfile
+    ) -> some View {
+        ZStack(alignment: .bottomLeading) {
+            if let photo = details?.photoURL {
+                AsyncImage(url: photo) { phase in
+                    if let image = phase.image {
+                        image.resizable().scaledToFill()
+                    } else {
+                        priorityPhotoFallback(profile)
+                    }
+                }
+            } else {
+                priorityPhotoFallback(profile)
+            }
+            LinearGradient(
+                colors: [.clear, .black.opacity(0.73)],
+                startPoint: .center, endPoint: .bottom
+            )
+            HStack(spacing: 7) {
+                if let logo = details?.logoURL {
+                    AsyncImage(url: logo) { image in
+                        image.resizable().scaledToFit()
+                    } placeholder: {
+                        Image(systemName: "airplane")
+                    }
+                    .frame(width: 39, height: 34)
+                    .padding(4)
+                    .background(Color.white.opacity(0.92),
+                                in: RoundedRectangle(cornerRadius: 8))
+                }
+                Text(details?.photo.source ?? "Photo indisponible")
+                    .font(.system(size: 12, weight: .bold))
+                    .lineLimit(1).minimumScaleFactor(0.6)
+            }
+            .padding(8)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .clipped()
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14)
+            .stroke(Color.white.opacity(0.65), lineWidth: 1.5))
+    }
+
+    private func priorityPhotoFallback(_ profile: TVTrafficProfile) -> some View {
+        ZStack {
+            LinearGradient(
+                colors: [Color(red: 0.11, green: 0.21, blue: 0.32),
+                         Color(red: 0.20, green: 0.08, blue: 0.12)],
+                startPoint: .topLeading, endPoint: .bottomTrailing)
+            VStack(spacing: 8) {
+                Image(systemName: profile.isRotorcraft ? "helicopter" : "airplane")
+                    .font(.system(size: 77, weight: .bold))
+                    .foregroundStyle(.white)
+                Text("PHOTO NON DISPONIBLE")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.85))
+            }
+        }
+    }
+
+    private func priorityRoute(
+        _ aircraft: Aircraft, details: TVAircraftEnrichment?
+    ) -> some View {
+        let departure = details?.departureAirport?.city ?? "Non communiqué"
+        let arrival = details?.arrivalAirport?.city ?? "Non communiqué"
+        let isConfirmed = details?.routeConfidence == "confirmed"
+        return VStack(alignment: .leading, spacing: 3) {
+            Text("DÉPART · " + departure)
+                .font(.system(size: 17, weight: .heavy))
+                .lineLimit(1).minimumScaleFactor(0.65)
+            Text("ARRIVÉE · " + arrival)
+                .font(.system(size: 17, weight: .heavy))
+                .lineLimit(1).minimumScaleFactor(0.65)
+            Text(isConfirmed ? "TRAJET CONFIRMÉ PAR LA SOURCE"
+                 : "TRAJET NON CONFIRMÉ / PARTIEL")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(.white.opacity(0.67))
+        }
+    }
+
+    private func priorityMetrics(_ aircraft: Aircraft) -> some View {
+        HStack(spacing: 7) {
+            priorityMetric("ALTITUDE", aircraft.altitudeLabel, "mountain.2.fill")
+            priorityMetric("VITESSE", aircraft.speedLabel, "speedometer")
+            priorityMetric("CAP", directionFrancais(aircraft.trueTrack), "location.north.fill")
+            priorityMetric("DISTANCE", String(format: "%.1f km",
+                aircraft.distanceKilometers(from: service.center)), "location.fill")
+        }
+    }
+
+    private func priorityMetric(_ label: String, _ value: String, _ symbol: String) -> some View {
+        VStack(spacing: 4) {
+            Image(systemName: symbol).font(.system(size: 22, weight: .bold))
+                .foregroundStyle(Color(red: 1, green: 0.49, blue: 0.47))
+            Text(value).font(.system(size: 21, weight: .black))
+                .lineLimit(1).minimumScaleFactor(0.58)
+            Text(label).font(.system(size: 12, weight: .heavy))
+                .foregroundStyle(.white.opacity(0.77))
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 7)
+        .background(Color.black.opacity(0.29),
+            in: RoundedRectangle(cornerRadius: 10))
+    }
+
     private var cinemaVersionFourHeader: some View {
         HStack(spacing: 11) {
             Image(systemName: "airplane.circle.fill")
