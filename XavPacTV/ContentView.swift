@@ -13,6 +13,19 @@ struct ContentView: View {
     @State private var displayClock = Date()
     @State private var lastEmergency: ObservedEmergency?
     @State private var failedVideoURLs: Set<String> = []
+    // Une alerte se déclenche une seule fois par passage, pour 5 minutes maximum.
+    @State private var priorityWindow: TimedFlightAlert?
+    @State private var priorityAlreadyAlerted: Set<String> = []
+    @State private var distressWindow: TimedFlightAlert?
+    @State private var emergencyAlreadyAlerted: Set<String> = []
+    @State private var worldIncidentWindow: TimedFlightAlert?
+    @State private var seenWorldNews: Set<String> = []
+    @State private var hasInitializedWorldNews = false
+
+    private struct TimedFlightAlert {
+        let key: String
+        let startedAt: Date
+    }
 
     // Heure de première observation locale : ne pas confondre avec l'heure
     // de survenue réelle de l'évènement aéronautique.
@@ -59,7 +72,48 @@ struct ContentView: View {
 
     // Conserver les moyens nationaux en alerte pendant les escales vidéo.
     private var priorityAircraft: Aircraft? {
-        service.specialAircraftInZone.first
+        // 20 km autour de la maison : le passage local, pas toute la région.
+        guard radarIsLive else { return nil }
+        return service.specialAircraftInZone.first {
+            $0.distanceKilometers(from: service.center) <= 20
+                && ($0.positionAgeSeconds ?? 0) < 90
+        }
+    }
+
+    private var priorityFocusAircraft: Aircraft? {
+        guard let alert = priorityWindow,
+              priorityAlertKey == alert.key,
+              displayClock.timeIntervalSince(alert.startedAt) < 300 else { return nil }
+        return priorityAircraft
+    }
+
+    private var prioritySecondsLeft: Int {
+        guard let alert = priorityWindow else { return 0 }
+        return max(0, Int(300 - displayClock.timeIntervalSince(alert.startedAt)))
+    }
+
+    private var distressIsFlashing: Bool {
+        guard let alert = distressWindow,
+              alert.key == activeEmergencyKey else { return false }
+        return displayClock.timeIntervalSince(alert.startedAt) < 300
+    }
+
+    private var worldNewsIsFlashing: Bool {
+        guard let alert = worldIncidentWindow else { return false }
+        return displayClock.timeIntervalSince(alert.startedAt) < 300
+    }
+
+    private var latestSeriousWorldNews: AviationTickerService.Article? {
+        // Articles de presse mondiaux : jamais confondus avec un signal ADS-B.
+        aviationTicker.news
+            .filter {
+                $0.title.range(
+                    of: "crash|accident aérien|air crash|plane crash|emergency landing|atterrissage d'urgence|mayday|détresse|distress|aviation emergency",
+                    options: [.regularExpression, .caseInsensitive]
+                ) != nil
+            }
+            .sorted { $0.date > $1.date }
+            .first
     }
 
     private var priorityProfile: TVTrafficProfile? {
@@ -137,11 +191,7 @@ struct ContentView: View {
     }
 
     private var priorityAlertKey: String {
-        // L'alerte concerne une position ADS-B fraîche et un moyen identifié.
-        guard radarIsLive, let aircraft = priorityAircraft,
-              (aircraft.positionAgeSeconds ?? 0) < 90 else { return "none" }
-        // Un hélicoptère Dragon ou un aéronef militaire est aussi prioritaire.
-        guard service.trafficProfile(for: aircraft).isPriorityTraffic else { return "none" }
+        guard let aircraft = priorityAircraft else { return "none" }
         return aircraft.id
     }
 
@@ -260,6 +310,20 @@ struct ContentView: View {
                 do { try await Task.sleep(nanoseconds: 4_000_000_000) }
                 catch { break }
                 displayClock = Date()
+                if let alert = priorityWindow,
+                   displayClock.timeIntervalSince(alert.startedAt) >= 300 {
+                    priorityAlreadyAlerted.insert(alert.key)
+                    priorityWindow = nil
+                }
+                if let alert = distressWindow,
+                   displayClock.timeIntervalSince(alert.startedAt) >= 300 {
+                    emergencyAlreadyAlerted.insert(alert.key)
+                    distressWindow = nil
+                }
+                if let alert = worldIncidentWindow,
+                   displayClock.timeIntervalSince(alert.startedAt) >= 300 {
+                    worldIncidentWindow = nil
+                }
             }
         }
         .task(id: podiumWeatherKey) {
@@ -296,19 +360,46 @@ struct ContentView: View {
             await mediaService.advance()
         }
         .task(id: priorityAlertKey) {
-            guard priorityAlertKey != "none" else { return }
+            guard priorityAlertKey != "none" else {
+                priorityWindow = nil
+                priorityAlreadyAlerted.removeAll()
+                return
+            }
+            guard !priorityAlreadyAlerted.contains(priorityAlertKey) else { return }
+            let now = Date()
+            priorityWindow = TimedFlightAlert(key: priorityAlertKey, startedAt: now)
+            priorityAlreadyAlerted.insert(priorityAlertKey)
             soundscape.playPriorityAlert()
         }
         .task(id: activeEmergencyKey) {
-            guard let aircraft = activeEmergency,
-                  let code = aircraft.squawk else { return }
-            guard lastEmergency?.key != activeEmergencyKey else { return }
+            guard let aircraft = activeEmergency, let code = aircraft.squawk else {
+                distressWindow = nil
+                emergencyAlreadyAlerted.removeAll()
+                return
+            }
+            guard !emergencyAlreadyAlerted.contains(activeEmergencyKey) else { return }
+            let now = Date()
+            emergencyAlreadyAlerted.insert(activeEmergencyKey)
+            distressWindow = TimedFlightAlert(key: activeEmergencyKey, startedAt: now)
             lastEmergency = ObservedEmergency(
-                key: activeEmergencyKey,
-                code: code,
-                aircraft: aircraft.displayName,
-                detectedAt: Date()
+                key: activeEmergencyKey, code: code,
+                aircraft: aircraft.displayName, detectedAt: now
             )
+            soundscape.playEmergencyAlert()
+        }
+        .task(id: latestSeriousWorldNews?.id) {
+            guard let article = latestSeriousWorldNews else { return }
+            // Au premier chargement on ne fait pas sonner des anciennes dépêches.
+            if !hasInitializedWorldNews {
+                hasInitializedWorldNews = true
+                seenWorldNews.insert(article.id)
+                return
+            }
+            guard !seenWorldNews.contains(article.id) else { return }
+            seenWorldNews.insert(article.id)
+            guard let published = ISO8601DateFormatter().date(from: article.date),
+                  abs(Date().timeIntervalSince(published)) < 1_800 else { return }
+            worldIncidentWindow = TimedFlightAlert(key: article.id, startedAt: Date())
             soundscape.playEmergencyAlert()
         }
         .task {
