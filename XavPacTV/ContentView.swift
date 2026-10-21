@@ -1590,7 +1590,8 @@ struct ContentView: View {
 
     @ViewBuilder
     private var cinemaMedia: some View {
-        if let videoURL = mediaService.current?.televisionVideoURL {
+        if let videoURL = mediaService.current?.televisionVideoURL,
+           !failedVideoURLs.contains(videoURL.absoluteString) {
             LoopingVideoView(url: videoURL)
         } else if let media = mediaService.current,
                   !media.isVideo,
