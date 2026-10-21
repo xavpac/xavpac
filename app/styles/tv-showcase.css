@@ -86,3 +86,87 @@
  .tv-flight-cards,.tv-alert-stack {grid-template-columns:1fr}
  .tv-status-priority,.tv-incident-card {min-height:94px}
 }
+
+
+/* SKY SHOW V4 — vidéo véritablement dominante et carte 55 %, écran 16:9. */
+.tv-v4 {height:100vh;min-height:0;display:flex;flex-direction:column;padding:12px 16px;gap:10px}
+.tv-v4 .tv-v4-header {flex:0 0 65px;min-height:0;padding:2px 8px;margin:0;background:#fffffff2;border-radius:18px;box-shadow:0 6px 20px #0d36581c;z-index:610}
+.tv-v4 .tv-brand strong {font-size:clamp(22px,1.8vw,36px);letter-spacing:.018em}
+.tv-v4 .tv-brand-symbol {width:46px;height:46px;font-size:28px;background:#071b37;border-radius:50%}
+.tv-v4 .tv-brand small {font-size:clamp(9px,.62vw,13px);letter-spacing:.06em}
+.tv-v4 .tv-signal {padding:7px 12px}
+.tv-v4-layout {display:grid;grid-template-columns:minmax(0,1.19fr) minmax(0,1fr);gap:13px;flex:1;min-height:0}
+.tv-v4-map {position:relative;min-width:0;min-height:0;border-radius:20px;overflow:hidden;box-shadow:0 8px 24px #274a6e47;background:#c9e1cc}
+.tv-v4-map .tv-map-static {position:absolute;inset:0}
+.tv-v4-map .tv-map-static .leaflet-container {height:100%;width:100%}
+.tv-v4-map .tv-map-shine {border-radius:20px;box-shadow:inset 0 0 0 2px #fff9;pointer-events:none}
+.tv-v4-map-note {position:absolute;z-index:520;bottom:13px;left:13px;right:13px;max-width:max-content;color:#17496b;border-radius:12px;background:#fffffff0;box-shadow:0 4px 16px #173c5444;padding:9px 14px;font-size:clamp(10px,.72vw,15px);font-weight:850;letter-spacing:.025em}
+.tv-v4-sidebar {min-width:0;min-height:0;height:100%;display:flex;flex-direction:column;gap:8px}
+.tv-v4-hero {flex:0 0 clamp(194px,22.5vh,246px);min-height:0;padding:14px 18px 10px;display:flex;flex-direction:column;gap:6px;background:linear-gradient(145deg,#07192c,#092a3c 90%);color:#fff;border-radius:19px;border:1px solid #3a6b86;box-shadow:0 9px 28px #122e466e}
+.tv-v4-hero-heading {display:flex;align-items:center;gap:12px;min-height:39px}
+.tv-v4-number {width:40px;height:40px;flex:0 0 40px;display:grid;place-items:center;border-radius:50%;font-size:25px;font-weight:950;border:2px solid #fff;color:#fff;text-shadow:0 1px 5px #0008}
+.tv-v4-number-1 {background:#e9aa0d;color:#16223a}
+.tv-v4-number-2 {background:#008fe1}
+.tv-v4-number-3 {background:#db364d}
+.tv-v4-hero-title {min-width:0;display:flex;flex-direction:column;gap:2px;flex:1}
+.tv-v4-hero-title strong {font-size:clamp(23px,1.65vw,33px);font-weight:950;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1}
+.tv-v4-hero-title small {font-size:clamp(10px,.78vw,15px);font-weight:780;opacity:.75;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tv-v4-hero-rank {font-size:clamp(12px,.8vw,16px);font-weight:950;color:#ffc83e;white-space:nowrap}
+.tv-v4-hero-route {display:flex;align-items:baseline;gap:12px;font-weight:950}
+.tv-v4-hero-route>b {font-size:clamp(20px,1.55vw,32px);white-space:nowrap}
+.tv-v4-hero-route>span {color:#ffc83e;font-size:clamp(20px,1.65vw,34px)}
+.tv-v4-hero-route small {min-width:0;margin-left:auto;font-size:clamp(9px,.65vw,13px);font-weight:700;color:#9ecde8;text-overflow:ellipsis;white-space:nowrap;overflow:hidden}
+.tv-v4-metrics {display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;margin-top:auto}
+.tv-v4-metrics>div {padding:8px 4px;border-radius:10px;background:#17364b;border:1px solid #315369;min-width:0;text-align:center}
+.tv-v4-metrics small {display:block;font-size:clamp(9px,.64vw,13px);font-weight:850;color:#a8ddf3}
+.tv-v4-metrics strong {display:block;font-size:clamp(13px,1.02vw,22px);font-weight:950;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:4px}
+.tv-v4-route-note {font-size:clamp(8px,.56vw,12px);color:#add4e6;font-weight:800;display:flex;justify-content:space-between;gap:10px;white-space:nowrap;overflow:hidden}
+.tv-v4-video {flex:1;min-height:0;display:flex;flex-direction:column;gap:5px;border-radius:19px;overflow:hidden;padding:9px;background:#051c2e;border:1px solid #456d83;box-shadow:0 8px 22px #16344955}
+.tv-v4-video-heading {display:flex;justify-content:space-between;align-items:center;gap:12px;min-height:26px;color:#c2eeff;font-size:clamp(12px,.88vw,18px);font-weight:950;letter-spacing:.025em}
+.tv-v4-video-heading span {font-size:clamp(9px,.64vw,13px);font-weight:800;color:#eff9ff;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.tv-v4-video .tv-v4-video-screen {flex:1;min-height:0!important;border-radius:12px;box-shadow:none;background:#11283b}
+.tv-v4-video .tv-city-caption {display:none}
+.tv-v4-video-caption {position:absolute;left:15px;bottom:12px;right:12px;display:flex;flex-direction:column;gap:2px;color:#fff;z-index:5;text-shadow:0 2px 9px #00152c;pointer-events:none}
+.tv-v4-video-caption b {font-size:clamp(22px,1.7vw,34px);font-weight:950;line-height:1}
+.tv-v4-video-caption small {font-size:clamp(9px,.64vw,13px);font-weight:850;letter-spacing:.05em;color:#e7f8ff}
+.tv-v4-media-source {min-height:11px;font-size:clamp(8px,.57vw,11px);text-align:right;color:#b1d3df;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tv-v4-secondary {flex:0 0 clamp(124px,15.6vh,177px);min-height:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.tv-v4-second-card {min-width:0;display:flex;gap:10px;padding:12px 10px;color:white;background:linear-gradient(135deg,#07172a,#132b46);border:2px solid #237dbe;border-radius:17px;overflow:hidden}
+.tv-v4-second-3 {border-color:#d64961}
+.tv-v4-second-card .tv-v4-number {width:36px;height:36px;flex:0 0 36px;font-size:22px}
+.tv-v4-second-body {min-width:0;flex:1;display:flex;flex-direction:column;gap:4px}
+.tv-v4-second-body strong {font-size:clamp(16px,1.12vw,23px);font-weight:950;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tv-v4-second-body small {font-size:clamp(9px,.63vw,13px);font-weight:750;color:#afcedc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tv-v4-second-route {font-size:clamp(14px,.95vw,20px);font-weight:950;color:#f7c750;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tv-v4-second-stats {display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;color:#e2f2ff;margin-top:auto}
+.tv-v4-second-stats span {font-size:clamp(10px,.72vw,15px);font-weight:900;white-space:nowrap}
+.tv-v4-alerts {flex:0 0 clamp(86px,10.2vh,112px);min-height:0;display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.tv-v4-alerts .tv-status-priority,.tv-v4-alerts .tv-incident-card {display:flex;align-items:center;min-width:0;height:100%;padding:9px 10px;border-radius:15px;gap:6px}
+.tv-v4-alerts .tv-status-priority>span,.tv-v4-alerts .tv-incident-icon {font-size:23px}
+.tv-v4-alerts .tv-status-priority>div,.tv-v4-alerts .tv-incident-card>div {min-width:0;display:flex;flex-direction:column;gap:2px}
+.tv-v4-alerts b {font-size:clamp(10px,.68vw,14px);white-space:nowrap}
+.tv-v4-alerts strong {font-size:clamp(10px,.72vw,15px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tv-v4-alerts small {font-size:clamp(9px,.59vw,12px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tv-v4-alerts .tv-status-priority {background:#f8fcff;color:#164867;border:1px solid #a6d4e7}
+.tv-v4-alerts .tv-incident-card {background:#322821;color:#fff;border:1px solid #bc892e}
+.tv-v4-alerts .tv-status-priority.is-active {background:#fce6bd;color:#793b13;border:2px solid #ffa132}
+.tv-v4-alerts .tv-incident-card.is-live {background:#711a29;border:2px solid #ff4c5a}
+@media (max-width:1050px) {
+ .tv-v4 {height:auto;min-height:100vh;overflow:visible}
+ .tv-v4-layout {display:flex;flex-direction:column;gap:12px}
+ .tv-v4-map {min-height:55vh}
+ .tv-v4-sidebar {height:auto;display:flex}
+ .tv-v4-hero {flex:auto;min-height:220px}
+ .tv-v4-video {flex:auto;min-height:430px}
+ .tv-v4-secondary {flex:auto;min-height:165px}
+ .tv-v4-alerts {flex:auto;min-height:115px}
+}
+@media (max-width:630px) {
+ .tv-v4 {padding:8px}
+ .tv-v4 .tv-v4-header {flex-wrap:wrap;min-height:85px}
+ .tv-v4-map {min-height:380px}
+ .tv-v4-video {min-height:360px}
+ .tv-v4-hero {padding:10px;gap:8px}
+ .tv-v4-secondary,.tv-v4-alerts {grid-template-columns:1fr}
+ .tv-v4-secondary {min-height:290px}
+}
