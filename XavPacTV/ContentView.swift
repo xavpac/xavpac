@@ -1060,9 +1060,8 @@ struct ContentView: View {
     private var cinemaIncidentPanel: some View {
         let emergency = activeEmergency
         let isLive = emergency != nil
-        let showLive = isLive
-            && (latestTechnicalArticle == nil || Int(displayClock.timeIntervalSince1970 / 9) % 2 == 0)
-        let article = latestTechnicalArticle
+        let showLive = isLive  // Ne jamais faire disparaître une urgence ADS-B active.
+        let article = latestSeriousWorldNews ?? latestTechnicalArticle
         let prior = lastEmergency
         let heading: String
         let title: String
@@ -1079,9 +1078,11 @@ struct ContentView: View {
                 date = nil
             }
         } else if let article = article {
-            heading = "⚠ DERNIÈRE PANNE SIGNALÉE · PRESSE"
+            heading = worldNewsIsFlashing
+                ? "🚨 NOUVELLE URGENCE MONDIALE · PRESSE"
+                : "⚠ DERNIER INCIDENT MONDIAL · PRESSE"
             title = article.title
-            source = article.source + " · " + article.dateLabel
+            source = article.source + " · publié " + article.dateLabel
             date = nil
         } else if let observation = prior {
             heading = "⚠ DERNIÈRE URGENCE OBSERVÉE"
@@ -1133,7 +1134,7 @@ struct ContentView: View {
         )
         .overlay(RoundedRectangle(cornerRadius: 20)
             .stroke(showLive ? Color.red : Color.orange.opacity(0.65), lineWidth: 2))
-        .modifier(CinemaAlertPulse(isEnabled: showLive))
+        .modifier(CinemaAlertPulse(isEnabled: distressIsFlashing || worldNewsIsFlashing))
     }
 
     private var cinemaHeader: some View {
@@ -1992,7 +1993,7 @@ struct ContentView: View {
     // à cet emplacement, même lorsque le vol vedette est un avion de ligne.
     private var cinemaPriorityStatus: some View {
         let counts = specialCounts
-        let active = radarIsLive && priorityAircraft != nil
+        let active = priorityFocusAircraft != nil
         return HStack(spacing: 11) {
             Image(systemName: priorityProfile?.isRotorcraft == true ? "helicopter" : "cross.case.fill")
                 .font(.system(size: 29, weight: .heavy))
