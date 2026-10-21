@@ -21,8 +21,8 @@ type DestinationMedia = { id: string; type: "video" | "image"; url: string; prev
 type MediaPayload = { items?: DestinationMedia[]; provider?: string };
 type EnrichmentPayload = { enriched?: EnrichedAircraft[] };
 type TrafficPayload = { aircraft?: LiveAircraft[]; fetchedAt?: string; source?: string };
-type AviationArticle = { title: string; date: string; source: string; link?: string };
-type NewsPayload = { news?: AviationArticle[] };
+type AviationArticle = { title: string; date: string; source: string; link?: string; location?: string };
+type NewsPayload = { news?: AviationArticle[]; incidents?: AviationArticle[] };
 type ObservedAlert = { key: string; aircraft: string; code: string; detectedAt: string };
 type ObservedPriority = { key: string; label: string; aircraft: string; detectedAt: string };
 const TECHNICAL_REPORT = /panne|avarie|probl[eè]me technique|incident technique|pressurisation|d[eé]pressurisation|panne moteur|crash|accident|emergency landing|atterrissage d.urgence|urgence|d[eé]tresse|mayday/i;
@@ -205,7 +205,18 @@ export default function TvShowcase() {
     return () => { disposed = true; window.clearInterval(timer); };
   }, []);
 
-  // Une actualité n'est pas une alerte transpondeur, ni une panne confirmée.
+  // Conserver le dernier incident sourcé, même si le RSS est temporairement
+  // indisponible et après un redémarrage du navigateur de la télévision.
+  useEffect(() => {
+    try {
+      const cached = JSON.parse(window.localStorage.getItem("xavpac-tv-last-incident") || "null") as AviationArticle | null;
+      if (cached?.title && cached?.source && Date.now() - Date.parse(cached.date) < 14 * 86400000) {
+        setNews([cached]);
+      }
+    } catch { /* Navigation privée ou stockage désactivé. */ }
+  }, []);
+
+  // Une dépêche de presse n'est pas une alerte de transpondeur confirmée.
   useEffect(() => {
     let disposed = false;
     async function refreshNews() {
@@ -213,7 +224,13 @@ export default function TvShowcase() {
         const response = await fetch("/api/aviation-news", { cache: "no-store" });
         if (!response.ok) return;
         const payload = await response.json() as NewsPayload;
-        if (!disposed) setNews((payload.news ?? []).filter((item) => item.title && item.date && item.source));
+        const incidents = (payload.incidents ?? payload.news ?? [])
+          .filter((item) => item.title && item.date && item.source && Number.isFinite(Date.parse(item.date)))
+          .sort((a,b) => Date.parse(b.date) - Date.parse(a.date));
+        if (!disposed && incidents.length) {
+          setNews(incidents);
+          try { window.localStorage.setItem("xavpac-tv-last-incident", JSON.stringify(incidents[0])); } catch {}
+        }
       } catch { /* Pas d'évènement fabriqué si la veille presse est indisponible. */ }
     }
     void refreshNews();
@@ -297,8 +314,7 @@ export default function TvShowcase() {
   }, [nearbyAlert, feedFresh]);
 
   useEffect(() => {
-    const recent = news.filter((item) => TECHNICAL_REPORT.test(item.title))
-      .sort((a, b) => Date.parse(b.date) - Date.parse(a.date))[0];
+    const recent = [...news].sort((a, b) => Date.parse(b.date) - Date.parse(a.date))[0];
     if (!recent) return;
     const key = recent.title + "|" + recent.date;
     if (seenWorldArticle.current === null) { seenWorldArticle.current = key; return; }
@@ -383,8 +399,8 @@ export default function TvShowcase() {
   const today = now ? now.toLocaleDateString("fr-FR", { weekday:"short", day:"2-digit", month:"short", year:"numeric" }) : "";
   const activeEmergency = feedFresh ? traffic.find((item) =>
     EMERGENCY_CODES.includes(item.squawk ?? "") && (item.positionAgeSeconds ?? 0) < 90) : null;
-  const latestArticle = news.filter((item) => TECHNICAL_REPORT.test(item.title))
-    .sort((a,b) => Date.parse(b.date) - Date.parse(a.date))[0] ?? null;
+  // La liste renvoyée par l'API est déjà filtrée sur les incidents sourcés.
+  const latestArticle = [...news].sort((a,b) => Date.parse(b.date) - Date.parse(a.date))[0] ?? null;
   const activeKey = activeEmergency ? activeEmergency.id + "-" + activeEmergency.squawk : null;
   const emergencyFlash = Boolean(activeKey && lastEmergency?.key === activeKey &&
     now && now.getTime() - Date.parse(lastEmergency.detectedAt) < ALERT_DURATION_MS);
@@ -412,7 +428,7 @@ export default function TvShowcase() {
     ? lastEmergency.detectedAt
     : lastKnownIsAdsb ? lastEmergency?.detectedAt : latestArticle?.date;
   const alertSource = activeEmergency || lastKnownIsAdsb
-    ? "Signal ADS-B · heure de détection" : latestArticle?.source || "Couverture ADS-B partielle";
+    ? "Signal ADS-B · heure de détection" : latestArticle?.source || "Veille presse indisponible";
 
   const showFlight = Boolean(candidate && destination);
   const first = traffic[0] ?? null;
@@ -566,7 +582,7 @@ export default function TvShowcase() {
               <b>{activeEmergency ? "URGENCE ADS-B ACTIVE" : "DERNIÈRE URGENCE CONNUE"}</b>
               <p>{alertName}</p>
               <small>{alertSource}</small>
-              <small>Date / heure : {alertDate(alertTimestamp)} · Lieu : non confirmé</small>
+              <small>Date / heure : {alertDate(alertTimestamp)} · {activeEmergency || lastKnownIsAdsb ? "Position ADS-B locale · lieu non confirmé" : (latestArticle?.location || "Lieu non vérifié")}</small>
             </section>
           </div>
         </aside>
