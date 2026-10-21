@@ -405,7 +405,7 @@ struct ContentView: View {
             }
             guard !seenWorldNews.contains(article.id) else { return }
             seenWorldNews.insert(article.id)
-            guard let published = ISO8601DateFormatter().date(from: article.date),
+            guard let published = article.parsedDate,
                   abs(Date().timeIntervalSince(published)) < 1_800 else { return }
             worldIncidentWindow = TimedFlightAlert(key: article.id, startedAt: Date())
             soundscape.playEmergencyAlert()
@@ -2891,11 +2891,18 @@ private final class AviationTickerService: ObservableObject {
 
         var id: String { title + "|" + date }
 
+        var parsedDate: Date? {
+            // Date.toISOString() côté Vercel contient généralement .000Z :
+            // ISO8601DateFormatter() sans options ne sait pas la décoder.
+            let fractional = ISO8601DateFormatter()
+            fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            if let parsed = fractional.date(from: date) { return parsed }
+            return ISO8601DateFormatter().date(from: date)
+        }
+
         var dateLabel: String {
-            guard let date = ISO8601DateFormatter().date(from: self.date) else {
-                return "Date indisponible"
-            }
-            return date.formatted(.dateTime.day().month(.abbreviated).hour().minute())
+            guard let parsedDate else { return "Date indisponible" }
+            return parsedDate.formatted(.dateTime.day().month(.abbreviated).year().hour().minute())
         }
     }
 
@@ -2915,7 +2922,7 @@ private final class AviationTickerService: ObservableObject {
            let cached = try? JSONDecoder().decode([Article].self, from: raw) {
             let cutoff = Date().addingTimeInterval(-14 * 86400)
             incidents = cached.filter { article in
-                guard let date = ISO8601DateFormatter().date(from: article.date) else { return false }
+                guard let date = article.parsedDate else { return false }
                 return date >= cutoff
             }
             news = incidents
