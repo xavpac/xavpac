@@ -522,15 +522,15 @@ struct ContentView: View {
             )
             HStack(spacing: 7) {
                 if let logo = details?.logoURL {
-                    AsyncImage(url: logo) { image in
-                        image.resizable().scaledToFit()
-                    } placeholder: {
-                        Image(systemName: "airplane")
+                    AsyncImage(url: logo) { phase in
+                        if let image = phase.image {
+                            image.resizable().scaledToFit()
+                                .frame(width: 70, height: 31)
+                                .padding(4)
+                                .background(Color.white.opacity(0.95),
+                                            in: RoundedRectangle(cornerRadius: 8))
+                        }
                     }
-                    .frame(width: 39, height: 34)
-                    .padding(4)
-                    .background(Color.white.opacity(0.92),
-                                in: RoundedRectangle(cornerRadius: 8))
                 }
                 Text(details?.photo.source ?? "Photo indisponible")
                     .font(.system(size: 12, weight: .bold))
@@ -784,20 +784,35 @@ struct ContentView: View {
     private func airlineBadge(_ details: TVAircraftEnrichment?) -> some View {
         let name = details?.operatorName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return Group {
-            if !name.isEmpty {
-                Text(name)
-                    .font(.system(size: 11, weight: .black, design: .rounded))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.58)
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 4)
-                    .background(Color(red: 0.10, green: 0.34, blue: 0.53),
-                                in: RoundedRectangle(cornerRadius: 7))
-                    .overlay(RoundedRectangle(cornerRadius: 7)
-                        .stroke(Color.cyan.opacity(0.65), lineWidth: 1))
+            if let url = details?.logoURL {
+                AsyncImage(url: url) { phase in
+                    if let image = phase.image {
+                        image.resizable().scaledToFit()
+                            .frame(maxWidth: 104, maxHeight: 27)
+                            .padding(.horizontal, 7).padding(.vertical, 3)
+                            .background(.white, in: RoundedRectangle(cornerRadius: 7))
+                    } else if !name.isEmpty {
+                        airlineTextBadge(name)
+                    }
+                }
+            } else if !name.isEmpty {
+                airlineTextBadge(name)
             }
         }
+    }
+
+    private func airlineTextBadge(_ name: String) -> some View {
+        Text(name)
+            .font(.system(size: 11, weight: .black, design: .rounded))
+            .lineLimit(1)
+            .minimumScaleFactor(0.58)
+            .foregroundStyle(.white)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 4)
+            .background(Color(red: 0.10, green: 0.34, blue: 0.53),
+                        in: RoundedRectangle(cornerRadius: 7))
+            .overlay(RoundedRectangle(cornerRadius: 7)
+                .stroke(Color.cyan.opacity(0.65), lineWidth: 1))
     }
 
     private func aircraftThumbnail(_ details: TVAircraftEnrichment?) -> some View {
