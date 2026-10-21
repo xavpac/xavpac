@@ -53,6 +53,22 @@ export async function GET() {
   const results = await Promise.allSettled(QUERIES.map(getFeed));
   const available = results.filter((result): result is PromiseFulfilledResult<AviationNews[]> => result.status === "fulfilled");
   const items = available.flatMap((result) => result.value);
+
+  // Repli limité dans le temps : incident documenté directement par une autorité
+  // française le 21/10/2026. Ce n'est PAS une donnée ADS-B en temps réel.
+  // Heure mentionnée par le ministère : 20/10/2026 à 22 h 40 (heure de Paris).
+  const verifiedAt = Date.parse("2026-10-20T20:40:00.000Z");
+  if (Date.now() - verifiedAt >= 0 && Date.now() - verifiedAt <= DAYS * 86400000) {
+    items.push({
+      title: "Accident aérien d'un Mirage 2000D en Meurthe-et-Moselle",
+      date: new Date(verifiedAt).toISOString(),
+      source: "Ministère des Armées · communiqué officiel",
+      link: "https://www.defense.gouv.fr/air/actualites/accident-dun-mirage-2000d-larmee-lair-lespace",
+      location: "Rogéville (Meurthe-et-Moselle)",
+      summary: "Un Mirage 2000D a été impliqué dans un accident lors d'un retour de mission ; enquêtes en cours."
+    });
+  }
+
   const seen = new Set<string>();
   const incidents = items.sort((a,b) => Date.parse(b.date) - Date.parse(a.date)).filter((item) => {
     const key = item.title.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0,105);
@@ -69,7 +85,7 @@ export async function GET() {
     coverage: available.length ? "partielle, dépend de la presse indexée" : "sources indisponibles",
     ...(available.length === 0 ? { error: "Veille presse momentanément indisponible" } : {})
   }, {
-    status: available.length ? 200 : 503,
+    status: available.length || incidents.length ? 200 : 503,
     headers: { "Cache-Control": "public, s-maxage=900, stale-while-revalidate=3600" }
   });
 }
