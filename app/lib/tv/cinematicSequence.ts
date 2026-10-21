@@ -7,20 +7,20 @@ export type TVSequenceItem = {
   scene?: TVScene;
 };
 
-// A visual journey rather than a shuffled image dump: city video, airport,
-// city view, aviation footage, landmark, then another destination viewpoint.
+// Préférer des films variés aux photos lorsque les fournisseurs en proposent.
+// Le repli sur des images reste automatique si aucune vidéo n'est disponible.
 // Missing categories are skipped; no placeholders or invented footage.
 const PROGRAM: ReadonlyArray<{ scene: TVScene; type: "video" | "image" }> = [
   { scene: "city", type: "video" },
-  { scene: "airport", type: "image" },
-  { scene: "city", type: "image" },
-  { scene: "approach", type: "video" },
-  { scene: "ambience", type: "image" },
   { scene: "airport", type: "video" },
+  { scene: "approach", type: "video" },
   { scene: "city", type: "image" },
-  { scene: "airport", type: "image" },
   { scene: "ambience", type: "video" },
-  { scene: "ambience", type: "image" }
+  { scene: "city", type: "video" },
+  { scene: "airport", type: "image" },
+  { scene: "airport", type: "video" },
+  { scene: "ambience", type: "image" },
+  { scene: "city", type: "video" }
 ];
 
 export function composeTvSequence<T extends TVSequenceItem>(
