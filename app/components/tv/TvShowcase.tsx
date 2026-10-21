@@ -308,6 +308,8 @@ export default function TvShowcase() {
   const firstInfo = first ? enriched[first.id.replace(/^~/, "").toUpperCase()] : null;
   const firstDeparture = firstInfo?.departureAirport ? code(firstInfo.departureAirport) : "—";
   const firstArrival = firstInfo?.arrivalAirport ? code(firstInfo.arrivalAirport) : "—";
+  const firstDepartureCity = airportCity(firstInfo?.departureAirport);
+  const firstArrivalCity = airportCity(firstInfo?.arrivalAirport);
 
   return (
     <main className="xavpac-tv tv-v4" aria-label="XavPac TV — proposition 4 en service, sans musique et sans commande">
@@ -346,13 +348,13 @@ export default function TvShowcase() {
               <span className="tv-v4-hero-rank">N° 1 · CARTE</span>
             </div>
             <div className="tv-v4-hero-route">
-              <b>{firstDeparture}</b><span>➜</span><b>{firstArrival}</b>
+              <b>{firstDepartureCity} ({firstDeparture})</b><span>➜</span><b>{firstArrivalCity} ({firstArrival})</b>
               <small>{firstInfo?.operator || first?.operator || "Compagnie non identifiée"}</small>
             </div>
             <div className="tv-v4-metrics">
               <div><small>ALTITUDE</small><strong>{first ? formatNumber(first.barometricAltitude, " m") : "—"}</strong></div>
               <div><small>VITESSE SOL</small><strong>{first?.velocity != null ? formatNumber(first.velocity * 3.6, " km/h") : "—"}</strong></div>
-              <div><small>CAP</small><strong>{first?.trueTrack != null ? formatNumber(first.trueTrack, "°") : "—"}</strong></div>
+              <div><small>CAP</small><strong>{capFrancais(first?.trueTrack)}</strong><span className="tv-v4-cap-degrees">{first?.trueTrack != null ? formatNumber(first.trueTrack, "°") : ""}</span></div>
               <div><small>DISTANCE HOME</small><strong>{first ? first.distance.toFixed(1) + " km" : "—"}</strong></div>
             </div>
             <div className="tv-v4-route-note">
@@ -407,14 +409,15 @@ export default function TvShowcase() {
                   <strong>{info?.flightNumberIata || item.callsign || item.registration || "ADS-B"}</strong>
                   <small>{info?.aircraftModel || info?.aircraftType || item.aircraftType || "Type non identifié"}</small>
                   <div className="tv-v4-second-route">{info?.departureAirport && info?.arrivalAirport
-                    ? code(info.departureAirport) + " → " + code(info.arrivalAirport)
-                    : "TRAJET NON DISPONIBLE"}</div>
+                    ? airportCity(info.departureAirport) + " → " + airportCity(info.arrivalAirport)
+                    : "VILLES NON RENSEIGNÉES"}</div>
                   <div className="tv-v4-second-stats">
                     <span>{formatNumber(item.barometricAltitude, " m")}</span>
                     <span>{item.velocity != null ? formatNumber(item.velocity * 3.6, " km/h") : "—"}</span>
                     <span>{item.distance.toFixed(1)} km</span>
+                    <span>Cap : {capFrancais(item.trueTrack)}</span>
                   </div>
-                </div> : <div className="tv-v4-second-body"><strong>AVION {index + 1}</strong><small>En attente de trafic ADS-B</small></div>}
+                </div> : <div className="tv-v4-second-body"><strong>AVION {index + 1}</strong><small>En attente de trafic ADS-B</small><div className="tv-v4-second-route">Départ — · Arrivée —</div><div className="tv-v4-second-stats"><span>Cap : —</span></div></div>}
               </article>;
             })}
           </div>
