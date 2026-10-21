@@ -348,50 +348,20 @@ struct ContentView: View {
         let details = service.enrichment(for: first)
         let dep = details?.departureAirport
         let arr = details?.arrivalAirport
-        let fromCode = dep?.code ?? "—"
-        let toCode = arr?.code ?? "—"
 
-        return VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 11) {
-                Text("1")
-                    .font(.system(size: 25, weight: .black))
-                    .foregroundStyle(Color(red: 0.12, green: 0.19, blue: 0.32))
-                    .frame(width: 47, height: 47)
-                    .background(Color(red: 1, green: 0.77, blue: 0.22), in: Circle())
-                Image(systemName: "airplane")
-                    .font(.system(size: 34, weight: .heavy))
-                    .foregroundStyle(.yellow)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(first?.displayName ?? "AVION N° 1 EN ATTENTE")
-                        .font(.system(size: 28, weight: .black, design: .rounded))
-                        .lineLimit(1).minimumScaleFactor(0.7)
-                    Text(details?.aircraftModel ?? details?.aircraftType
-                         ?? first?.description ?? first?.aircraftType ?? "TYPE NON IDENTIFIÉ")
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundStyle(.white.opacity(0.74))
-                        .lineLimit(1)
-                }
-                Spacer(minLength: 0)
-                Text("N° 1")
-                    .font(.system(size: 18, weight: .black))
-                    .foregroundStyle(.yellow)
-            }
+        return VStack(alignment: .leading, spacing: 8) {
+            cinemaVersionFourFlightHeader(first, details: details)
 
-            Text(fromCode + "   →   " + toCode)
+            Text((dep?.code ?? "—") + "   →   " + (arr?.code ?? "—"))
                 .font(.system(size: 24, weight: .black, design: .rounded))
                 .lineLimit(1)
                 .minimumScaleFactor(0.65)
 
-            HStack(alignment: .center, spacing: 8) {
+            HStack(spacing: 8) {
                 cinemaVersionFourWeather("DÉPART", airport: dep)
                 cinemaVersionFourWeather("ARRIVÉE", airport: arr)
             }
-            HStack(spacing: 4) {
-                cinemaSkyMetric("ALTITUDE", value: first?.altitudeLabel ?? "—", icon: "mountain.2.fill")
-                cinemaSkyMetric("VITESSE", value: first?.speedLabel ?? "—", icon: "speedometer")
-                cinemaSkyMetric("CAP", value: first?.headingLabel ?? "—", icon: "location.north.fill")
-                cinemaSkyMetric("DISTANCE", value: first.map(distanceText) ?? "—", icon: "location.fill")
-            }
+            cinemaVersionFourMetrics(first)
         }
         .padding(.horizontal, 15)
         .padding(.vertical, 12)
@@ -401,6 +371,54 @@ struct ContentView: View {
                     in: RoundedRectangle(cornerRadius: 21))
         .overlay(RoundedRectangle(cornerRadius: 21)
             .stroke(Color.cyan.opacity(0.42), lineWidth: 2))
+    }
+
+    private func cinemaVersionFourFlightHeader(
+        _ first: Aircraft?, details: TVAircraftEnrichment?
+    ) -> some View {
+        let model: String = details?.aircraftModel
+            ?? details?.aircraftType
+            ?? first?.description
+            ?? first?.aircraftType
+            ?? "TYPE NON IDENTIFIÉ"
+
+        return HStack(spacing: 11) {
+            Text("1")
+                .font(.system(size: 25, weight: .black))
+                .foregroundStyle(Color(red: 0.12, green: 0.19, blue: 0.32))
+                .frame(width: 47, height: 47)
+                .background(Color(red: 1, green: 0.77, blue: 0.22), in: Circle())
+            Image(systemName: "airplane")
+                .font(.system(size: 34, weight: .heavy))
+                .foregroundStyle(.yellow)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(first?.displayName ?? "AVION N° 1 EN ATTENTE")
+                    .font(.system(size: 28, weight: .black, design: .rounded))
+                    .lineLimit(1).minimumScaleFactor(0.7)
+                Text(model)
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.74))
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+            Text("N° 1")
+                .font(.system(size: 18, weight: .black))
+                .foregroundStyle(.yellow)
+        }
+    }
+
+    private func cinemaVersionFourMetrics(_ first: Aircraft?) -> some View {
+        let altitude: String = first?.altitudeLabel ?? "—"
+        let speed: String = first?.speedLabel ?? "—"
+        let heading: String = first?.headingLabel ?? "—"
+        let distance: String = first.map { distanceText($0) } ?? "—"
+
+        return HStack(spacing: 4) {
+            cinemaSkyMetric("ALTITUDE", value: altitude, icon: "mountain.2.fill")
+            cinemaSkyMetric("VITESSE", value: speed, icon: "speedometer")
+            cinemaSkyMetric("CAP", value: heading, icon: "location.north.fill")
+            cinemaSkyMetric("DISTANCE", value: distance, icon: "location.fill")
+        }
     }
 
     private func cinemaVersionFourWeather(_ title: String, airport: TVAirport?) -> some View {
