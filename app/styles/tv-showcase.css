@@ -170,3 +170,34 @@
  .tv-v4-secondary,.tv-v4-alerts {grid-template-columns:1fr}
  .tv-v4-secondary {min-height:290px}
 }
+
+/* V4.1 : carte dominante à ~63 % et alertes qui pulsent uniquement si actives. */
+@media(min-width:1051px){
+  .tv-v4-layout{grid-template-columns:minmax(0,1.7fr) minmax(0,1fr)}
+  .tv-v4-hero{flex-basis:clamp(185px,22vh,235px)}
+  .tv-v4-secondary{flex-basis:clamp(115px,14vh,155px)}
+  .tv-v4-alerts{flex-basis:clamp(74px,9vh,96px)}
+  .tv-v4-video{min-height:0}
+  .tv-v4-hero-route>b{font-size:clamp(12px,1.05vw,21px);max-width:42%;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tv-v4-hero-route small{display:none}
+  .tv-v4-metrics strong{font-size:clamp(12px,.81vw,17px)}
+  .tv-v4-second-route{font-size:clamp(10px,.70vw,15px)}
+  .tv-v4-second-stats span{font-size:clamp(9px,.61vw,13px)}
+  .tv-v4-alerts b{font-size:clamp(9px,.62vw,13px)}
+  .tv-v4-alerts strong{font-size:clamp(10px,.67vw,14px)}
+}
+.tv-v4-cap-degrees{font-size:clamp(9px,.64vw,13px);font-weight:700;color:#a6d9ec;margin-left:6px}
+@keyframes tv-sos-glow{
+  0%,100%{box-shadow:0 0 0 1px #ff8c2a,0 0 10px #ff8c2a55;filter:brightness(.92)}
+  50%{box-shadow:0 0 0 3px #ffd059,0 0 26px #ff7922b8;filter:brightness(1.23)}
+}
+@keyframes tv-distress-glow{
+  0%,100%{box-shadow:0 0 0 1px #f43c44,0 0 9px #f43c4470;filter:brightness(.9)}
+  50%{box-shadow:0 0 0 3px #ffaaaa,0 0 32px #fc3d40c7;filter:brightness(1.3)}
+}
+.tv-v4-alerts .tv-status-priority.is-active{animation:tv-sos-glow .85s ease-in-out infinite alternate}
+.tv-v4-alerts .tv-incident-card.is-live{animation:tv-distress-glow .65s ease-in-out infinite alternate}
+@media(prefers-reduced-motion:reduce){
+  .tv-v4-alerts .tv-status-priority.is-active,
+  .tv-v4-alerts .tv-incident-card.is-live{animation:none;box-shadow:0 0 0 3px currentColor}
+}
