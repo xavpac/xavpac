@@ -231,65 +231,63 @@ struct ContentView: View {
         }
     }
 
-    // Version 4 : grande carte à gauche, vidéo immersive réellement agrandie,
-    // vols 2 et 3 côte à côte, deux alertes compactes. Aucun fond musical.
-    // Sans bouton, sans focus et sans réglage sur la télécommande.
+    // SKY SHOW, projet n° 2 : grande carte à gauche, destination en haut
+    // à droite, panneau prioritaire à la place des avions 1, 2 et 3.
+    // Les médias gardent le mode silencieux. Aucun clic requis.
     var body: some View {
         GeometryReader { geometry in
-            let availableWidth = max(0, geometry.size.width - 48)
-            let availableHeight = max(0, geometry.size.height - 40)
-            let rightWidth = availableWidth * 0.375
-            let infoHeight = max(215, availableHeight * 0.215)
-            let cardsHeight = max(130, availableHeight * 0.145)
-            let alertsHeight: CGFloat = 88
+            let width = max(0, geometry.size.width - 32)
+            let height = max(0, geometry.size.height - 28)
+            let rightWidth = width * 0.55
+            let videoHeight = height * 0.365
+            let infoHeight = height * 0.275
+            let alertHeight: CGFloat = 112
 
             ZStack {
-                SkyShowBackdrop()
-                    .ignoresSafeArea()
+                SkyShowBackdrop().ignoresSafeArea()
                     .allowsHitTesting(false)
 
-                HStack(spacing: 13) {
-                    // Le radar est conservé sur toute la hauteur disponible.
+                HStack(spacing: 12) {
                     AircraftMapView(
                         aircraft: service.aircraft,
                         center: service.center,
                         trails: service.trails,
-                        selectedID: service.aircraft.first?.id,
+                        selectedID: priorityFocusAircraft?.id ?? featuredAircraft?.id,
                         profiles: trafficProfiles,
                         routes: trafficRoutes
                     )
-                    .overlay(alignment: .topLeading) {
-                        cinemaVersionFourHeader
-                            .padding(16)
-                    }
-                    .clipShape(RoundedRectangle(cornerRadius: 21))
-                    .overlay(RoundedRectangle(cornerRadius: 21)
-                        .stroke(Color.white.opacity(0.95), lineWidth: 3))
+                    .clipShape(RoundedRectangle(cornerRadius: 18))
+                    .overlay(RoundedRectangle(cornerRadius: 18)
+                        .stroke(Color.white.opacity(0.9), lineWidth: 2))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-                    VStack(spacing: 11) {
-                        cinemaVersionFourFlightOne
-                            .frame(height: infoHeight)
-
-                        // Vidéo issue des médias de la destination, démarrage
-                        // automatique et muet ; photographie si aucun film.
+                    VStack(spacing: 9) {
                         cinemaVersionFourDestination
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .frame(height: videoHeight)
 
-                        cinemaVersionFourSecondaries
-                            .frame(height: cardsHeight)
+                        Group {
+                            if let operational = priorityFocusAircraft {
+                                priorityTakeover(operational)
+                            } else {
+                                VStack(spacing: 9) {
+                                    cinemaVersionFourFlightOne
+                                        .frame(height: infoHeight)
+                                    cinemaVersionFourSecondaries
+                                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                }
+                            }
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
 
                         HStack(spacing: 9) {
-                            cinemaPriorityStatus
-                                .frame(maxWidth: .infinity)
-                            cinemaIncidentPanel
-                                .frame(maxWidth: .infinity)
+                            cinemaPriorityStatus.frame(maxWidth: .infinity)
+                            cinemaIncidentPanel.frame(maxWidth: .infinity)
                         }
-                        .frame(height: alertsHeight)
+                        .frame(height: alertHeight)
                     }
-                    .frame(width: rightWidth, height: availableHeight)
+                    .frame(width: rightWidth, height: height)
                 }
-                .frame(width: availableWidth, height: availableHeight)
+                .frame(width: width, height: height)
             }
         }
         .allowsHitTesting(false)
