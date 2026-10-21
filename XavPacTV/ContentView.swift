@@ -9,7 +9,6 @@ struct ContentView: View {
     @StateObject private var airportWeather = AirportWeatherService()
     @StateObject private var homeScene = HomeSceneService()
     @StateObject private var soundscape = AmbientSoundscape()
-    @StateObject private var appleMusicSoundtrack = AppleMusicSoundtrack()
     @StateObject private var aviationTicker = AviationTickerService()
     @State private var displayClock = Date()
     @State private var lastEmergency: ObservedEmergency?
@@ -180,65 +179,77 @@ struct ContentView: View {
         }
     }
 
-    // Mode cinéma tvOS : tout doit rester lisible depuis la table, à plusieurs mètres.
-    // Aucun bouton, aucun focus, aucun réglage : une présentation autonome.
-    // SKY SHOW / ÉDITION SALON : disposition entièrement repensée pour un
-    // vidéoprojecteur. La carte occupe TOUTE la scène ; les panneaux flottent
-    // dans ses coins au lieu de former deux colonnes concurrentes.
+    // Version 4 : grande carte à gauche, vidéo immersive réellement agrandie,
+    // vols 2 et 3 côte à côte, deux alertes compactes. Aucun fond musical.
+    // Sans bouton, sans focus et sans réglage sur la télécommande.
     var body: some View {
         GeometryReader { geometry in
-            let contentWidth = max(0, geometry.size.width - 60)
+            let availableWidth = max(0, geometry.size.width - 48)
+            let availableHeight = max(0, geometry.size.height - 40)
+            let rightWidth = availableWidth * 0.455
+            let infoHeight = max(235, availableHeight * 0.23)
+            let cardsHeight = max(150, availableHeight * 0.172)
+            let alertsHeight: CGFloat = 94
 
             ZStack {
                 SkyShowBackdrop()
                     .ignoresSafeArea()
                     .allowsHitTesting(false)
 
-                VStack(spacing: 13) {
-                    cinemaSkyStage
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-                    HStack(spacing: 14) {
-                        cinemaTwoClosest
-                            .frame(width: contentWidth * 0.58, height: 190)
-                        VStack(spacing: 9) {
-                            cinemaPriorityStatus
-                                .frame(height: 87)
-                            cinemaIncidentPanel
-                                .frame(height: 94)
-                        }
-                        .frame(maxWidth: .infinity)
+                HStack(spacing: 13) {
+                    // Le radar est conservé sur toute la hauteur disponible.
+                    AircraftMapView(
+                        aircraft: service.aircraft,
+                        center: service.center,
+                        trails: service.trails,
+                        selectedID: service.aircraft.first?.id,
+                        profiles: trafficProfiles,
+                        routes: trafficRoutes
+                    )
+                    .overlay(alignment: .topLeading) {
+                        cinemaVersionFourHeader
+                            .padding(16)
                     }
-                    .frame(height: 190)
+                    .clipShape(RoundedRectangle(cornerRadius: 21))
+                    .overlay(RoundedRectangle(cornerRadius: 21)
+                        .stroke(Color.white.opacity(0.95), lineWidth: 3))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                    VStack(spacing: 11) {
+                        cinemaVersionFourFlightOne
+                            .frame(height: infoHeight)
+
+                        // Vidéo issue des médias de la destination, démarrage
+                        // automatique et muet ; photographie si aucun film.
+                        cinemaDestination
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                        cinemaTwoClosest
+                            .frame(height: cardsHeight)
+
+                        HStack(spacing: 9) {
+                            cinemaPriorityStatus
+                                .frame(maxWidth: .infinity)
+                            cinemaIncidentPanel
+                                .frame(maxWidth: .infinity)
+                        }
+                        .frame(height: alertsHeight)
+                    }
+                    .frame(width: rightWidth, height: availableHeight)
                 }
-                .padding(.horizontal, 30)
-                .padding(.vertical, 20)
+                .frame(width: availableWidth, height: availableHeight)
             }
         }
         .allowsHitTesting(false)
         .onAppear {
             UIApplication.shared.isIdleTimerDisabled = true
             service.start()
-            // Priorité à la playlist Apple Music, sans musique concurrente.
+            soundscape.prepareAlertsOnly()
         }
         .onDisappear {
             UIApplication.shared.isIdleTimerDisabled = false
             service.stop()
             soundscape.stop()
-            appleMusicSoundtrack.stop()
-        }
-        .task {
-            // Démarrer Apple Music en premier. En cas de synchronisation lente,
-            // réessayer automatiquement sans aucune commande sur la TV.
-            while !Task.isCancelled {
-                if await appleMusicSoundtrack.start() {
-                    soundscape.disableAmbientButKeepAlerts()
-                } else {
-                    soundscape.start()
-                }
-                do { try await Task.sleep(nanoseconds: 180_000_000_000) }
-                catch { break }
-            }
         }
         .task {
             // L'état de liaison évolue même lorsque le fournisseur ADS-B
@@ -306,6 +317,118 @@ struct ContentView: View {
                 catch { break }
             }
         }
+    }
+
+    private var cinemaVersionFourHeader: some View {
+        HStack(spacing: 11) {
+            Image(systemName: "airplane.circle.fill")
+                .font(.system(size: 33, weight: .heavy))
+                .foregroundStyle(Color(red: 0.04, green: 0.19, blue: 0.36))
+            Text("XAVPAC TV · SKY SHOW")
+                .font(.system(size: 29, weight: .black, design: .rounded))
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            Spacer(minLength: 10)
+            Circle().fill(radarIsLive ? Color.green : Color.orange)
+                .frame(width: 13, height: 13)
+            Text(radarIsLive ? "DIRECT" : "LIAISON")
+                .font(.system(size: 17, weight: .black))
+            Text(displayClock, format: .dateTime.hour().minute())
+                .font(.system(size: 25, weight: .black).monospacedDigit())
+        }
+        .foregroundStyle(Color(red: 0.05, green: 0.20, blue: 0.37))
+        .padding(.horizontal, 16)
+        .padding(.vertical, 13)
+        .background(Color.white.opacity(0.97), in: RoundedRectangle(cornerRadius: 19))
+        .shadow(color: .black.opacity(0.22), radius: 11, y: 4)
+    }
+
+    private var cinemaVersionFourFlightOne: some View {
+        let first = service.aircraft.first
+        let details = service.enrichment(for: first)
+        let dep = details?.departureAirport
+        let arr = details?.arrivalAirport
+        let fromCode = dep?.code ?? "—"
+        let toCode = arr?.code ?? "—"
+
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 11) {
+                Text("1")
+                    .font(.system(size: 25, weight: .black))
+                    .foregroundStyle(Color(red: 0.12, green: 0.19, blue: 0.32))
+                    .frame(width: 47, height: 47)
+                    .background(Color(red: 1, green: 0.77, blue: 0.22), in: Circle())
+                Image(systemName: "airplane")
+                    .font(.system(size: 34, weight: .heavy))
+                    .foregroundStyle(.yellow)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(first?.displayName ?? "AVION N° 1 EN ATTENTE")
+                        .font(.system(size: 28, weight: .black, design: .rounded))
+                        .lineLimit(1).minimumScaleFactor(0.7)
+                    Text(details?.aircraftModel ?? details?.aircraftType
+                         ?? first?.description ?? first?.aircraftType ?? "TYPE NON IDENTIFIÉ")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.74))
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 0)
+                Text("N° 1")
+                    .font(.system(size: 18, weight: .black))
+                    .foregroundStyle(.yellow)
+            }
+
+            Text(fromCode + "   →   " + toCode)
+                .font(.system(size: 24, weight: .black, design: .rounded))
+                .lineLimit(1)
+                .minimumScaleFactor(0.65)
+
+            HStack(alignment: .center, spacing: 8) {
+                cinemaVersionFourWeather("DÉPART", airport: dep)
+                cinemaVersionFourWeather("ARRIVÉE", airport: arr)
+            }
+            HStack(spacing: 4) {
+                cinemaSkyMetric("ALTITUDE", value: first?.altitudeLabel ?? "—", icon: "mountain.2.fill")
+                cinemaSkyMetric("VITESSE", value: first?.speedLabel ?? "—", icon: "speedometer")
+                cinemaSkyMetric("CAP", value: first?.headingLabel ?? "—", icon: "location.north.fill")
+                cinemaSkyMetric("DISTANCE", value: first.map(distanceText) ?? "—", icon: "location.fill")
+            }
+        }
+        .padding(.horizontal, 15)
+        .padding(.vertical, 12)
+        .foregroundStyle(.white)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(Color(red: 0.02, green: 0.09, blue: 0.17),
+                    in: RoundedRectangle(cornerRadius: 21))
+        .overlay(RoundedRectangle(cornerRadius: 21)
+            .stroke(Color.cyan.opacity(0.42), lineWidth: 2))
+    }
+
+    private func cinemaVersionFourWeather(_ title: String, airport: TVAirport?) -> some View {
+        let weather = airportWeather.weather(for: airport)
+        return HStack(spacing: 7) {
+            Image(systemName: weather?.symbolName ?? "cloud.fill")
+                .font(.system(size: 20, weight: .bold))
+                .foregroundStyle(Color(red: 0.66, green: 0.88, blue: 1))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title + " · " + (airport?.code ?? "—"))
+                    .font(.system(size: 12, weight: .black))
+                    .foregroundStyle(.cyan)
+                    .lineLimit(1)
+                Text(weather?.temperatureLabel ?? "—")
+                    .font(.system(size: 23, weight: .black))
+                    .lineLimit(1)
+                Text(weather?.windLabel ?? "Météo indisponible")
+                    .font(.system(size: 11, weight: .semibold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 6)
+        .background(Color(red: 0.07, green: 0.19, blue: 0.30),
+                    in: RoundedRectangle(cornerRadius: 11))
     }
 
     // Carte agrandie : suppression de l'ancien bandeau presse inférieur.
@@ -2621,7 +2744,7 @@ private final class AmbientSoundscape: ObservableObject {
     }
 
     func playEmergencyAlert() {
-        // Son distinct des moyens prioritaires ; la playlist MusicKit reste intacte.
+        // Son d’urgence distinct ; aucune bande-son en arrière-plan.
         playAlert(emergency: true)
     }
 
