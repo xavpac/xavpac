@@ -2143,7 +2143,9 @@ struct ContentView: View {
             if media.isVideo,
                isOverheadPass,
                let url = media.televisionVideoURL {
-                LoopingVideoView(url: url)
+                LoopingVideoView(url: url, onStall: {
+                    Task { await mediaService.advance() }
+                })
             } else if media.isVideo,
                       let preview = media.previewURL {
                 CinematicDestinationImage(
