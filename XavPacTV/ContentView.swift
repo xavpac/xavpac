@@ -3067,6 +3067,7 @@ private final class PlayerLayerHostView: UIView {
 
 private struct LoopingVideoView: UIViewRepresentable {
     let url: URL
+    let onStall: () -> Void
 
     func makeCoordinator() -> Coordinator {
         Coordinator()
@@ -3077,7 +3078,7 @@ private struct LoopingVideoView: UIViewRepresentable {
         view.backgroundColor = .black
         view.playerLayer.videoGravity = .resizeAspectFill
         view.playerLayer.player = context.coordinator.player
-        context.coordinator.play(url)
+        context.coordinator.play(url, onStall: onStall)
         return view
     }
 
@@ -3087,6 +3088,8 @@ private struct LoopingVideoView: UIViewRepresentable {
     }
 
     static func dismantleUIView(_ view: PlayerLayerHostView, coordinator: Coordinator) {
+        coordinator.generation += 1
+        coordinator.currentURL = nil
         coordinator.player.pause()
         coordinator.player.removeAllItems()
         coordinator.looper = nil
@@ -3096,14 +3099,17 @@ private struct LoopingVideoView: UIViewRepresentable {
     final class Coordinator {
         let player = AVQueuePlayer()
         var looper: AVPlayerLooper?
-        private var currentURL: URL?
+        var currentURL: URL?
+        var generation = 0
+        private var observedSecond = 0.0
+        private var stalledTicks = 0
 
         init() {
             player.isMuted = true
             player.actionAtItemEnd = .none
         }
 
-        func play(_ url: URL) {
+        func play(_ url: URL, onStall: @escaping () -> Void) {
             guard currentURL != url else {
                 if player.timeControlStatus != .playing {
                     player.play()
@@ -3112,12 +3118,17 @@ private struct LoopingVideoView: UIViewRepresentable {
             }
 
             currentURL = url
+            generation += 1
+            observedSecond = 0
+            stalledTicks = 0
+            let token = generation
             player.pause()
             player.removeAllItems()
 
             let item = AVPlayerItem(url: url)
             looper = AVPlayerLooper(player: player, templateItem: item)
             player.play()
+            monitorPlayback(url, token: token, onStall: onStall)
         }
     }
 }
