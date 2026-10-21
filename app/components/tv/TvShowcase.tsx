@@ -256,6 +256,8 @@ export default function TvShowcase() {
     setMediaStatus(destinationKey ? "loading" : "ready");
     if (!destinationKey) return;
     const controller = new AbortController();
+    let disposed = false;
+    const timeout = window.setTimeout(() => controller.abort(), 10000);
     const endpoint = "/api/tv/destination-media?city=" + encodeURIComponent(city)
       + "&iata=" + encodeURIComponent(destination?.iata || "")
       + "&icao=" + encodeURIComponent(destination?.icao || "")
@@ -275,8 +277,8 @@ export default function TvShowcase() {
         setMediaIndex(videoIndex >= 0 ? videoIndex : 0);
         setMediaStatus(items.length ? "ready" : "empty");
       })
-      .catch(() => { if (mediaRequest.current === requestId && !controller.signal.aborted) setMediaStatus("empty"); });
-    return () => controller.abort();
+      .catch(() => { if (!disposed && mediaRequest.current === requestId) setMediaStatus("empty"); });
+    return () => { disposed = true; window.clearTimeout(timeout); controller.abort(); };
   }, [destinationKey, city, destination?.iata, destination?.icao, destination?.name]);
 
   const playableMedia = useMemo(() => media.filter((item) => !badMedia.includes(item.url)), [media, badMedia]);
