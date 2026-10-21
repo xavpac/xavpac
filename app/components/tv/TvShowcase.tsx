@@ -291,7 +291,23 @@ export default function TvShowcase() {
     const video = videoRef.current;
     if (!video) return;
     video.muted = true;
-    void video.play().catch(() => { /* Le navigateur peut limiter la lecture même en mode muet. */ });
+    videoProgress.current = { url: activeMedia.url, position: 0, time: Date.now() };
+    const failed = () => setBadMedia((previous) =>
+      previous.includes(activeMedia.url) ? previous : [...previous, activeMedia.url]);
+    void video.play().catch(failed);
+    const watchdog = window.setInterval(() => {
+      if (document.visibilityState === "hidden") return;
+      const player = videoRef.current;
+      const progress = videoProgress.current;
+      if (!player || !progress || progress.url !== activeMedia.url) return;
+      if (player.currentTime > progress.position + 0.12) {
+        videoProgress.current = { url: activeMedia.url, position: player.currentTime, time: Date.now() };
+      } else if (Date.now() - progress.time > 8000) {
+        // Une vidéo bloquée cède sa place au média suivant.
+        failed();
+      }
+    }, 2000);
+    return () => window.clearInterval(watchdog);
   }, [activeMedia]);
 
   const clock = now ? now.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "--:--:--";
