@@ -28,6 +28,12 @@ const EMERGENCY_CODES = ["7700", "7600", "7500"];
 const incidentLabel = (code: string) => code === "7700"
   ? "URGENCE SIGNALÉE · CAUSE NON CONFIRMÉE"
   : code === "7600" ? "DÉFAILLANCE RADIO SIGNALÉE" : "INTERVENTION ILLICITE SIGNALÉE";
+const capFrancais = (angle: number | null | undefined) => {
+  if (angle == null || !Number.isFinite(angle)) return "—";
+  const d = ["nord", "nord-nord-est", "nord-est", "est-nord-est", "est", "est-sud-est", "sud-est", "sud-sud-est", "sud", "sud-sud-ouest", "sud-ouest", "ouest-sud-ouest", "ouest", "ouest-nord-ouest", "nord-ouest", "nord-nord-ouest"];
+  return d[Math.floor((((angle % 360) + 360) % 360 + 11.25) / 22.5) % 16];
+};
+
 const alertDate = (value?: string | null) => {
   if (!value || !Number.isFinite(Date.parse(value))) return "Date/heure indisponibles";
   return new Date(value).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
