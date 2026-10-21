@@ -12,6 +12,7 @@ struct ContentView: View {
     @StateObject private var aviationTicker = AviationTickerService()
     @State private var displayClock = Date()
     @State private var lastEmergency: ObservedEmergency?
+    @State private var failedVideoURLs: Set<String> = []
 
     // Heure de première observation locale : ne pas confondre avec l'heure
     // de survenue réelle de l'évènement aéronautique.
@@ -139,8 +140,9 @@ struct ContentView: View {
         // L'alerte concerne une position ADS-B fraîche et un moyen identifié.
         guard radarIsLive, let aircraft = priorityAircraft,
               (aircraft.positionAgeSeconds ?? 0) < 90 else { return "none" }
-        let kind = service.trafficProfile(for: aircraft).kind
-        return kind == .helicopter ? "none" : aircraft.id
+        // Un hélicoptère Dragon ou un aéronef militaire est aussi prioritaire.
+        guard service.trafficProfile(for: aircraft).isPriorityTraffic else { return "none" }
+        return aircraft.id
     }
 
     private var activeEmergency: Aircraft? {
@@ -186,10 +188,10 @@ struct ContentView: View {
         GeometryReader { geometry in
             let availableWidth = max(0, geometry.size.width - 48)
             let availableHeight = max(0, geometry.size.height - 40)
-            let rightWidth = availableWidth * 0.455
-            let infoHeight = max(235, availableHeight * 0.23)
-            let cardsHeight = max(150, availableHeight * 0.172)
-            let alertsHeight: CGFloat = 94
+            let rightWidth = availableWidth * 0.375
+            let infoHeight = max(215, availableHeight * 0.215)
+            let cardsHeight = max(130, availableHeight * 0.145)
+            let alertsHeight: CGFloat = 88
 
             ZStack {
                 SkyShowBackdrop()
@@ -224,7 +226,7 @@ struct ContentView: View {
                         cinemaVersionFourDestination
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-                        cinemaTwoClosest
+                        cinemaVersionFourSecondaries
                             .frame(height: cardsHeight)
 
                         HStack(spacing: 9) {
@@ -280,6 +282,7 @@ struct ContentView: View {
             }
         }
         .task(id: destinationTaskKey) {
+            failedVideoURLs.removeAll()
             await mediaService.load(for: featuredEnrichment)
             // Préférer la vidéo réelle de la destination dès qu'elle existe,
             // même sans passage à moins de 12 km de HOME.
@@ -424,7 +427,7 @@ struct ContentView: View {
         return VStack(alignment: .leading, spacing: 8) {
             cinemaVersionFourFlightHeader(first, details: details)
 
-            Text((dep?.code ?? "—") + "   →   " + (arr?.code ?? "—"))
+            Text((dep?.city ?? "Départ non renseigné") + "  →  " + (arr?.city ?? "Arrivée non renseignée"))
                 .font(.system(size: 24, weight: .black, design: .rounded))
                 .lineLimit(1)
                 .minimumScaleFactor(0.65)
@@ -482,7 +485,7 @@ struct ContentView: View {
     private func cinemaVersionFourMetrics(_ first: Aircraft?) -> some View {
         let altitude: String = first?.altitudeLabel ?? "—"
         let speed: String = first?.speedLabel ?? "—"
-        let heading: String = first?.headingLabel ?? "—"
+        let heading: String = directionFrancais(first?.trueTrack)
         let distance: String = first.map { distanceText($0) } ?? "—"
 
         return HStack(spacing: 4) {
