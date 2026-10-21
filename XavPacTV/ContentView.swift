@@ -3130,6 +3130,26 @@ private struct LoopingVideoView: UIViewRepresentable {
             player.play()
             monitorPlayback(url, token: token, onStall: onStall)
         }
+
+        private func monitorPlayback(_ url: URL, token: Int, onStall: @escaping () -> Void) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
+                guard let self, self.generation == token,
+                      self.currentURL == url else { return }
+                let seconds = self.player.currentTime().seconds
+                if seconds.isFinite && seconds > self.observedSecond + 0.1 {
+                    self.observedSecond = seconds
+                    self.stalledTicks = 0
+                } else {
+                    self.stalledTicks += 1
+                }
+                if self.stalledTicks >= 2 {
+                    self.generation += 1
+                    onStall()
+                } else {
+                    self.monitorPlayback(url, token: token, onStall: onStall)
+                }
+            }
+        }
     }
 }
 
