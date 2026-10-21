@@ -723,6 +723,16 @@ struct ContentView: View {
                 cinemaVersionFourWeather("ARRIVÉE", airport: arr)
             }
             cinemaVersionFourMetrics(first)
+            HStack(spacing: 8) {
+                Text(details?.registration ?? first?.registration ?? "Immatriculation indisponible")
+                Spacer(minLength: 1)
+                Text(details?.routeConfidence == "confirmed" ? "TRAJET CONFIRMÉ" : "TRAJET NON CONFIRMÉ")
+                Spacer(minLength: 1)
+                Text(first?.positionAgeSeconds.map { "POSITION " + String(Int($0)) + " s" } ?? "POSITION INCONNUE")
+            }
+            .font(.system(size: 11, weight: .heavy))
+            .foregroundStyle(Color(red: 0.57, green: 0.84, blue: 0.96))
+            .lineLimit(1).minimumScaleFactor(0.65)
         }
         .padding(.horizontal, 15)
         .padding(.vertical, 12)
@@ -759,6 +769,7 @@ struct ContentView: View {
                     .font(.system(size: 15, weight: .bold))
                     .foregroundStyle(.white.opacity(0.74))
                     .lineLimit(1)
+                airlineBadge(details)
             }
             Spacer(minLength: 0)
             Text("N° 1")
@@ -767,8 +778,30 @@ struct ContentView: View {
         }
     }
 
+    // Les logos du référentiel sont en SVG. AsyncImage de tvOS attend une
+    // image raster ; un logo SVG vide formait le carré blanc photographié.
+    // Cartouche lisible plutôt qu'un faux logo ou une case vide.
+    private func airlineBadge(_ details: TVAircraftEnrichment?) -> some View {
+        let name = details?.operatorName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return Group {
+            if !name.isEmpty {
+                Text(name)
+                    .font(.system(size: 11, weight: .black, design: .rounded))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.58)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 4)
+                    .background(Color(red: 0.10, green: 0.34, blue: 0.53),
+                                in: RoundedRectangle(cornerRadius: 7))
+                    .overlay(RoundedRectangle(cornerRadius: 7)
+                        .stroke(Color.cyan.opacity(0.65), lineWidth: 1))
+            }
+        }
+    }
+
     private func aircraftThumbnail(_ details: TVAircraftEnrichment?) -> some View {
-        ZStack(alignment: .bottomTrailing) {
+        ZStack {
             if let url = details?.photoURL {
                 AsyncImage(url: url) { phase in
                     if let image = phase.image {
@@ -777,26 +810,14 @@ struct ContentView: View {
                         Image(systemName: "airplane")
                             .resizable().scaledToFit()
                             .padding(16)
-                            .foregroundStyle(.white.opacity(0.75))
+                            .foregroundStyle(.white.opacity(0.80))
                     }
                 }
             } else {
                 Image(systemName: "airplane")
                     .resizable().scaledToFit()
                     .padding(16)
-                    .foregroundStyle(.white.opacity(0.75))
-            }
-            if let logo = details?.logoURL {
-                AsyncImage(url: logo) { image in
-                    image.resizable().scaledToFit()
-                } placeholder: {
-                    Color.clear
-                }
-                .frame(width: 33, height: 29)
-                .padding(3)
-                .background(Color.white.opacity(0.94),
-                            in: RoundedRectangle(cornerRadius: 7))
-                .padding(4)
+                    .foregroundStyle(.white.opacity(0.80))
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -875,6 +896,7 @@ struct ContentView: View {
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(.white.opacity(0.72))
                         .lineLimit(1)
+                    airlineBadge(details)
                 }
                 Spacer(minLength: 0)
             }
@@ -885,10 +907,20 @@ struct ContentView: View {
             Text("ARRIVÉE · " + arrival)
                 .font(.system(size: 13, weight: .bold))
                 .lineLimit(1).minimumScaleFactor(0.65)
-            Text("CAP · " + directionFrancais(aircraft?.trueTrack))
-                .font(.system(size: 13, weight: .heavy))
-                .foregroundStyle(accent)
-                .lineLimit(1).minimumScaleFactor(0.7)
+            HStack(spacing: 8) {
+                Text("ALT · " + (aircraft?.altitudeLabel ?? "—"))
+                Text("VIT · " + (aircraft?.speedLabel ?? "—"))
+            }
+            .font(.system(size: 11, weight: .heavy))
+            .lineLimit(1).minimumScaleFactor(0.65)
+            HStack(spacing: 6) {
+                Text("CAP · " + directionFrancais(aircraft?.trueTrack))
+                    .foregroundStyle(accent)
+                Spacer(minLength: 2)
+                Text(aircraft.map { distanceText($0) } ?? "—")
+            }
+            .font(.system(size: 12, weight: .heavy))
+            .lineLimit(1).minimumScaleFactor(0.65)
         }
         .foregroundStyle(.white)
         .padding(11)
