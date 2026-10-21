@@ -34,6 +34,19 @@ const capFrancais = (angle: number | null | undefined) => {
   return d[Math.floor((((angle % 360) + 360) % 360 + 11.25) / 22.5) % 16];
 };
 
+const cityFrancais = (name: string | null | undefined) => {
+  if (!name?.trim()) return "Ville non renseignée";
+  const common: Record<string, string> = {
+    London: "Londres", Frankfurt: "Francfort", Montreal: "Montréal",
+    Geneva: "Genève", Brussels: "Bruxelles", Lisbon: "Lisbonne",
+    Vienna: "Vienne", Prague: "Prague", Warsaw: "Varsovie",
+    Moscow: "Moscou", Rome: "Rome", Florence: "Florence"
+  };
+  return common[name] ?? name;
+};
+const airportCity = (a?: EnrichedAircraft["arrivalAirport"]) =>
+  a ? cityFrancais(a.municipality || a.name) : "Ville non renseignée";
+
 const alertDate = (value?: string | null) => {
   if (!value || !Number.isFinite(Date.parse(value))) return "Date/heure indisponibles";
   return new Date(value).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
