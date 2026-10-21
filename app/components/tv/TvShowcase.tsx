@@ -95,6 +95,7 @@ export default function TvShowcase() {
   const enrichTime = useRef(0);
   const mediaRequest = useRef(0);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const videoProgress = useRef<{ url: string; position: number; time: number } | null>(null);
 
   useEffect(() => {
     const tick = () => setNow(new Date());
