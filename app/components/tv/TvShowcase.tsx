@@ -10,7 +10,7 @@ import type { EnrichedAircraft } from "../../lib/aviation/types";
 import type { MapPoint } from "../StableMap";
 
 const StableMap = dynamic(() => import("../StableMap"), { ssr: false });
-const RADIUS_KM = 50;
+const RADIUS_KM = 50; // zone radar
 const SHOWCASE_DISTANCE_KM = 12;
 const HOME = XAVPAC_HOME.position;
 
