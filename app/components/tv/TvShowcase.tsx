@@ -315,8 +315,9 @@ export default function TvShowcase() {
     EMERGENCY_CODES.includes(item.squawk ?? "") && (item.positionAgeSeconds ?? 0) < 90) : null;
   const latestTechnicalArticle = news.filter((item) => TECHNICAL_REPORT.test(item.title))
     .sort((a, b) => Date.parse(b.date) - Date.parse(a.date))[0] ?? null;
-  const showEmergency = Boolean(activeEmergency)
-    && (!latestTechnicalArticle || !now || Math.floor(now.getTime() / 9000) % 2 === 0);
+  // Une urgence ADS-B active reste affichée ; ne jamais la masquer
+  // pendant l'alternance des anciennes dépêches de presse.
+  const showEmergency = Boolean(activeEmergency);
   const displayLatest = !showEmergency && latestTechnicalArticle;
   const showFlight = Boolean(candidate && destination);
   const nearFlightName = candidate?.details?.flightNumberIata || candidate?.details?.callsignIcao || candidate?.item.callsign || "VOL IDENTIFIÉ";
