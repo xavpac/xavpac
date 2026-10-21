@@ -511,6 +511,70 @@ struct ContentView: View {
         return sectors[index]
     }
 
+    private var cinemaVersionFourSecondaries: some View {
+        GeometryReader { geo in
+            let aircraft = Array(service.aircraft.dropFirst().prefix(2))
+            let half = max(0, (geo.size.width - 8) / 2)
+            HStack(spacing: 8) {
+                cinemaVersionFourSecondary(aircraft.first, rank: 2)
+                    .frame(width: half, height: geo.size.height)
+                cinemaVersionFourSecondary(aircraft.count > 1 ? aircraft[1] : nil, rank: 3)
+                    .frame(width: half, height: geo.size.height)
+            }
+        }
+    }
+
+    private func cinemaVersionFourSecondary(_ aircraft: Aircraft?, rank: Int) -> some View {
+        let details = service.enrichment(for: aircraft)
+        let departure = details?.departureAirport?.city ?? "—"
+        let arrival = details?.arrivalAirport?.city ?? "—"
+        let accent = rank == 2
+            ? Color(red: 0.12, green: 0.67, blue: 0.97)
+            : Color(red: 0.76, green: 0.32, blue: 0.93)
+
+        return VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 8) {
+                Image(systemName: "airplane")
+                    .font(.system(size: 27, weight: .heavy))
+                    .foregroundStyle(accent)
+                Text(String(rank))
+                    .font(.system(size: 23, weight: .black))
+                    .frame(width: 36, height: 36)
+                    .background(accent, in: Circle())
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(aircraft?.displayName ?? "AVION " + String(rank))
+                        .font(.system(size: 21, weight: .black))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.65)
+                    Text(aircraft == nil ? "EN ATTENTE D'UN PASSAGE"
+                         : details?.aircraftModel ?? aircraft?.aircraftType ?? "TYPE NON IDENTIFIÉ")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.72))
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 0)
+            }
+            Spacer(minLength: 1)
+            Text("DÉPART · " + departure)
+                .font(.system(size: 13, weight: .bold))
+                .lineLimit(1).minimumScaleFactor(0.65)
+            Text("ARRIVÉE · " + arrival)
+                .font(.system(size: 13, weight: .bold))
+                .lineLimit(1).minimumScaleFactor(0.65)
+            Text("CAP · " + directionFrancais(aircraft?.trueTrack))
+                .font(.system(size: 13, weight: .heavy))
+                .foregroundStyle(accent)
+                .lineLimit(1).minimumScaleFactor(0.7)
+        }
+        .foregroundStyle(.white)
+        .padding(11)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(Color(red: 0.03, green: 0.11, blue: 0.21),
+                    in: RoundedRectangle(cornerRadius: 17))
+        .overlay(RoundedRectangle(cornerRadius: 17)
+            .stroke(accent.opacity(0.75), lineWidth: 2))
+    }
+
     private func cinemaVersionFourWeather(_ title: String, airport: TVAirport?) -> some View {
         let weather = airportWeather.weather(for: airport)
         return HStack(spacing: 7) {
