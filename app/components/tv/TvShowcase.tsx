@@ -11,7 +11,9 @@ import type { MapPoint } from "../StableMap";
 
 const StableMap = dynamic(() => import("../StableMap"), { ssr: false });
 const RADIUS_KM = 50; // zone radar
-const SHOWCASE_DISTANCE_KM = 12;
+const SHOWCASE_DISTANCE_KM = 50;
+const PRIORITY_DISTANCE_KM = 20;
+const ALERT_DURATION_MS = 5 * 60 * 1000;
 const HOME = XAVPAC_HOME.position;
 
 type TrackedAircraft = LiveAircraft & { distance: number };
@@ -23,7 +25,7 @@ type AviationArticle = { title: string; date: string; source: string; link?: str
 type NewsPayload = { news?: AviationArticle[] };
 type ObservedAlert = { key: string; aircraft: string; code: string; detectedAt: string };
 type ObservedPriority = { key: string; label: string; aircraft: string; detectedAt: string };
-const TECHNICAL_REPORT = /panne|avarie|probl[eè]me technique|incident technique|pressurisation|d[eé]pressurisation|panne moteur/i;
+const TECHNICAL_REPORT = /panne|avarie|probl[eè]me technique|incident technique|pressurisation|d[eé]pressurisation|panne moteur|crash|accident|emergency landing|atterrissage d.urgence|urgence|d[eé]tresse|mayday/i;
 const EMERGENCY_CODES = ["7700", "7600", "7500"];
 const incidentLabel = (code: string) => code === "7700"
   ? "URGENCE SIGNALÉE · CAUSE NON CONFIRMÉE"
@@ -90,6 +92,32 @@ export default function TvShowcase() {
   const [news, setNews] = useState<AviationArticle[]>([]);
   const [lastEmergency, setLastEmergency] = useState<ObservedAlert | null>(null);
   const [lastPriority, setLastPriority] = useState<ObservedPriority | null>(null);
+  const [worldAlert, setWorldAlert] = useState<{ key: string; detectedAt: string } | null>(null);
+  const seenWorldArticle = useRef<string | null>(null);
+  const priorityLostAt = useRef<number | null>(null);
+  const emergencyLostAt = useRef<number | null>(null);
+  const alertAudioContext = useRef<AudioContext | null>(null);
+  const playAlert = (kind: "priority" | "emergency") => {
+    // Le navigateur peut refuser l'audio automatique sans interaction préalable.
+    try {
+      const context = alertAudioContext.current ?? new AudioContext();
+      alertAudioContext.current = context;
+      if (context.state === "suspended") void context.resume().catch(() => {});
+      const tones = kind === "priority" ? [600, 840] : [1050, 720, 1050];
+      tones.forEach((hz, idx) => {
+        const o = context.createOscillator();
+        const gain = context.createGain();
+        o.type = kind === "priority" ? "sine" : "square";
+        o.frequency.setValueAtTime(hz, context.currentTime + idx * 0.21);
+        gain.gain.setValueAtTime(0.0001, context.currentTime + idx * 0.21);
+        gain.gain.exponentialRampToValueAtTime(kind === "priority" ? 0.12 : 0.08, context.currentTime + idx * 0.21 + 0.025);
+        gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + idx * 0.21 + 0.17);
+        o.connect(gain).connect(context.destination);
+        o.start(context.currentTime + idx * 0.21);
+        o.stop(context.currentTime + idx * 0.21 + 0.18);
+      });
+    } catch { /* Son limité par les règles du navigateur ; alerte visuelle maintenue. */ }
+  };
   const seenEmergency = useRef<string | null>(null);
   const seenPriority = useRef<string | null>(null);
   const enrichTime = useRef(0);
@@ -186,14 +214,19 @@ export default function TvShowcase() {
     const emergency = traffic.find((item) =>
       EMERGENCY_CODES.includes(item.squawk ?? "") && (item.positionAgeSeconds ?? 0) < 90);
     const key = emergency ? emergency.id + "-" + emergency.squawk : null;
-    if (key && key !== seenEmergency.current && emergency) {
-      seenEmergency.current = key;
-      setLastEmergency({
-        key, aircraft: emergency.callsign || emergency.registration || emergency.id,
-        code: emergency.squawk ?? "", detectedAt: new Date().toISOString()
-      });
+    if (key && emergency) {
+      const loss = emergencyLostAt.current;
+      if (loss && Date.now() - loss >= 120000) seenEmergency.current = null;
+      emergencyLostAt.current = null;
+      if (key !== seenEmergency.current) {
+        seenEmergency.current = key;
+        setLastEmergency({ key, aircraft: emergency.callsign || emergency.registration || emergency.id,
+          code: emergency.squawk ?? "", detectedAt: new Date().toISOString() });
+        playAlert("emergency");
+      }
+    } else if (emergencyLostAt.current === null) {
+      emergencyLostAt.current = Date.now();
     }
-    if (!key) seenEmergency.current = null;
   }, [traffic, feedFresh]);
 
   const mapPoints = useMemo<MapPoint[]>(() => [
@@ -209,7 +242,7 @@ export default function TvShowcase() {
         id: item.id, lat: item.latitude, lon: item.longitude, name: route,
         rank: index < 3 ? (index + 1) as 1 | 2 | 3 : undefined,
         category: priority === "ARMÉE" ? "national-military" : priority === "SÉCURITÉ CIVILE" ? "national-dragon" : helicopter ? "helicopter" : "aircraft",
-        color: priority ? "#ffce46" : "#138ad0",
+        color: priority === "ARMÉE" ? "#ffbe2e" : priority === "SÉCURITÉ CIVILE" ? "#ff415c" : "#138ad0",
         heading: item.trueTrack,
         detail: (item.callsign || "Vol") + " • " + item.distance.toFixed(1) + " km"
       };
@@ -226,21 +259,39 @@ export default function TvShowcase() {
 
   const nearbyAlert = useMemo(() => traffic
     .map((item) => ({ item, priority: specialLabel(item, enriched[item.id.replace(/^~/, "").toUpperCase()]) }))
-    .find(({ item, priority }) => priority !== null && (item.positionAgeSeconds ?? 0) < 90) ?? null, [traffic, enriched]);
+    .find(({ item, priority }) => priority !== null && item.distance <= PRIORITY_DISTANCE_KM && (item.positionAgeSeconds ?? 0) < 90) ?? null, [traffic, enriched]);
 
   useEffect(() => {
     if (!feedFresh) return;
     const key = nearbyAlert ? nearbyAlert.item.id + "-" + nearbyAlert.priority : null;
-    if (key && key !== seenPriority.current && nearbyAlert) {
-      seenPriority.current = key;
-      setLastPriority({
-        key, label: nearbyAlert.priority || "MOYEN PRIORITAIRE",
-        aircraft: nearbyAlert.item.callsign || nearbyAlert.item.registration || nearbyAlert.item.id,
-        detectedAt: new Date().toISOString()
-      });
+    if (key && nearbyAlert) {
+      const loss = priorityLostAt.current;
+      if (loss && Date.now() - loss >= 120000) seenPriority.current = null;
+      priorityLostAt.current = null;
+      if (key !== seenPriority.current) {
+        seenPriority.current = key;
+        setLastPriority({ key, label: nearbyAlert.priority || "MOYEN PRIORITAIRE",
+          aircraft: nearbyAlert.item.callsign || nearbyAlert.item.registration || nearbyAlert.item.id,
+          detectedAt: new Date().toISOString() });
+        playAlert("priority");
+      }
+    } else if (priorityLostAt.current === null) {
+      priorityLostAt.current = Date.now();
     }
-    if (!key) seenPriority.current = null;
   }, [nearbyAlert, feedFresh]);
+
+  useEffect(() => {
+    const recent = news.filter((item) => TECHNICAL_REPORT.test(item.title))
+      .sort((a, b) => Date.parse(b.date) - Date.parse(a.date))[0];
+    if (!recent) return;
+    const key = recent.title + "|" + recent.date;
+    if (seenWorldArticle.current === null) { seenWorldArticle.current = key; return; }
+    if (seenWorldArticle.current !== key && Date.now() - Date.parse(recent.date) < 30 * 60000) {
+      seenWorldArticle.current = key;
+      setWorldAlert({ key, detectedAt: new Date().toISOString() });
+      playAlert("emergency");
+    }
+  }, [news]);
 
   const featured = candidate?.item ?? traffic[0] ?? null;
   const featuredInfo = featured ? enriched[featured.id.replace(/^~/, "").toUpperCase()] : null;
