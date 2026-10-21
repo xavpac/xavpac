@@ -151,7 +151,14 @@ struct TVAircraftEnrichment: Decodable, Hashable {
     }
 
     var logoURL: URL? {
-        xavPacAssetURL(logo)
+        // Les fichiers référencés sont SVG : tvOS AsyncImage a besoin de PNG.
+        // Le serveur rasterise l'original ; aucun logo générique trompeur.
+        guard logo.hasPrefix("/airlines/"), logo.hasSuffix(".svg"),
+              !logo.contains("generic-airline"),
+              let file = logo.split(separator: "/").last else { return nil }
+        var components = URLComponents(string: "https://xavpac-ty3i.vercel.app/api/tv/logo")
+        components?.queryItems = [URLQueryItem(name: "file", value: String(file))]
+        return components?.url
     }
 
     var destinationLabel: String {
