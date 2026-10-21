@@ -423,142 +423,154 @@ export default function TvShowcase() {
   const firstArrivalCity = airportCity(firstInfo?.arrivalAirport);
 
   return (
-    <main className="xavpac-tv tv-v4" aria-label="XavPac TV — proposition 4 en service, sans musique et sans commande">
-      <header className="tv-topbar tv-v4-header">
-        <div className="tv-brand">
-          <span className="tv-brand-symbol">✈</span>
-          <div><strong>XAVPAC <em>TV</em> · SKY SHOW</strong><small>CARTE AÉRIENNE · BÂGÉ-DOMMARTIN</small></div>
+    <main className="xavpac-tv tv-v5" aria-label="XAVPAC TV SKY SHOW — Radar et vols réels sans interaction">
+      <header className="tv-v5-header">
+        <div className="tv-v5-title"><span className="tv-v5-title-icon">✈</span>
+          <div><strong>XAVPAC TV <span>· SKY SHOW</span></strong>
+          <small>SUIVI DES VOLS · BÂGÉ-DOMMARTIN</small></div>
         </div>
-        <div className="tv-livebar">
-          <span className="tv-signal"><i /> {feedFresh ? "RADAR EN DIRECT" : connection}</span>
-          <span className="tv-utc">{clock}</span>
+        <div className="tv-v5-headmeta">
+          <span className={"tv-v5-connection " + (feedFresh ? "is-live" : "is-stale")}>
+            <i />{feedFresh ? "DONNÉES ADS-B ACTUALISÉES" : connection}
+          </span>
+          <span>{today}</span><strong>{clock}</strong>
         </div>
       </header>
-      <section className="tv-v4-layout" aria-label="Carte et télévision immersive">
-        <div className="tv-v4-map">
+      <div className="tv-v5-layout">
+        <section className="tv-v5-map" aria-label="Carte réelle des aéronefs dans les 50 km">
           <div className="tv-map-static">
             <StableMap points={mapPoints} center={HOME} radiusKm={RADIUS_KM}
               showRadius mapVariant="street" controls={false} zoom={9}
-              selectedId={first?.id ?? null} />
+              selectedId={priorityTakeover ? nearbyAlert?.item.id : first?.id ?? null} />
           </div>
-          <div className="tv-map-shine" aria-hidden="true" />
-          <div className="tv-v4-map-note">
-            <b>✈ {traffic.length} AÉRONEF{traffic.length > 1 ? "S" : ""}</b> · 50 KM ·
-            {updatedAt ? " " + alertDate(updatedAt) : " EN ATTENTE DES POSITIONS"}
+          <div className="tv-v5-map-top">
+            <span>CARTE AÉRIENNE · 50 KM</span>
+            <b>{feedFresh ? traffic.length + " AÉRONEF" + (traffic.length > 1 ? "S" : "") : "RADAR EN ATTENTE"}</b>
           </div>
-        </div>
+          <div className="tv-v5-map-legend">
+            <div><i className="tv-v5-dot tv-v5-dot-red" />Sécurité civile</div>
+            <div><i className="tv-v5-dot tv-v5-dot-gold" />Armée</div>
+            <div><i className="tv-v5-dot tv-v5-dot-blue" />Autres aéronefs</div>
+          </div>
+          <div className="tv-v5-map-footer">Repères 1 · 2 · 3 : mêmes avions que les fiches <span>{updatedAt ? "Relevé : " + alertDate(updatedAt) : "Positions non disponibles"}</span></div>
+        </section>
 
-        <aside className="tv-v4-sidebar" aria-label="Informations aéronautiques et vidéo">
-          <article className="tv-v4-hero">
-            <div className="tv-v4-hero-heading">
-              <span className="tv-v4-number tv-v4-number-1">1</span>
-              <div className="tv-v4-hero-title">
-                <strong>{firstInfo?.flightNumberIata || first?.callsign || first?.registration || "AVION N° 1 EN ATTENTE"}</strong>
-                <small>{firstInfo?.aircraftModel || firstInfo?.aircraftType || first?.description || first?.aircraftType || "TYPE NON IDENTIFIÉ"}</small>
-              </div>
-              <span className="tv-v4-hero-rank">N° 1 · CARTE</span>
-            </div>
-            <div className="tv-v4-hero-route">
-              <b>{firstDepartureCity} ({firstDeparture})</b><span>➜</span><b>{firstArrivalCity} ({firstArrival})</b>
-              <small>{firstInfo?.operator || first?.operator || "Compagnie non identifiée"}</small>
-            </div>
-            <div className="tv-v4-metrics">
-              <div><small>ALTITUDE</small><strong>{first ? formatNumber(first.barometricAltitude, " m") : "—"}</strong></div>
-              <div><small>VITESSE SOL</small><strong>{first?.velocity != null ? formatNumber(first.velocity * 3.6, " km/h") : "—"}</strong></div>
-              <div><small>CAP</small><strong>{capFrancais(first?.trueTrack)}</strong><span className="tv-v4-cap-degrees">{first?.trueTrack != null ? formatNumber(first.trueTrack, "°") : ""}</span></div>
-              <div><small>DISTANCE HOME</small><strong>{first ? first.distance.toFixed(1) + " km" : "—"}</strong></div>
-            </div>
-            <div className="tv-v4-route-note">
-              {firstInfo?.routeConfidence === "confirmed" ? "TRAJET CONFIRMÉ" : "TRAJET DISPONIBLE SELON SOURCES · NON CONFIRMÉ"}
-              <span>Positions ADS-B réelles · actualisation automatique</span>
-            </div>
-          </article>
-
-          <section className="tv-v4-video" aria-label="Grande vidéo immersive automatique">
-            <div className="tv-v4-video-heading">
-              <strong>▣ VUE IMMERSIVE · VIDÉO</strong>
-              <span>{showFlight ? city + " · " + code(destination) : "PROCHAINE ESCALE"}</span>
-            </div>
-            <div className="tv-media-screen tv-v4-video-screen">
+        <aside className="tv-v5-side">
+          <section className="tv-v5-media-frame" aria-label="Vidéo immersive de la destination">
+            <div className="tv-v5-media">
               {showFlight && activeMedia?.type === "video" && <video
-                key={activeMedia.url}
-                ref={videoRef} className="tv-destination-video"
+                key={activeMedia.url} ref={videoRef} className="tv-destination-video"
                 src={activeMedia.url} autoPlay muted playsInline preload="auto"
                 poster={activeMedia.preview || undefined}
-                onCanPlay={() => { const video = videoRef.current; if (video) void video.play().catch(() => {}); }}
+                onCanPlay={() => {const v=videoRef.current; if(v) void v.play().catch(() => {});}}
                 onError={() => setBadMedia((previous) => previous.includes(activeMedia.url) ? previous : [...previous, activeMedia.url])}
                 onEnded={() => setMediaIndex((index) => index + 1)}
               />}
               {showFlight && activeMedia?.type === "image" && <div key={activeMedia.url}
-                className="tv-destination-image" style={{ backgroundImage: "url(" + JSON.stringify(activeMedia.url) + ")" }} />}
-              {(!showFlight || !activeMedia) && <div className="tv-mood-illustration">
-                <div className="tv-mood-orbit one" /><div className="tv-mood-orbit two" />
-                <span className="tv-mood-plane">✈</span>
-              </div>}
-              <div className="tv-media-gradient" />
-              <div className="tv-v4-video-caption">
-                <b>{showFlight ? city : "Prochaine escale…"}</b>
-                <small>{showFlight ? activeMedia?.type === "video" ? "FILM EN LECTURE AUTOMATIQUE · SANS SON"
-                  : "DIAPORAMA · VIDÉO DÈS DISPONIBILITÉ"
-                  : "VIDÉO DÈS QU’UN VOL PROCHE EST IDENTIFIÉ"}</small>
+                className="tv-destination-image" style={{backgroundImage:"url(" + JSON.stringify(activeMedia.url) + ")"}} />}
+              {(!showFlight || !activeMedia) && <div className="tv-v5-media-empty"><span>✈</span><strong>{mediaStatus === "loading" ? "Recherche de médias…" : "ESCALE IMMERSIVE"}</strong><small>Vidéo et photographies à partir des destinations identifiées</small></div>}
+              <div className="tv-v5-media-overlay" />
+              <div className="tv-v5-media-heading"><b>▣ VUE IMMERSIVE</b>
+                <span>{activeMedia?.type === "video" ? "VIDÉO · SANS SON" : "PHOTO · VIDÉO SI DISPONIBLE"}</span>
               </div>
-            </div>
-            <div className="tv-v4-media-source">
-              {showFlight && activeMedia ? "Source : " + activeMedia.sourceName
-                + (activeMedia.author ? " · " + activeMedia.author : "")
-                : mediaStatus === "loading" ? "Recherche des images de l'escale…" : "Aucun film disponible actuellement"}
+              <div className="tv-v5-media-caption">
+                <strong>{showFlight ? cityFrancais(city) : "Prochaine destination"}</strong>
+                <small>{showFlight ? code(destination) + " · Source : " + (activeMedia?.sourceName ?? "Recherche en cours") : "En attente d'une route aérienne identifiée"}</small>
+              </div>
             </div>
           </section>
 
-          <div className="tv-v4-secondary" aria-label="Avions 2 et 3 concordants avec la carte">
-            {[1,2].map((index) => {
-              const item = traffic[index];
-              const info = item ? enriched[item.id.replace(/^~/, "").toUpperCase()] : null;
-              return <article key={index} className={"tv-v4-second-card tv-v4-second-" + (index + 1)}>
-                <span className={"tv-v4-number tv-v4-number-" + (index + 1)}>{index + 1}</span>
-                {item ? <div className="tv-v4-second-body">
-                  <strong>{info?.flightNumberIata || item.callsign || item.registration || "ADS-B"}</strong>
-                  <small>{info?.aircraftModel || info?.aircraftType || item.aircraftType || "Type non identifié"}</small>
-                  <div className="tv-v4-second-route">{info?.departureAirport && info?.arrivalAirport
-                    ? airportCity(info.departureAirport) + " → " + airportCity(info.arrivalAirport)
-                    : "VILLES NON RENSEIGNÉES"}</div>
-                  <div className="tv-v4-second-stats">
-                    <span>{formatNumber(item.barometricAltitude, " m")}</span>
-                    <span>{item.velocity != null ? formatNumber(item.velocity * 3.6, " km/h") : "—"}</span>
-                    <span>{item.distance.toFixed(1)} km</span>
-                    <span>Cap : {capFrancais(item.trueTrack)}</span>
+          {priorityTakeover && nearbyAlert ? (
+            <section className="tv-v5-takeover tv-v5-flash-priority" aria-live="assertive">
+              <div className="tv-v5-takeover-head">
+                <strong>🚨 MOYEN PRIORITAIRE DÉTECTÉ</strong>
+                <span>{String(Math.floor(priorityRemaining/60)).padStart(2,"0")}:{String(priorityRemaining%60).padStart(2,"0")} · ALERTE</span>
+              </div>
+              <div className="tv-v5-takeover-main">
+                <div className="tv-v5-takeover-details">
+                  <b>{nearbyAlert.item.callsign || nearbyAlert.item.registration || nearbyAlert.item.id}</b>
+                  <strong>{nearbyAlert.priority} · {priorityInfo?.aircraftModel || nearbyAlert.item.description || nearbyAlert.item.aircraftType || "TYPE NON CONFIRMÉ"}</strong>
+                  <span>DÉPART · {airportCity(priorityInfo?.departureAirport)}</span>
+                  <span>ARRIVÉE · {airportCity(priorityInfo?.arrivalAirport)}</span>
+                  <small>{priorityInfo?.routeConfidence === "confirmed" ? "TRAJET CONFIRMÉ" : "TRAJET NON CONFIRMÉ"} · Détecté le {alertDate(lastPriority?.detectedAt)}</small>
+                </div>
+                <AircraftVisual info={priorityInfo} className="tv-v5-takeover-photo" />
+              </div>
+              <div className="tv-v5-takeover-stats">
+                <span>ALTITUDE <b>{formatNumber(nearbyAlert.item.barometricAltitude," m")}</b></span>
+                <span>VITESSE <b>{nearbyAlert.item.velocity != null ? formatNumber(nearbyAlert.item.velocity*3.6," km/h") : "—"}</b></span>
+                <span>CAP <b>{capFrancais(nearbyAlert.item.trueTrack)}</b></span>
+                <span>DISTANCE <b>{nearbyAlert.item.distance.toFixed(1)} km</b></span>
+              </div>
+            </section>
+          ) : <>
+            <section className="tv-v5-flight-primary" aria-label="Avion numéro un">
+              <div className="tv-v5-primary-head">
+                <span className="tv-v5-rank rank1">1</span>
+                <AircraftVisual info={firstInfo} className="tv-v5-photo-primary" />
+                <div className="tv-v5-primary-title">
+                  <strong>{firstInfo?.flightNumberIata || first?.callsign || first?.registration || "AVION 1 · EN ATTENTE"}</strong>
+                  <span>{firstInfo?.aircraftModel || first?.description || first?.aircraftType || "TYPE NON IDENTIFIÉ"}</span>
+                  <small>{firstInfo?.operator || first?.operator || "Opérateur non identifié"} · {firstInfo?.photo?.source || "Pas de photographie référencée"}</small>
+                </div>
+                <span className="tv-v5-rank-label">N° 1</span>
+              </div>
+              <div className="tv-v5-primary-route">
+                <span><small>DÉPART</small><b>{firstDepartureCity}</b><em>{firstDeparture}</em></span>
+                <i>✈</i>
+                <span><small>ARRIVÉE</small><b>{firstArrivalCity}</b><em>{firstArrival}</em></span>
+              </div>
+              <div className="tv-v5-primary-metrics">
+                <span><small>ALTITUDE</small><strong>{first ? formatNumber(first.barometricAltitude," m") : "—"}</strong></span>
+                <span><small>VITESSE SOL</small><strong>{first?.velocity != null ? formatNumber(first.velocity*3.6," km/h") : "—"}</strong></span>
+                <span><small>CAP</small><strong>{capFrancais(first?.trueTrack)}</strong></span>
+                <span><small>DISTANCE MAISON</small><strong>{first ? first.distance.toFixed(1)+" km" : "—"}</strong></span>
+              </div>
+              <div className="tv-v5-provenance">{firstInfo?.routeConfidence === "confirmed" ? "TRAJET CONFIRMÉ" : "TRAJET NON CONFIRMÉ"}
+                <span>{first?.feedSource || "ADS-B"} · {first?.positionAgeSeconds != null ? Math.round(first.positionAgeSeconds)+" s depuis position" : "Âge inconnu"}</span>
+              </div>
+            </section>
+            <div className="tv-v5-secondary-row">
+              {[1,2].map((index)=>{
+                const item=traffic[index]; const info=item ? enriched[item.id.replace(/^~/,"").toUpperCase()] : null;
+                return <article key={index} className={"tv-v5-secondary tv-v5-secondary-"+(index+1)} aria-label={"Avion numéro "+(index+1)}>
+                  <div className="tv-v5-secondary-head">
+                    <span className={"tv-v5-rank rank"+(index+1)}>{index+1}</span>
+                    <AircraftVisual info={info} className="tv-v5-photo-secondary" />
+                    <div><strong>{info?.flightNumberIata || item?.callsign || item?.registration || "AVION "+(index+1)}</strong>
+                    <small>{info?.aircraftModel || item?.description || item?.aircraftType || "EN ATTENTE DE PASSAGE"}</small>
+                    <span>{info?.operator || item?.operator || (item ? "Opérateur inconnu" : "Aucun signal")}</span></div>
                   </div>
-                </div> : <div className="tv-v4-second-body"><strong>AVION {index + 1}</strong><small>En attente de trafic ADS-B</small><div className="tv-v4-second-route">Départ — · Arrivée —</div><div className="tv-v4-second-stats"><span>Cap : —</span></div></div>}
-              </article>;
-            })}
-          </div>
+                  <p>{item ? airportCity(info?.departureAirport) + " → " + airportCity(info?.arrivalAirport) : "DÉPART — · ARRIVÉE —"}</p>
+                  <div className="tv-v5-secondary-metrics">
+                    <span>{item ? formatNumber(item.barometricAltitude," m") : "—"}</span>
+                    <span>{item?.velocity != null ? formatNumber(item.velocity*3.6," km/h") : "—"}</span>
+                    <span>{item ? item.distance.toFixed(1)+" km" : "—"}</span>
+                  </div>
+                  <small className="tv-v5-secondary-bottom">CAP : {capFrancais(item?.trueTrack)} · {item?.feedSource || "ADS-B en attente"}
+                    {info ? " · " + (info.photo.kind === "exact" ? "Photo référencée" : "Visuel illustratif") : ""}</small>
+                </article>;
+              })}
+            </div>
+          </>}
 
-          <div className="tv-v4-alerts">
-            <div className={"tv-status-priority" + (feedFresh && nearbyAlert ? " is-active" : "")} role="status">
-              <span>🚁</span><div><b>MOYENS PRIORITAIRES</b>
-                <strong>{feedFresh && nearbyAlert ? nearbyAlert.priority + " · " + (nearbyAlert.item.callsign || nearbyAlert.item.registration || "AÉRONEF")
-                  : feedFresh ? "Aucun moyen identifié" : "Radar non actualisé"}</strong>
-                <small>{feedFresh && nearbyAlert && lastPriority?.key === nearbyAlert.item.id + "-" + nearbyAlert.priority
-                  ? "Détecté le " + alertDate(lastPriority.detectedAt) : "Sécurité civile / Armée · détection partielle"}</small>
-              </div>
-            </div>
-            <div className={"tv-incident-card" + (showEmergency ? " is-live" : "")} role="status" aria-live="polite">
-              <span className="tv-incident-icon">{showEmergency ? "🚨" : "⚠"}</span>
-              <div><b>{showEmergency ? "URGENCE EN TEMPS RÉEL" : displayLatest ? "DERNIÈRE PANNE SIGNALÉE · PRESSE" : "VEILLE DES URGENCES"}</b>
-                <strong>{showEmergency && activeEmergency ? incidentLabel(activeEmergency.squawk ?? "")
-                  : displayLatest ? displayLatest.title
-                  : lastEmergency ? incidentLabel(lastEmergency.code) : "Aucun incident connu dans les données"}</strong>
-                <small>{showEmergency && activeEmergency ? (activeEmergency.callsign || activeEmergency.id)
-                    + " · détecté le " + alertDate(lastEmergency?.key === activeEmergency.id + "-" + activeEmergency.squawk
-                      ? lastEmergency.detectedAt : updatedAt)
-                  : displayLatest ? displayLatest.source + " · " + alertDate(displayLatest.date)
-                  : lastEmergency ? "ADS-B · détecté le " + alertDate(lastEmergency.detectedAt)
-                  : "ADS-B · couverture non exhaustive"}</small>
-              </div>
-            </div>
+          <div className="tv-v5-alert-row">
+            <section className={"tv-v5-priority-status"+(priorityTakeover ? " is-active" : "")}>
+              <div className="tv-v5-alert-head"><span>✚</span><strong>MOYENS PRIORITAIRES</strong></div>
+              <b>{feedFresh && nearbyAlert ? (nearbyAlert.priority+" · "+(nearbyAlert.item.callsign || nearbyAlert.item.registration || nearbyAlert.item.id)) : feedFresh ? "Aucun moyen identifié à proximité" : "Radar en attente"}</b>
+              <small>Secours <i className="tv-v5-dot tv-v5-dot-red" /> · Armée <i className="tv-v5-dot tv-v5-dot-gold" /> · Rayon 20 km</small>
+              <small>{lastPriority ? "Dernière détection : "+alertDate(lastPriority.detectedAt) : "Aucune détection enregistrée depuis l'ouverture"}</small>
+            </section>
+            <section className={"tv-v5-emergency-status"+(emergencyFlash||newsFlash ? " is-active" : "")} aria-live="polite">
+              <div className="tv-v5-alert-head"><span>⚠</span><strong>SURVEILLANCE DES URGENCES</strong></div>
+              <b>{activeEmergency ? "URGENCE ADS-B ACTIVE" : "DERNIÈRE URGENCE CONNUE"}</b>
+              <p>{alertName}</p>
+              <small>{alertSource}</small>
+              <small>Date / heure : {alertDate(alertTimestamp)} · Lieu : non confirmé</small>
+            </section>
           </div>
         </aside>
-      </section>
+      </div>
     </main>
   );
 }
