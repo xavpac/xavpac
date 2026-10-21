@@ -1592,7 +1592,10 @@ struct ContentView: View {
     private var cinemaMedia: some View {
         if let videoURL = mediaService.current?.televisionVideoURL,
            !failedVideoURLs.contains(videoURL.absoluteString) {
-            LoopingVideoView(url: videoURL)
+            LoopingVideoView(url: videoURL, onStall: {
+                failedVideoURLs.insert(videoURL.absoluteString)
+                Task { await mediaService.advance() }
+            })
         } else if let media = mediaService.current,
                   !media.isVideo,
                   let url = media.mediaURL {
