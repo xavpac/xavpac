@@ -93,11 +93,13 @@ final class AircraftService: ObservableObject {
     }
 
     var specialAircraftInZone: [Aircraft] {
-        // Seules la Sécurité civile et l'Armée sont prioritaires.
+        // Le trafic prioritaire n'est affirmé que quand l'identification est suffisante.
+        // Cela inclut les moyens médicaux identifiés, mais pas les hélicoptères civils.
         displayAircraft.filter { item in
-            let category = trafficProfile(for: item).kind
             return item.distanceKilometers(from: center) <= 50
-                && (category == .civilSecurity || category == .military)
+                && !item.onGround.orFalse
+                && (item.positionAgeSeconds ?? 0) < 90
+                && trafficProfile(for: item).isPriorityTraffic
         }
     }
 
