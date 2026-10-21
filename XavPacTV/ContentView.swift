@@ -246,8 +246,14 @@ struct ContentView: View {
             let alertHeight: CGFloat = 112
 
             ZStack {
-                SkyShowBackdrop().ignoresSafeArea()
-                    .allowsHitTesting(false)
+                // Harmonisation du site V5 : fond bleu nuit pour les cadres 16:9.
+                LinearGradient(
+                    colors: [Color(red: 0.025, green: 0.078, blue: 0.145),
+                             Color(red: 0.03, green: 0.11, blue: 0.21)],
+                    startPoint: .topLeading, endPoint: .bottomTrailing
+                )
+                .ignoresSafeArea()
+                .allowsHitTesting(false)
 
                 HStack(spacing: 12) {
                     AircraftMapView(
@@ -260,7 +266,7 @@ struct ContentView: View {
                     )
                     .clipShape(RoundedRectangle(cornerRadius: 18))
                     .overlay(RoundedRectangle(cornerRadius: 18)
-                        .stroke(Color.white.opacity(0.9), lineWidth: 2))
+                        .stroke(Color(red: 0.22, green: 0.48, blue: 0.66), lineWidth: 2))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
 
                     VStack(spacing: 9) {
@@ -701,7 +707,8 @@ struct ContentView: View {
         }
         .background(Color(red: 0.05, green: 0.22, blue: 0.38))
         .clipShape(RoundedRectangle(cornerRadius: 20))
-        .overlay(RoundedRectangle(cornerRadius: 20).stroke(Color.white, lineWidth: 3))
+        .overlay(RoundedRectangle(cornerRadius: 20)
+            .stroke(Color(red: 0.24, green: 0.47, blue: 0.67), lineWidth: 2))
     }
 
     private var cinemaVersionFourFlightOne: some View {
@@ -2068,17 +2075,20 @@ struct ContentView: View {
         }
         .padding(.horizontal, 13)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .foregroundStyle(active ? .white : Color(red: 0.08, green: 0.37, blue: 0.55))
+        .foregroundStyle(.white)
         .background(
             LinearGradient(
-                colors: active ? [Color(red: 0.90, green: 0.35, blue: 0.10), Color(red: 0.32, green: 0.19, blue: 0.30)]
-                  : [.white, Color(red: 0.87, green: 0.96, blue: 1.0)],
+                colors: active
+                    ? [Color(red: 0.66, green: 0.04, blue: 0.14),
+                       Color(red: 0.22, green: 0.04, blue: 0.13)]
+                    : [Color(red: 0.04, green: 0.16, blue: 0.28),
+                       Color(red: 0.04, green: 0.10, blue: 0.19)],
                 startPoint: .leading, endPoint: .trailing
             ),
             in: RoundedRectangle(cornerRadius: 20, style: .continuous)
         )
         .overlay(RoundedRectangle(cornerRadius: 20)
-            .stroke(active ? Color.orange : Color.cyan.opacity(0.35), lineWidth: 2))
+            .stroke(active ? Color.red : Color.cyan.opacity(0.7), lineWidth: 2))
         .modifier(CinemaAlertPulse(isEnabled: active))
     }
 
