@@ -6,6 +6,7 @@ import "./styles/fire-risk.css";
 import "./styles/v3-foundation.css";
 import "./styles/v3-modules.css";
 import "./styles/v4-aurora.css";
+import "./styles/tv-showcase.css";
 import { LiveGeolocationProvider } from "./hooks/useLiveGeolocation";
 
 export const metadata = {

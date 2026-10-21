@@ -7,23 +7,30 @@ final class AircraftAnnotation: NSObject, MKAnnotation {
     let isSelected: Bool
     let distanceKm: Double
     let profile: TVTrafficProfile
+    let routeLabel: String?
+    let approachRank: Int?
     dynamic var coordinate: CLLocationCoordinate2D
 
     init(
         aircraft: Aircraft,
         isSelected: Bool,
         center: CLLocationCoordinate2D,
-        profile: TVTrafficProfile
+        profile: TVTrafficProfile,
+        routeLabel: String?,
+        approachRank: Int?
     ) {
         self.aircraft = aircraft
         self.isSelected = isSelected
         self.distanceKm = aircraft.distanceKilometers(from: center)
         self.profile = profile
+        self.routeLabel = routeLabel
+        self.approachRank = approachRank
         self.coordinate = aircraft.coordinate
         super.init()
     }
 }
 
+// Épingle HOME native tvOS : toujours visible, non interactive.
 final class RadarHomeAnnotation: NSObject, MKAnnotation {
     dynamic var coordinate: CLLocationCoordinate2D
 
@@ -33,10 +40,53 @@ final class RadarHomeAnnotation: NSObject, MKAnnotation {
     }
 }
 
+// HOME est une épingle miniature ; jamais un bandeau sur l'aéronef voisin.
+private final class RadarHomeAnnotationView: MKAnnotationView {
+    private let pin = UIView()
+    private let homeIcon = UIImageView()
+
+    override init(annotation: MKAnnotation?, reuseIdentifier: String?) {
+        super.init(annotation: annotation, reuseIdentifier: reuseIdentifier)
+        frame = CGRect(x: 0, y: 0, width: 44, height: 50)
+        centerOffset = CGPoint(x: 0, y: -17)
+        collisionMode = .circle
+        displayPriority = .required
+        canShowCallout = false
+        isUserInteractionEnabled = false
+
+        pin.frame = CGRect(x: 4, y: 3, width: 36, height: 36)
+        pin.backgroundColor = UIColor(red: 0.01, green: 0.45, blue: 0.66, alpha: 0.96)
+        pin.layer.cornerRadius = 18
+        pin.layer.borderWidth = 2.5
+        pin.layer.borderColor = UIColor.white.cgColor
+        pin.layer.shadowColor = UIColor.systemTeal.cgColor
+        pin.layer.shadowOpacity = 0.55
+        pin.layer.shadowRadius = 7
+        pin.layer.shadowOffset = .zero
+        addSubview(pin)
+
+        homeIcon.frame = CGRect(x: 12, y: 12, width: 20, height: 19)
+        homeIcon.contentMode = .scaleAspectFit
+        homeIcon.image = UIImage(systemName: "house.fill")?
+            .withTintColor(.white, renderingMode: .alwaysOriginal)
+        addSubview(homeIcon)
+
+        let tail = UIView(frame: CGRect(x: 19, y: 36, width: 6, height: 10))
+        tail.backgroundColor = UIColor(red: 0.01, green: 0.45, blue: 0.66, alpha: 0.96)
+        tail.layer.cornerRadius = 2
+        addSubview(tail)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+}
+
 private final class AircraftAnnotationView: MKAnnotationView {
     private let glyphView = UIImageView()
     private let haloView = UIView()
-    private let tagLabel = UILabel()
+    // Numéro identique au podium : 1 or, 2 cyan, 3 violet.
+    // L'étiquette désigne uniquement le vrai aéronef mis en avant.
+    private let rankBadge = UILabel()
+    private let followedLabel = UILabel()
 
     override init(annotation: MKAnnotation?, reuseIdentifier: String?) {
         super.init(annotation: annotation, reuseIdentifier: reuseIdentifier)
@@ -50,14 +100,32 @@ private final class AircraftAnnotationView: MKAnnotationView {
         glyphView.layer.shadowOffset = .zero
         addSubview(glyphView)
 
-        tagLabel.font = .systemFont(ofSize: 15, weight: .heavy)
-        tagLabel.textColor = UIColor(red: 0.02, green: 0.08, blue: 0.16, alpha: 1)
-        tagLabel.textAlignment = .center
-        tagLabel.backgroundColor = UIColor.white.withAlphaComponent(0.96)
-        tagLabel.layer.cornerRadius = 11
-        tagLabel.layer.borderWidth = 1.5
-        tagLabel.clipsToBounds = true
-        addSubview(tagLabel)
+        rankBadge.textAlignment = .center
+        rankBadge.font = .systemFont(ofSize: 21, weight: .black)
+        rankBadge.layer.borderColor = UIColor.white.cgColor
+        rankBadge.layer.borderWidth = 2.5
+        rankBadge.layer.shadowColor = UIColor.black.cgColor
+        rankBadge.layer.shadowOpacity = 0.35
+        rankBadge.layer.shadowRadius = 5
+        rankBadge.layer.shadowOffset = CGSize(width: 0, height: 3)
+        rankBadge.isUserInteractionEnabled = false
+        rankBadge.clipsToBounds = true
+        addSubview(rankBadge)
+
+        followedLabel.text = "AVION SUIVI"
+        followedLabel.font = .systemFont(ofSize: 15, weight: .heavy)
+        followedLabel.textAlignment = .center
+        followedLabel.textColor = .white
+        followedLabel.layer.cornerRadius = 11
+        followedLabel.layer.borderWidth = 1.5
+        followedLabel.layer.borderColor = UIColor.white.cgColor
+        followedLabel.layer.shadowColor = UIColor.black.cgColor
+        followedLabel.layer.shadowOpacity = 0.28
+        followedLabel.layer.shadowRadius = 6
+        followedLabel.layer.shadowOffset = CGSize(width: 0, height: 3)
+        followedLabel.clipsToBounds = true
+        followedLabel.isUserInteractionEnabled = false
+        addSubview(followedLabel)
     }
 
     required init?(coder: NSCoder) {
@@ -72,11 +140,26 @@ private final class AircraftAnnotationView: MKAnnotationView {
 
         haloView.layer.removeAllAnimations()
         glyphView.layer.removeAllAnimations()
+        rankBadge.layer.removeAllAnimations()
+        followedLabel.layer.removeAllAnimations()
+        haloView.layer.borderWidth = 0
+        haloView.layer.shadowOpacity = 0
+        haloView.layer.shadowRadius = 0
 
-        let tint = color(for: item.profile.kind)
+        let tint: UIColor
+        if item.profile.isPriorityTraffic {
+            tint = color(for: item.profile.kind)
+        } else {
+            switch item.approachRank {
+            case 1: tint = UIColor(red: 1.0, green: 0.76, blue: 0.20, alpha: 1)
+            case 2: tint = UIColor(red: 0.08, green: 0.72, blue: 0.99, alpha: 1)
+            case 3: tint = UIColor(red: 0.69, green: 0.39, blue: 1.0, alpha: 1)
+            default: tint = color(for: item.profile.kind)
+            }
+        }
         let scale = CGFloat(item.profile.relativeIconScale)
-        let normalSize = max(25, 30 * scale)
-        let selectedSize = max(44, 48 * scale)
+        let normalSize = max(34, 42 * scale)
+        let selectedSize = max(52, 62 * scale)
         let symbolSize = item.isSelected ? selectedSize : normalSize
 
         if item.profile.isRotorcraft {
@@ -98,6 +181,23 @@ private final class AircraftAnnotationView: MKAnnotationView {
 
         glyphView.layer.shadowColor = tint.cgColor
 
+        // Le numéro reste lisible sur tous les types d'avions, même pour
+        // un hélicoptère prioritaire dont la silhouette conserve son orange/rouge.
+        let rankColor: UIColor
+        switch item.approachRank {
+        case 1: rankColor = UIColor(red: 1.0, green: 0.76, blue: 0.20, alpha: 1)
+        case 2: rankColor = UIColor(red: 0.08, green: 0.72, blue: 0.99, alpha: 1)
+        case 3: rankColor = UIColor(red: 0.69, green: 0.39, blue: 1.0, alpha: 1)
+        default: rankColor = UIColor(red: 0.02, green: 0.57, blue: 0.84, alpha: 1)
+        }
+        rankBadge.isHidden = item.approachRank == nil
+        rankBadge.text = item.approachRank.map { String($0) }
+        rankBadge.backgroundColor = rankColor
+        rankBadge.textColor = item.approachRank == 1 ? UIColor(red: 0.12, green: 0.20, blue: 0.34, alpha: 1) : .white
+        followedLabel.isHidden = !item.isSelected
+        followedLabel.backgroundColor = UIColor(red: 0.02, green: 0.28, blue: 0.49, alpha: 0.97)
+        followedLabel.layer.borderColor = rankColor.cgColor
+
         if let track = item.aircraft.trueTrack {
             let angle: CGFloat
             if item.profile.isRotorcraft {
@@ -113,45 +213,39 @@ private final class AircraftAnnotationView: MKAnnotationView {
         }
 
         if item.isSelected {
-            frame = CGRect(x: 0, y: 0, width: 316, height: 72)
+            // Une seule silhouette lumineuse ; les infos sont dans le bandeau
+            // dédié hors de la carte, plus jamais sur d'autres avions.
+            let size = max(78, 85 * scale)
+            frame = CGRect(x: 0, y: 0, width: size, height: size)
 
-            let haloSize = max(54, 58 * scale)
-            haloView.frame = CGRect(
-                x: 0,
-                y: (72 - haloSize) / 2,
-                width: haloSize,
-                height: haloSize
-            )
-            haloView.layer.cornerRadius = haloSize / 2
+            haloView.frame = bounds.insetBy(dx: 2, dy: 2)
+            haloView.layer.cornerRadius = haloView.bounds.width / 2
             haloView.backgroundColor = tint.withAlphaComponent(
-                item.profile.isPriorityTraffic ? 0.24 : 0.16
+                item.profile.isPriorityTraffic ? 0.24 : 0.15
             )
-
             glyphView.frame = CGRect(
-                x: 5,
-                y: (72 - selectedSize) / 2,
+                x: (size - selectedSize) / 2,
+                y: (size - selectedSize) / 2,
                 width: selectedSize,
                 height: selectedSize
             )
+            centerOffset = .zero
 
-            let title: String
+            let badgeSize: CGFloat = 38
+            rankBadge.frame = CGRect(x: size * 0.5 + 15, y: -9,
+                                     width: badgeSize, height: badgeSize)
+            rankBadge.layer.cornerRadius = badgeSize / 2
+            followedLabel.frame = CGRect(x: (size - 148) / 2, y: size - 4,
+                                         width: 148, height: 33)
             if item.profile.isPriorityTraffic {
-                title = item.profile.label
-            } else {
-                title = item.aircraft.displayName
-            }
-
-            tagLabel.text = "  \(title) · \(String(format: "%.1f", item.distanceKm)) km  "
-            tagLabel.frame = CGRect(x: 68, y: 14, width: 238, height: 44)
-            tagLabel.layer.borderColor = tint.withAlphaComponent(0.90).cgColor
-            tagLabel.isHidden = false
-            centerOffset = CGPoint(x: 120, y: 0)
-
-            if item.profile.isPriorityTraffic {
+                // L'animation n'est active que pendant la fenêtre d'alerte
+                // où le moyen prioritaire est sélectionné.
                 addPriorityPulse(color: tint)
+            } else {
+                addFeaturedPulse(color: rankColor)
             }
         } else {
-            let viewSize = max(42, 46 * scale)
+            let viewSize = max(56, 62 * scale)
             frame = CGRect(x: 0, y: 0, width: viewSize, height: viewSize)
 
             haloView.frame = bounds.insetBy(dx: 2, dy: 2)
@@ -162,13 +256,41 @@ private final class AircraftAnnotationView: MKAnnotationView {
 
             let inset = max(3, 6 / scale)
             glyphView.frame = bounds.insetBy(dx: inset, dy: inset)
-            tagLabel.isHidden = true
             centerOffset = .zero
 
-            if item.profile.isPriorityTraffic {
-                addPriorityPulse(color: tint)
-            }
+            let badgeSize: CGFloat = 33
+            rankBadge.frame = CGRect(x: viewSize * 0.5 + 9, y: -5,
+                                     width: badgeSize, height: badgeSize)
+            rankBadge.layer.cornerRadius = badgeSize / 2
+            followedLabel.frame = .zero
+            // Moyens prioritaires hors passage : marqueur coloré mais stable.
+            // Un clignotement sans fin provoquerait une fausse alerte.
         }
+    }
+
+    private func addFeaturedPulse(color: UIColor) {
+        haloView.layer.borderWidth = 3.0
+        haloView.layer.borderColor = color.withAlphaComponent(0.92).cgColor
+        haloView.layer.shadowColor = color.cgColor
+        haloView.layer.shadowOpacity = 0.72
+        haloView.layer.shadowRadius = 19
+        haloView.layer.shadowOffset = .zero
+
+        let breathe = CABasicAnimation(keyPath: "transform.scale")
+        breathe.fromValue = 0.92
+        breathe.toValue = 1.15
+        breathe.duration = 1.7
+        breathe.autoreverses = true
+        breathe.repeatCount = .infinity
+        haloView.layer.add(breathe, forKey: "featuredBreathe")
+
+        let shine = CABasicAnimation(keyPath: "opacity")
+        shine.fromValue = 0.40
+        shine.toValue = 1.0
+        shine.duration = 1.7
+        shine.autoreverses = true
+        shine.repeatCount = .infinity
+        haloView.layer.add(shine, forKey: "featuredShine")
     }
 
     private func addPriorityPulse(color: UIColor) {
@@ -196,10 +318,12 @@ private final class AircraftAnnotationView: MKAnnotationView {
     private func color(for kind: TVTrafficKind) -> UIColor {
         switch kind {
         case .civilSecurity:
-            return UIColor(red: 1.00, green: 0.62, blue: 0.03, alpha: 1)
+            return UIColor(red: 1.00, green: 0.08, blue: 0.13, alpha: 1)  // rouge secours
         case .military:
-            return UIColor(red: 0.95, green: 0.08, blue: 0.14, alpha: 1)
-        case .helicopter, .medical:
+            return UIColor(red: 1.00, green: 0.69, blue: 0.05, alpha: 1)  // ambre armée
+        case .medical:
+            return UIColor(red: 0.89, green: 0.23, blue: 0.77, alpha: 1)  // magenta médical
+        case .helicopter:
             return UIColor(red: 0.05, green: 0.78, blue: 0.36, alpha: 1)
         case .surveillance:
             return UIColor(red: 0.62, green: 0.35, blue: 0.98, alpha: 1)
@@ -312,6 +436,7 @@ struct AircraftMapView: UIViewRepresentable {
     let trails: [String: [CLLocationCoordinate2D]]
     let selectedID: String?
     let profiles: [String: TVTrafficProfile]
+    let routes: [String: String]
 
     func makeCoordinator() -> Coordinator {
         Coordinator(parent: self)
@@ -320,9 +445,9 @@ struct AircraftMapView: UIViewRepresentable {
     func makeUIView(context: Context) -> MKMapView {
         let map = MKMapView(frame: .zero)
         map.delegate = context.coordinator
-        map.mapType = .hybrid
+        map.mapType = .standard
         map.pointOfInterestFilter = .excludingAll
-        map.overrideUserInterfaceStyle = .dark
+        map.overrideUserInterfaceStyle = .light
 
         // La cartographie XavPac TV est volontairement figée :
         // aucun déplacement, zoom ou réglage n'est possible depuis la télécommande.
@@ -330,40 +455,91 @@ struct AircraftMapView: UIViewRepresentable {
 
         let region = MKCoordinateRegion(
             center: center,
-            latitudinalMeters: 92_000,
-            longitudinalMeters: 92_000
+            latitudinalMeters: 116_000,
+            longitudinalMeters: 116_000
         )
         map.setRegion(region, animated: false)
+        // MapKit tvOS ajoute parfois un curseur de zoom blanc malgré le verrouillage.
+        // Masquer les widgets natifs (sans toucher à nos marqueurs de trafic).
+        DispatchQueue.main.async { [weak map] in
+            guard let map else { return }
+            Self.hideNativeMapControls(in: map)
+        }
         return map
     }
 
     func updateUIView(_ map: MKMapView, context: Context) {
         context.coordinator.parent = self
+        Self.hideNativeMapControls(in: map)
 
         map.removeAnnotations(map.annotations)
         map.removeOverlays(map.overlays)
 
+        // La maison demeure au centre, même lorsque le trafic est vide.
         map.addAnnotation(RadarHomeAnnotation(coordinate: center))
         map.addAnnotations(
-            aircraft.prefix(60).map { item in
+            aircraft.prefix(60).enumerated().map { index, item in
                 AircraftAnnotation(
                     aircraft: item,
                     isSelected: item.id == selectedID,
                     center: center,
-                    profile: profiles[item.id] ?? item.trafficProfile(enrichment: nil)
+                    profile: profiles[item.id] ?? item.trafficProfile(enrichment: nil),
+                    routeLabel: routes[item.id],
+                    approachRank: index < 3 ? index + 1 : nil
                 )
             }
         )
 
-        [10_000.0, 20_000.0, 40_000.0].forEach { radius in
+        [10_000.0, 20_000.0, 40_000.0, 50_000.0].forEach { radius in
             map.addOverlay(MKCircle(center: center, radius: radius))
         }
 
+        // Trajectoires historiques vérifiées, segment par segment :
+        // fondu du plus ancien au plus récent. Aucun trajet fictif vers la ville.
+        var highlightedIDs = aircraft.prefix(3).map(\.id)
+        if let selectedID, !highlightedIDs.contains(selectedID) {
+            highlightedIDs.append(selectedID)
+        }
+        for id in highlightedIDs {
+            guard let trace = trails[id], trace.count >= 2 else { continue }
+            let featured = id == selectedID
+            let recent = Array(trace.suffix(featured ? 20 : 10))
+            let count = recent.count - 1
+            for index in 1..<recent.count {
+                var coords = [recent[index - 1], recent[index]]
+                if featured {
+                    let glow = MKPolyline(coordinates: &coords, count: 2)
+                    glow.title = "history-halo-\(index)-\(count)"
+                    map.addOverlay(glow)
+                }
+                let line = MKPolyline(coordinates: &coords, count: 2)
+                line.title = featured
+                    ? "history-core-\(index)-\(count)"
+                    : "history-nearby-\(index)-\(count)"
+                map.addOverlay(line)
+            }
+        }
+
+        // Le vecteur en avant est un simple indicateur de cap (pointillés),
+        // volontairement distinct des positions historiques constatées.
         if let selectedID,
-           let points = trails[selectedID],
-           points.count >= 2 {
-            var coordinates = points
-            map.addOverlay(MKPolyline(coordinates: &coordinates, count: coordinates.count))
+           let highlighted = aircraft.first(where: { $0.id == selectedID }),
+           let heading = highlighted.trueTrack,
+           heading.isFinite {
+            let radians = heading * .pi / 180
+            let latitude = highlighted.latitude * .pi / 180
+            let latitudeDelta = 2.0 * cos(radians) / 111.32
+            let longitudeDelta = 2.0 * sin(radians) / (111.32 * max(0.25, cos(latitude)))
+            var vector: [CLLocationCoordinate2D] = [
+                highlighted.coordinate,
+                CLLocationCoordinate2D(
+                    latitude: highlighted.latitude + latitudeDelta,
+                    longitude: highlighted.longitude + longitudeDelta
+                )
+            ]
+            let course = MKPolyline(coordinates: &vector, count: vector.count)
+            course.title = "heading-vector"
+            map.addOverlay(course)
         }
 
         if context.coordinator.lastCenter.latitude != center.latitude
@@ -371,10 +547,25 @@ struct AircraftMapView: UIViewRepresentable {
             context.coordinator.lastCenter = center
             let region = MKCoordinateRegion(
                 center: center,
-                latitudinalMeters: 92_000,
-                longitudinalMeters: 92_000
+                latitudinalMeters: 116_000,
+                longitudinalMeters: 116_000
             )
             map.setRegion(region, animated: false)
+        }
+    }
+
+    private static func hideNativeMapControls(in view: UIView) {
+        for subview in view.subviews {
+            let kind = String(describing: type(of: subview)).lowercased()
+            // Les contrôles UIKit et leurs vues privées varient selon tvOS.
+            // Ne supprimer ni l'image de la carte, ni les overlays, ni les aéronefs.
+            if kind.contains("zoomslider")
+                || kind.contains("zoomcontrol")
+                || kind.contains("compassview") {
+                subview.isHidden = true
+            } else {
+                hideNativeMapControls(in: subview)
+            }
         }
     }
 
@@ -386,26 +577,19 @@ struct AircraftMapView: UIViewRepresentable {
             self.parent = parent
         }
 
+        func mapViewDidFinishRenderingMap(_ mapView: MKMapView, fullyRendered: Bool) {
+            AircraftMapView.hideNativeMapControls(in: mapView)
+        }
+
         func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
             if annotation is RadarHomeAnnotation {
-                let identifier = "home-v5"
-                let view = mapView.dequeueReusableAnnotationView(withIdentifier: identifier)
-                    ?? MKAnnotationView(annotation: annotation, reuseIdentifier: identifier)
-
+                let identifier = "home-skyshow-v2"
+                let view = (mapView.dequeueReusableAnnotationView(withIdentifier: identifier)
+                    as? RadarHomeAnnotationView)
+                    ?? RadarHomeAnnotationView(annotation: annotation, reuseIdentifier: identifier)
                 view.annotation = annotation
-                view.displayPriority = .required
-                view.canShowCallout = false
-                let configuration = UIImage.SymbolConfiguration(pointSize: 31, weight: .bold)
-                view.image = UIImage(
-                    systemName: "house.circle.fill",
-                    withConfiguration: configuration
-                )?.withTintColor(
-                    UIColor(red: 0.05, green: 0.82, blue: 0.95, alpha: 1),
-                    renderingMode: .alwaysOriginal
-                )
                 return view
             }
-
             guard let aircraftAnnotation = annotation as? AircraftAnnotation else {
                 return nil
             }
@@ -429,8 +613,41 @@ struct AircraftMapView: UIViewRepresentable {
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
             if let polyline = overlay as? MKPolyline {
                 let renderer = MKPolylineRenderer(polyline: polyline)
-                renderer.strokeColor = UIColor.systemCyan.withAlphaComponent(0.94)
-                renderer.lineWidth = 5
+                let title = polyline.title ?? ""
+                let parts = title.split(separator: "-")
+                if parts.count == 4 && parts[0] == "history" {
+                    let newest = CGFloat(Int(parts[2]) ?? 1)
+                    let total = CGFloat(max(1, Int(parts[3]) ?? 1))
+                    let fade = max(CGFloat(0.15), newest / total)
+                    if parts[1] == "halo" {
+                        renderer.strokeColor = UIColor(
+                            red: 0.09, green: 0.79, blue: 1.0,
+                            alpha: 0.09 + fade * 0.25
+                        )
+                        renderer.lineWidth = 9
+                    } else if parts[1] == "nearby" {
+                        renderer.strokeColor = UIColor(
+                            red: 0.14, green: 0.63, blue: 0.89,
+                            alpha: 0.12 + fade * 0.47
+                        )
+                        renderer.lineWidth = 2.5
+                    } else {
+                        renderer.strokeColor = UIColor(
+                            red: 0.00, green: 0.48, blue: 0.80,
+                            alpha: 0.22 + fade * 0.77
+                        )
+                        renderer.lineWidth = 3.6
+                    }
+                } else if title == "heading-vector" {
+                    renderer.strokeColor = UIColor(
+                        red: 0.90, green: 0.55, blue: 0.06, alpha: 0.86
+                    )
+                    renderer.lineDashPattern = [7, 6]
+                    renderer.lineWidth = 3
+                } else {
+                    renderer.strokeColor = UIColor.systemCyan
+                    renderer.lineWidth = 3
+                }
                 renderer.lineJoin = .round
                 renderer.lineCap = .round
                 return renderer
@@ -438,8 +655,8 @@ struct AircraftMapView: UIViewRepresentable {
 
             if let circle = overlay as? MKCircle {
                 let renderer = MKCircleRenderer(circle: circle)
-                renderer.strokeColor = UIColor.systemCyan.withAlphaComponent(0.56)
-                renderer.fillColor = UIColor.systemCyan.withAlphaComponent(0.015)
+                renderer.strokeColor = UIColor(red: 0.03, green: 0.50, blue: 0.80, alpha: 0.48)
+                renderer.fillColor = UIColor(red: 0.15, green: 0.76, blue: 0.98, alpha: 0.025)
                 renderer.lineWidth = circle.radius >= 40_000 ? 1.8 : 1.2
                 renderer.lineDashPattern = [8, 8]
                 return renderer

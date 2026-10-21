@@ -1,7 +1,7 @@
 import CoreLocation
 import Foundation
 
-let xavPacBaseURL = URL(string: "https://xavpac-one.vercel.app")!
+let xavPacBaseURL = URL(string: "https://xavpac-ty3i.vercel.app")!
 
 func xavPacAssetURL(_ value: String?) -> URL? {
     guard let value, !value.isEmpty else { return nil }
@@ -151,7 +151,14 @@ struct TVAircraftEnrichment: Decodable, Hashable {
     }
 
     var logoURL: URL? {
-        xavPacAssetURL(logo)
+        // Les fichiers référencés sont SVG : tvOS AsyncImage a besoin de PNG.
+        // Le serveur rasterise l'original ; aucun logo générique trompeur.
+        guard logo.hasPrefix("/airlines/"), logo.hasSuffix(".svg"),
+              !logo.contains("generic-airline"),
+              let file = logo.split(separator: "/").last else { return nil }
+        var components = URLComponents(string: "https://xavpac-ty3i.vercel.app/api/tv/logo")
+        components?.queryItems = [URLQueryItem(name: "file", value: String(file))]
+        return components?.url
     }
 
     var destinationLabel: String {
@@ -180,15 +187,42 @@ struct DestinationMedia: Decodable, Identifiable, Hashable {
     let author: String?
     let sourceName: String
     let sourceURL: String?
+    let appleVideoURL: String?
+    let scene: String?
 
     enum CodingKeys: String, CodingKey {
         case id, type, url, preview, author, sourceName
         case sourceURL = "sourceUrl"
+        case appleVideoURL = "appleVideoUrl"
+        case scene
     }
 
     var mediaURL: URL? { URL(string: url) }
     var previewURL: URL? { preview.flatMap(URL.init(string:)) }
     var isVideo: Bool { type == "video" }
+
+    var sceneLabel: String {
+        switch scene {
+        case "airport": return "✈  AÉROPORT D’ARRIVÉE"
+        case "approach": return "✦  APPROCHE & ATTERRISSAGE"
+        case "ambience": return "✦  AMBIANCE LOCALE"
+        default: return isVideo ? "✦  VUE AÉRIENNE" : "✦  DÉCOUVERTE DE LA VILLE"
+        }
+    }
+
+    // AVPlayer sur tvOS préfère les flux Apple (MP4/QuickTime).
+    // Ne jamais afficher un fichier WebM comme s'il s'agissait d'une image.
+    var televisionVideoURL: URL? {
+        guard isVideo else { return nil }
+        if let appleVideoURL, let url = URL(string: appleVideoURL) {
+            return url
+        }
+        guard let url = mediaURL,
+              ["mp4", "m4v", "mov"].contains(url.pathExtension.lowercased()) else {
+            return nil
+        }
+        return url
+    }
 }
 
 
@@ -210,7 +244,7 @@ enum TVTrafficKind: String, Hashable {
     var label: String {
         switch self {
         case .civilSecurity: return "SÉCURITÉ CIVILE"
-        case .medical: return "SECOURS / MÉDICAL"
+        case .medical: return "SAMU / SECOURS MÉDICAL"
         case .military: return "ARMÉE"
         case .surveillance: return "SURVEILLANCE"
         case .helicopter: return "HÉLICOPTÈRE"
@@ -238,17 +272,23 @@ enum TVTrafficKind: String, Hashable {
         }
     }
 
-    // Le choix utilisateur est strict : seules la Sécurité civile et l'Armée
-    // déclenchent la priorité automatique et l'alerte.
+    // Le grand pavé opérationnel est réservé aux appareils de la
+    // Sécurité civile, de l'Armée et du SAMU/SMUR.
+    // Un hélicoptère civil reste visible sur la carte, sans alerte.
     var priorityTier: Int {
         switch self {
-        case .civilSecurity, .military: return 0
+        case .civilSecurity: return 0
+        case .military: return 1
+        case .medical: return 2
         default: return 9
         }
     }
 
     var isPriorityTraffic: Bool {
-        self == .civilSecurity || self == .military
+        switch self {
+        case .civilSecurity, .military, .medical: return true
+        default: return false
+        }
     }
 }
 
@@ -283,6 +323,14 @@ extension Aircraft {
 
         let adsbCategory = category?.lowercased()
 
+        // « Malibu Mirage » est un Piper PA-46 civil, pas un Dassault Mirage.
+        // Protéger cette identification, même si l'enrichissement distant
+        // a précédemment classé l'aéronef comme militaire.
+        let civilianMalibuPattern = #"\bpa[ .-]?46\b|\bmalibu(?:\s+mirage)?\b|\bpiper\s+malibu\b"#
+        let isCivilianMalibu = joined.range(
+            of: civilianMalibuPattern, options: .regularExpression
+        ) != nil
+
         let helicopterPattern = #"helic|hélic|rotor|h125|h145|ec145|h135|ec135|as[ .-]?350|as50|écureuil|squirrel|nh90|caracal|cougar|gazelle|dauphin|aw139|aw169|bell|r44|r66"#
         let isRotorcraft = adsbCategory == "a7"
             || enrichment?.aircraftCategory == "helicopter"
@@ -295,10 +343,10 @@ extension Aircraft {
         ) != nil {
             kind = .civilSecurity
         } else if joined.range(
-            of: #"rafale|mirage|fighter|military|militaire|armée|armee|air force|french navy|marine nationale|french army|alat|aéronavale|aeronavale|a400m|c-?130|c160|transall|alphajet|alpha jet|awacs|dga essais|armée de l'air"#,
+            of: #"rafale|\bmirage[ -]?(?:2000[a-z]?|f1|iii|iv|50|5)\b|fighter|military|militaire|armée|armee|air force|french navy|marine nationale|french army|alat|aéronavale|aeronavale|a400m|c-?130|c160|transall|alphajet|alpha jet|awacs|dga essais|armée de l'air"#,
             options: .regularExpression
         ) != nil || enrichment?.aircraftCategory == "military" {
-            kind = .military
+            kind = isCivilianMalibu ? .lightPrivate : .military
         } else if joined.range(
             of: #"samu|smur|medevac|medical|médical|hems|secours|urgences"#,
             options: .regularExpression

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { enforceRateLimit } from "../../../lib/api/guard";
+import { composeTvSequence, type TVScene } from "../../../lib/tv/cinematicSequence";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -12,6 +13,8 @@ type DestinationMediaItem = {
   author: string | null;
   sourceName: string;
   sourceUrl: string | null;
+  appleVideoUrl?: string | null;
+  scene?: TVScene;
 };
 
 type PexelsVideoFile = {
@@ -105,6 +108,8 @@ type CommonsImageInfo = {
   url?: string;
   thumburl?: string;
   mime?: string;
+  width?: number;
+  height?: number;
   descriptionurl?: string;
   extmetadata?: {
     Artist?: { value?: string };
@@ -203,11 +208,11 @@ function mergeMedia(videos: DestinationMediaItem[], images: DestinationMediaItem
   return [...unique.values()].slice(0, 70);
 }
 
-async function fetchPexels(city: string, iata: string, page: number, theme: string) {
+async function fetchPexels(city: string, _iata: string, page: number, _theme: string) {
   const key = process.env.PEXELS_API_KEY?.trim();
   if (!key) return null;
 
-  const query = [city, iata, theme].filter(Boolean).join(" ");
+  const query = city;
   const headers = { Authorization: key, Accept: "application/json" };
 
   const videoUrl = new URL("https://api.pexels.com/v1/videos/search");
@@ -252,6 +257,7 @@ async function fetchPexels(city: string, iata: string, page: number, theme: stri
     return [{
       id: `pexels-video-${video.id}`,
       type: "video",
+      scene: "city",
       url,
       preview: video.image?.startsWith("https://") ? video.image : null,
       author: video.user?.name?.trim() || null,
@@ -269,6 +275,7 @@ async function fetchPexels(city: string, iata: string, page: number, theme: stri
     return [{
       id: `pexels-photo-${photo.id}`,
       type: "image",
+      scene: "ambience",
       url,
       preview: photo.src?.large ?? null,
       author: photo.photographer?.trim() || null,
@@ -296,11 +303,11 @@ function pickPixabayVideo(video: PixabayVideo) {
   return candidates[0]?.url ?? null;
 }
 
-async function fetchPixabay(city: string, iata: string, page: number, theme: string) {
+async function fetchPixabay(city: string, _iata: string, page: number, _theme: string) {
   const key = process.env.PIXABAY_API_KEY?.trim();
   if (!key) return null;
 
-  const query = [city, iata, theme].filter(Boolean).join(" ");
+  const query = city;
 
   const videoUrl = new URL("https://pixabay.com/api/videos/");
   videoUrl.searchParams.set("key", key);
@@ -348,6 +355,7 @@ async function fetchPixabay(city: string, iata: string, page: number, theme: str
     return [{
       id: `pixabay-video-${video.id}`,
       type: "video",
+      scene: "city",
       url,
       preview: null,
       author: video.user?.trim() || null,
@@ -362,6 +370,7 @@ async function fetchPixabay(city: string, iata: string, page: number, theme: str
     return [{
       id: `pixabay-photo-${image.id}`,
       type: "image",
+      scene: "ambience",
       url,
       preview: image.webformatURL?.startsWith("https://") ? image.webformatURL : null,
       author: image.user?.trim() || null,
@@ -376,137 +385,228 @@ async function fetchPixabay(city: string, iata: string, page: number, theme: str
 
 
 function pickCommonsVideoDerivative(derivatives?: CommonsVideoDerivative[]) {
+  // Commons proposes generally WebM and QuickTime transcodes rather than MP4.
+  // Keep the best widely-playable derivative; the client skips broken videos.
   const candidates = (derivatives ?? [])
     .filter((item) => {
       const src = item.src ?? "";
       const type = (item.type ?? "").toLowerCase();
-      const key = (item.transcodekey ?? "").toLowerCase();
-      const isAppleFriendly = type.includes("video/mp4") || src.toLowerCase().includes(".mp4");
-      const isLandscape = (item.width ?? 0) >= (item.height ?? 0);
+      const isVideo = type.includes("video/mp4") || type.includes("video/webm")
+        || type.includes("video/quicktime") || /\\.(mp4|webm|mov)(?:[?#]|$)/i.test(src);
       return src.startsWith("https://")
-        && isAppleFriendly
-        && isLandscape
-        && !key.includes("vp9");
+        && isVideo
+        && (item.width ?? 0) >= (item.height ?? 0)
+        && (item.width ?? 0) >= 360;
     })
     .sort((left, right) => {
-      const leftWidth = left.width ?? 0;
-      const rightWidth = right.width ?? 0;
-      const leftPreferred = leftWidth >= 720 && leftWidth <= 1920 ? 1 : 0;
-      const rightPreferred = rightWidth >= 720 && rightWidth <= 1920 ? 1 : 0;
-      return rightPreferred - leftPreferred || rightWidth - leftWidth;
+      const score = (item: CommonsVideoDerivative) => {
+        const src = (item.src ?? "").toLowerCase();
+        const type = (item.type ?? "").toLowerCase();
+        const format = type.includes("video/mp4") || /\\.mp4(?:[?#]|$)/.test(src)
+          ? 300 : type.includes("video/webm") ? 200 : 100;
+        const width = item.width ?? 0;
+        const resolution = width >= 960 && width <= 1920 ? 65 : width >= 640 ? 50 : 15;
+        return format + resolution;
+      };
+      return score(right) - score(left) || (right.width ?? 0) - (left.width ?? 0);
     });
-
   return candidates[0] ?? null;
 }
 
-async function fetchCommonsVideos(city: string, iata: string, page: number, theme: string) {
-  const query = [city, iata, theme, "filetype:video"]
-    .filter(Boolean)
-    .join(" ");
 
-  const url = new URL("https://commons.wikimedia.org/w/api.php");
-  url.searchParams.set("action", "query");
-  url.searchParams.set("generator", "search");
-  url.searchParams.set("gsrsearch", query);
-  url.searchParams.set("gsrnamespace", "6");
-  url.searchParams.set("gsrlimit", "12");
-  url.searchParams.set("gsroffset", String((page - 1) * 6));
-  url.searchParams.set("prop", "videoinfo");
-  url.searchParams.set("viprop", "url|mime|derivatives|extmetadata");
-  url.searchParams.set("viurlwidth", "1280");
-  url.searchParams.set("format", "json");
-  url.searchParams.set("origin", "*");
-
-  const response = await fetch(url, {
-    next: { revalidate: 21_600 },
-    signal: AbortSignal.timeout(8500),
-    headers: {
-      Accept: "application/json",
-      "User-Agent": "XavPacTV/4.0 (https://github.com/xavpac/xavpac)"
-    }
-  });
-
-  if (!response.ok) return [] as DestinationMediaItem[];
-
-  const payload = await response.json() as {
-    query?: { pages?: Record<string, CommonsVideoPage> };
-  };
-
-  return Object.values(payload.query?.pages ?? {})
-    .flatMap<DestinationMediaItem>((pageItem) => {
-      const info = pageItem.videoinfo?.[0];
-      const derivative = pickCommonsVideoDerivative(info?.derivatives);
-      if (!derivative?.src) return [];
-
-      return [{
-        id: `commons-video-${pageItem.pageid ?? hashString(derivative.src)}`,
-        type: "video",
-        url: derivative.src,
-        preview: info?.thumburl?.startsWith("https://") ? info.thumburl : null,
-        author: stripHtml(info?.extmetadata?.Artist?.value)
-          || stripHtml(info?.extmetadata?.Credit?.value),
-        sourceName: "Wikimedia Commons",
-        sourceUrl: info?.descriptionurl?.startsWith("https://")
-          ? info.descriptionurl
-          : "https://commons.wikimedia.org/"
-      }];
-    })
-    .slice(0, 12);
+function normalized(value: string) {
+  return value.normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "").replace(/[_-]+/g, " ").toLowerCase();
 }
 
-async function fetchCommons(city: string, iata: string, page: number, theme: string) {
-  const query = [city, iata, theme].filter(Boolean).join(" ");
-  const url = new URL("https://commons.wikimedia.org/w/api.php");
-  url.searchParams.set("action", "query");
-  url.searchParams.set("generator", "search");
-  url.searchParams.set("gsrsearch", query);
-  url.searchParams.set("gsrnamespace", "6");
-  url.searchParams.set("gsrlimit", "50");
-  url.searchParams.set("gsroffset", String((page - 1) * 20));
-  url.searchParams.set("prop", "imageinfo");
-  url.searchParams.set("iiprop", "url|mime|extmetadata");
-  url.searchParams.set("iiurlwidth", "1600");
-  url.searchParams.set("format", "json");
-  url.searchParams.set("origin", "*");
-
-  const response = await fetch(url, {
-    next: { revalidate: 21_600 },
-    signal: AbortSignal.timeout(8500),
-    headers: {
-      Accept: "application/json",
-      "User-Agent": "XavPacTV/2.0 (https://github.com/xavpac/xavpac)"
-    }
-  });
-
-  if (!response.ok) return { provider: "Wikimedia Commons", items: [] as DestinationMediaItem[] };
-
-  const payload = await response.json() as {
-    query?: { pages?: Record<string, CommonsPage> };
+// ICAO prefixes give a reliable geographical hint without geocoding
+// or inventing a country when the airport code is not recognized.
+function countrySearchHint(icao: string) {
+  const countries: Record<string, string> = {
+    EG: "England", EI: "Ireland", LF: "France", LI: "Italy",
+    LE: "Spain", LP: "Portugal", ED: "Germany", EB: "Belgium",
+    EH: "Netherlands", LS: "Switzerland", LO: "Austria",
+    EK: "Denmark", EN: "Norway", ES: "Sweden", EF: "Finland",
+    LG: "Greece", LT: "Turkey", EP: "Poland", LK: "Czechia",
+    LZ: "Slovakia", LH: "Hungary", LR: "Romania", LD: "Croatia",
+    LY: "Serbia"
   };
+  return countries[icao.slice(0, 2).toUpperCase()] || "";
+}
 
-  const items = Object.values(payload.query?.pages ?? {})
-    .flatMap<DestinationMediaItem>((pageItem) => {
-      const info = pageItem.imageinfo?.[0];
-      const mime = info?.mime?.toLowerCase() ?? "";
-      if (!mime.startsWith("image/")) return [];
-      const mediaUrl = info?.thumburl || info?.url;
-      if (!mediaUrl?.startsWith("https://")) return [];
-      return [{
-        id: `commons-${pageItem.pageid ?? hashString(mediaUrl)}`,
-        type: "image",
-        url: mediaUrl,
-        preview: info?.thumburl ?? null,
-        author: stripHtml(info?.extmetadata?.Artist?.value)
-          || stripHtml(info?.extmetadata?.Credit?.value),
-        sourceName: "Wikimedia Commons",
-        sourceUrl: info?.descriptionurl?.startsWith("https://")
-          ? info.descriptionurl
-          : "https://commons.wikimedia.org/"
-      }];
-    })
-    .slice(0, 45);
+function hasWrongCityContext(title: string, city: string, country: string) {
+  const name = normalized(city);
+  const text = normalized(title);
+  if (name === "manchester" && country === "England") {
+    return /jamaica|indiana|new hampshire|connecticut|manchester parish|manchester township|manchester.boston|manchester nh\b|manchester usa|ted cruz|dunkin/.test(text);
+  }
+  if (name === "naples" && country === "Italy") {
+    return /florida|maine|united states|naples new york|naples municipal|naples fl\b|afn naples|naples post office/.test(text);
+  }
+  if (name === "paris" && country === "France") {
+    return /texas|kentucky|illinois|tennessee|paris, ontario|paris township/.test(text);
+  }
+  return false;
+}
 
-  return { provider: "Wikimedia Commons", items };
+function scenicScore(title: string, scene: TVScene) {
+  const text = normalized(title);
+  let score = 0;
+  if (/hyperlapse|timelapse|time lapse|sunset|sunrise|morning in|night light|cityscape|skyline|panorama|landscape|drone|aerial|overflight|bird.?s.eye|monument|landmark|garden|park|cathedral|street view|river view|harbour view/.test(text)) score += 12;
+  if (/airport|aeroport|aerodrome|terminal|runway|airfield|landing|approach|takeoff|take.off|control tower|piste/.test(text)) {
+    score += scene === "airport" || scene === "approach" ? 15 : -4;
+  }
+  if (/tram|train|metro|metrolink|stagecoach|bus\b|rail|station|berthing|container|cargo ship|msc |interview|news|afn |military|army|post office|mailing|guidance|politic|president|march|protest|conference|football|soccer|poster|logo|coat of arms|\bmap\b|banner|passenger destinations|route diagram|timetable|battle|world war|ruins|ruines|incendie|\bfire\b|disaster|accident|covid|pandemic|terror|attack/.test(text)) score -= 35;
+  if (scene === "approach" && /landing|approach|takeoff|aircraft|plane|aeroplane|flight/.test(text)) score += 10;
+  if (/\.webm$/.test(text)) score += 1;
+  return score;
+}
+
+type CommonsMode = "image" | "video";
+const commonsAgent = "XavPacTV/5.0 (https://github.com/xavpac/xavpac)";
+
+async function fetchCommonsScene(
+  city: string, airport: string, iata: string, icao: string,
+  scene: TVScene, mode: CommonsMode
+): Promise<DestinationMediaItem[]> {
+  const country = countrySearchHint(icao);
+  const localCity = country ? city + " " + country : city;
+  const cityTokens = new Set(normalized(city).split(/\s+/));
+  const airportTokens = normalized(airport).split(/\s+/)
+    .filter((word) => word.length >= 4
+      && !cityTokens.has(word)
+      && !["international", "regional", "airport", "aeroport", "aerodrome", "terminal"].includes(word));
+  const querySets: string[] = (() => {
+    if (mode === "video" && scene === "city") return [
+      localCity + " timelapse filetype:video", localCity + " aerial filetype:video", city + " filetype:video"
+    ];
+    if (mode === "video") return [
+      (airport || city + " airport") + " landing filetype:video",
+      (airport || city + " airport") + " filetype:video"
+    ];
+    if (scene === "airport") return [
+      (airport || city + " airport") + " runway terminal", city + " airport"
+    ];
+    if (scene === "ambience") return [
+      localCity + " monument landmark", localCity + " panorama"
+    ];
+    return [localCity + " skyline panorama", localCity + " city panorama", city + " panorama"];
+  })();
+
+  const unique = new Map<string, DestinationMediaItem>();
+  const imageFamilies = new Set<string>();
+  for (const query of querySets) {
+    if (unique.size >= (mode === "video" ? 4 : 8)) break;
+    const url = new URL("https://commons.wikimedia.org/w/api.php");
+    url.searchParams.set("action", "query");
+    url.searchParams.set("generator", "search");
+    url.searchParams.set("gsrsearch", query);
+    url.searchParams.set("gsrnamespace", "6");
+    url.searchParams.set("gsrlimit", mode === "video" ? "28" : "35");
+    url.searchParams.set("gsroffset", "0");
+    url.searchParams.set("prop", mode === "video" ? "videoinfo" : "imageinfo");
+    if (mode === "video") {
+      url.searchParams.set("viprop", "url|mime|derivatives|extmetadata");
+      url.searchParams.set("viurlwidth", "1280");
+    } else {
+      url.searchParams.set("iiprop", "url|mime|size|extmetadata");
+      url.searchParams.set("iiurlwidth", "1600");
+    }
+    url.searchParams.set("format", "json");
+
+    try {
+      const response = await fetch(url, {
+        next: { revalidate: 21_600 },
+        signal: AbortSignal.timeout(5_200),
+        headers: { Accept: "application/json", "User-Agent": commonsAgent }
+      });
+      if (!response.ok) continue;
+      const payload = await response.json() as {
+        query?: { pages?: Record<string, CommonsVideoPage & CommonsPage> };
+      };
+      const ranked = Object.values(payload.query?.pages ?? {})
+        .filter((entry) => {
+          const title = normalized(entry.title ?? "");
+          const isLocal = title.includes(normalized(city))
+            || (airport.length >= 4 && title.includes(normalized(airport)));
+          if (!isLocal || hasWrongCityContext(entry.title ?? "", city, country)) return false;
+          if ((scene === "airport" || scene === "approach") && airportTokens.length) {
+            // Example: CDG video/photo cannot be replaced by Paris-Orly.
+            const matchesAirport = airportTokens.some((word) => title.includes(word));
+            const matchesCode = (iata.length >= 3 && title.includes(normalized(iata)))
+              || (icao.length >= 4 && title.includes(normalized(icao)));
+            if (!matchesAirport && !matchesCode) return false;
+          }
+          if (scene === "airport" || scene === "approach") {
+            return /airport|aeroport|aerodrome|runway|terminal|airfield|landing|approach|takeoff|take.off|flight|aircraft/.test(title)
+              || (iata.length === 3 && title.includes(normalized(iata) + " airport"));
+          }
+          return true;
+        })
+        .sort((left, right) =>
+          scenicScore(right.title ?? "", scene) - scenicScore(left.title ?? "", scene));
+
+      for (const page of ranked) {
+        const title = page.title ?? "";
+        if (scenicScore(title, scene) < (mode === "video" && scene === "city" ? 6 : 0)) continue;
+        let item: DestinationMediaItem | null = null;
+        if (mode === "video") {
+          const info = page.videoinfo?.[0];
+          const derivative = pickCommonsVideoDerivative(info?.derivatives);
+          if (!derivative?.src) continue;
+          const apple = (info?.derivatives ?? [])
+            .filter((candidate) => {
+              const type = (candidate.type ?? "").toLowerCase();
+              return (type.includes("video/mp4") || type.includes("video/quicktime"))
+                && candidate.src?.startsWith("https://")
+                && (candidate.width ?? 0) >= (candidate.height ?? 0)
+                && (candidate.width ?? 0) >= 360;
+            })
+            .sort((first, second) => (second.width ?? 0) - (first.width ?? 0))[0];
+          item = {
+            id: "commons-video-" + (page.pageid ?? hashString(derivative.src)),
+            type: "video", scene, url: derivative.src,
+            appleVideoUrl: apple?.src ?? null,
+            preview: info?.thumburl?.startsWith("https://") ? info.thumburl : null,
+            author: stripHtml(info?.extmetadata?.Artist?.value) || stripHtml(info?.extmetadata?.Credit?.value),
+            sourceName: "Wikimedia Commons",
+            sourceUrl: info?.descriptionurl?.startsWith("https://") ? info.descriptionurl : "https://commons.wikimedia.org/"
+          };
+        } else {
+          const info = page.imageinfo?.[0];
+          const mime = (info?.mime ?? "").toLowerCase();
+          if (!["image/jpeg", "image/png", "image/webp"].includes(mime)) continue;
+          if (info?.width && info?.height && info.width < info.height * 1.18) continue;
+          const mediaUrl = info?.thumburl || info?.url;
+          if (!mediaUrl?.startsWith("https://")) continue;
+          item = {
+            id: "commons-" + (page.pageid ?? hashString(mediaUrl)),
+            type: "image", scene, url: mediaUrl,
+            preview: info?.thumburl?.startsWith("https://") ? info.thumburl : null,
+            author: stripHtml(info?.extmetadata?.Artist?.value) || stripHtml(info?.extmetadata?.Credit?.value),
+            sourceName: "Wikimedia Commons",
+            sourceUrl: info?.descriptionurl?.startsWith("https://") ? info.descriptionurl : "https://commons.wikimedia.org/"
+          };
+        }
+        if (item) {
+          if (mode === "image") {
+            // Avoid four nearly identical photos from the same photo series.
+            const family = normalized(title)
+              .replace(/\.(jpe?g|png|webp)$/, "")
+              .replace(/[\d()[\]]+/g, "")
+              .replace(/[^a-z ]+/g, " ")
+              .replace(/\s+/g, " ").trim().split(" ").slice(0, 7).join(" ");
+            if (family.length > 18 && imageFamilies.has(family)) continue;
+            if (family.length > 18) imageFamilies.add(family);
+          }
+          unique.set(item.id, item);
+        }
+      }
+    } catch {
+      // Commons may be slow or unavailable; continue with the other categories.
+    }
+  }
+  return [...unique.values()].slice(0, mode === "video" ? 9 : 16);
 }
 
 export async function GET(request: NextRequest) {
@@ -515,6 +615,8 @@ export async function GET(request: NextRequest) {
 
   const city = cleanText(request.nextUrl.searchParams.get("city"), 80);
   const iata = cleanText(request.nextUrl.searchParams.get("iata"), 8).toUpperCase();
+  const airport = cleanText(request.nextUrl.searchParams.get("airport"), 100);
+  const icao = cleanText(request.nextUrl.searchParams.get("icao"), 8).toUpperCase();
   const cycle = clampInteger(request.nextUrl.searchParams.get("cycle"), 0, 99);
 
   if (city.length < 2) {
@@ -524,60 +626,42 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const sixHourWindow = Math.floor(Date.now() / 21_600_000);
-  const page = ((hashString(city.toLowerCase()) + sixHourWindow + cycle) % 10) + 1;
-  const theme = mediaTheme(cycle + sixHourWindow);
-
+  const page = 1;
+  const theme = mediaTheme(cycle + Math.floor(Date.now() / 21_600_000));
   try {
-    const pexels = await fetchPexels(city, iata, page, theme);
-    const pixabay = pexels ? null : await fetchPixabay(city, iata, page, theme);
-
-    let result = pexels ?? pixabay;
-    if (!result) {
-      const [commonsVideos, commonsImages] = await Promise.all([
-        fetchCommonsVideos(city, iata, page, theme),
-        fetchCommons(city, iata, page, theme)
+    const [pexels, pixabay, cityVideos, approachVideos, cityImages, airportImages, ambienceImages] =
+      await Promise.all([
+        fetchPexels(city, iata, page, theme).catch(() => null),
+        fetchPixabay(city, iata, page, theme).catch(() => null),
+        fetchCommonsScene(city, airport, iata, icao, "city", "video"),
+        fetchCommonsScene(city, airport, iata, icao, "approach", "video"),
+        fetchCommonsScene(city, airport, iata, icao, "city", "image"),
+        fetchCommonsScene(city, airport, iata, icao, "airport", "image"),
+        fetchCommonsScene(city, airport, iata, icao, "ambience", "image")
       ]);
 
-      const items = mergeMedia(commonsVideos, commonsImages.items);
-      result = {
-        provider: commonsVideos.length
-          ? "Wikimedia Commons vidéo + photo"
-          : commonsImages.provider,
-        items
-      };
-    }
-
+    const raw = [
+      ...cityVideos, ...approachVideos,
+      ...(pexels?.items ?? []),
+      ...(pixabay?.items ?? []),
+      ...airportImages, ...cityImages, ...ambienceImages
+    ];
+    const items = composeTvSequence(raw, cycle, 48);
+    const provider = [
+      pexels?.provider, pixabay?.provider,
+      [...cityVideos, ...approachVideos, ...cityImages, ...airportImages, ...ambienceImages].length
+        ? "Wikimedia Commons" : null
+    ].filter(Boolean).join(" + ") || "none";
     return NextResponse.json(
-      {
-        ok: result.items.length > 0,
-        provider: result.provider,
-        city,
-        country: null,
-        page,
-        theme,
-        items: result.items
-      },
-      {
-        headers: {
-          "Cache-Control": "public, max-age=300, s-maxage=3600, stale-while-revalidate=21600"
-        }
-      }
+      { ok: items.length > 0, provider, city, country: null, airport: airport || null,
+        page, theme, count: items.length, items },
+      { headers: { "Cache-Control": "public, max-age=300, s-maxage=1800, stale-while-revalidate=21600" } }
     );
   } catch {
     return NextResponse.json(
-      {
-        ok: false,
-        provider: "none",
-        city,
-        country: null,
-        items: [],
-        error: "Médias de destination momentanément indisponibles."
-      },
-      {
-        status: 502,
-        headers: { "Cache-Control": "no-store" }
-      }
+      { ok: false, provider: "none", city, country: null, items: [],
+        error: "Médias de destination momentanément indisponibles." },
+      { status: 502, headers: { "Cache-Control": "no-store" } }
     );
   }
 }
