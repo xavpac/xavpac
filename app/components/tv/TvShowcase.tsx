@@ -79,6 +79,22 @@ function code(value: EnrichedAircraft["arrivalAirport"]) {
   return value?.iata || value?.icao || "—";
 }
 
+
+// Photographies exactes seulement si la source l'indique ; sinon mention du substitut.
+function AircraftVisual({ info, className = "" }: { info?: EnrichedAircraft | null; className?: string }) {
+  const src = info?.photo?.url;
+  const logo = info?.logo && !info.logo.includes("generic") ? info.logo : null;
+  return <div className={"tv-v5-aircraft-visual " + className}>
+    <span className="tv-v5-photo-placeholder" aria-hidden="true">✈</span>
+    {src && <img alt={info?.photo.kind === "exact" ? "Photo de cet avion" : "Illustration de l'aéronef"}
+      src={src} loading="eager" onError={(event) => {event.currentTarget.style.display = "none";}} />}
+    {logo && <span className="tv-v5-logo"><img src={logo} alt="Logo de la compagnie selon identification"
+      onError={(event) => {event.currentTarget.parentElement?.remove();}} /></span>}
+    {info?.photo && info.photo.kind !== "exact" &&
+      <span className="tv-v5-photo-note">{info.photo.kind === "generic" ? "Illustration" : "Photo illustrative"}</span>}
+  </div>;
+}
+
 export default function TvShowcase() {
   const [traffic, setTraffic] = useState<TrackedAircraft[]>([]);
   const [enriched, setEnriched] = useState<Record<string, EnrichedAircraft>>({});
@@ -363,18 +379,42 @@ export default function TvShowcase() {
     return () => window.clearInterval(watchdog);
   }, [activeMedia]);
 
-  const clock = now ? now.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "--:--:--";
+  const clock = now ? now.toLocaleTimeString("fr-FR", { hour:"2-digit", minute:"2-digit" }) : "--:--";
+  const today = now ? now.toLocaleDateString("fr-FR", { weekday:"short", day:"2-digit", month:"short", year:"numeric" }) : "";
   const activeEmergency = feedFresh ? traffic.find((item) =>
     EMERGENCY_CODES.includes(item.squawk ?? "") && (item.positionAgeSeconds ?? 0) < 90) : null;
-  const latestTechnicalArticle = news.filter((item) => TECHNICAL_REPORT.test(item.title))
-    .sort((a, b) => Date.parse(b.date) - Date.parse(a.date))[0] ?? null;
-  // Une urgence ADS-B active reste affichée ; ne jamais la masquer
-  // pendant l'alternance des anciennes dépêches de presse.
-  const showEmergency = Boolean(activeEmergency);
-  const displayLatest = !showEmergency && latestTechnicalArticle;
-  const showFlight = Boolean(candidate && destination);
-  const nearFlightName = candidate?.details?.flightNumberIata || candidate?.details?.callsignIcao || candidate?.item.callsign || "VOL IDENTIFIÉ";
+  const latestArticle = news.filter((item) => TECHNICAL_REPORT.test(item.title))
+    .sort((a,b) => Date.parse(b.date) - Date.parse(a.date))[0] ?? null;
+  const activeKey = activeEmergency ? activeEmergency.id + "-" + activeEmergency.squawk : null;
+  const emergencyFlash = Boolean(activeKey && lastEmergency?.key === activeKey &&
+    now && now.getTime() - Date.parse(lastEmergency.detectedAt) < ALERT_DURATION_MS);
+  const newsFlash = Boolean(worldAlert && latestArticle &&
+    worldAlert.key === latestArticle.title + "|" + latestArticle.date &&
+    now && now.getTime() - Date.parse(worldAlert.detectedAt) < ALERT_DURATION_MS);
+  const currentPriorityKey = nearbyAlert ? nearbyAlert.item.id + "-" + nearbyAlert.priority : null;
+  const priorityTakeover = Boolean(feedFresh && nearbyAlert && lastPriority &&
+    currentPriorityKey === lastPriority.key &&
+    now && now.getTime() - Date.parse(lastPriority.detectedAt) < ALERT_DURATION_MS);
+  const priorityRemaining = priorityTakeover && now && lastPriority
+    ? Math.max(0, Math.ceil((ALERT_DURATION_MS - (now.getTime() - Date.parse(lastPriority.detectedAt))) / 1000))
+    : 0;
+  const priorityInfo = nearbyAlert ? enriched[nearbyAlert.item.id.replace(/^~/, "").toUpperCase()] : null;
 
+  // Les informations d'un article de presse ne sont pas des codes transpondeur confirmés.
+  const lastKnownIsAdsb = Boolean(lastEmergency && (!latestArticle ||
+    Date.parse(lastEmergency.detectedAt) >= Date.parse(latestArticle.date)));
+  const alertName = activeEmergency
+    ? incidentLabel(activeEmergency.squawk ?? "")
+    : lastKnownIsAdsb && lastEmergency
+      ? incidentLabel(lastEmergency.code) + " · " + lastEmergency.aircraft
+      : latestArticle?.title || "Aucune urgence documentée disponible";
+  const alertTimestamp = activeEmergency && lastEmergency?.key === activeKey
+    ? lastEmergency.detectedAt
+    : lastKnownIsAdsb ? lastEmergency?.detectedAt : latestArticle?.date;
+  const alertSource = activeEmergency || lastKnownIsAdsb
+    ? "Signal ADS-B · heure de détection" : latestArticle?.source || "Couverture ADS-B partielle";
+
+  const showFlight = Boolean(candidate && destination);
   const first = traffic[0] ?? null;
   const firstInfo = first ? enriched[first.id.replace(/^~/, "").toUpperCase()] : null;
   const firstDeparture = firstInfo?.departureAirport ? code(firstInfo.departureAirport) : "—";
