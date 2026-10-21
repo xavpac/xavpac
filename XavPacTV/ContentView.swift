@@ -3084,7 +3084,7 @@ private struct LoopingVideoView: UIViewRepresentable {
 
     func updateUIView(_ view: PlayerLayerHostView, context: Context) {
         view.playerLayer.player = context.coordinator.player
-        context.coordinator.play(url)
+        context.coordinator.play(url, onStall: onStall)
     }
 
     static func dismantleUIView(_ view: PlayerLayerHostView, coordinator: Coordinator) {
