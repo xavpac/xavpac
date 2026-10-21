@@ -496,6 +496,21 @@ struct ContentView: View {
         }
     }
 
+    // 16 secteurs, en toutes lettres et en français.
+    private func directionFrancais(_ angle: Double?) -> String {
+        guard let angle, angle.isFinite else { return "—" }
+        let sectors = [
+            "nord", "nord-nord-est", "nord-est", "est-nord-est",
+            "est", "est-sud-est", "sud-est", "sud-sud-est",
+            "sud", "sud-sud-ouest", "sud-ouest", "ouest-sud-ouest",
+            "ouest", "ouest-nord-ouest", "nord-ouest", "nord-nord-ouest"
+        ]
+        let heading = (angle.truncatingRemainder(dividingBy: 360) + 360)
+            .truncatingRemainder(dividingBy: 360)
+        let index = Int((heading + 11.25) / 22.5) % 16
+        return sectors[index]
+    }
+
     private func cinemaVersionFourWeather(_ title: String, airport: TVAirport?) -> some View {
         let weather = airportWeather.weather(for: airport)
         return HStack(spacing: 7) {
