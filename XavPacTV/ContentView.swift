@@ -106,16 +106,9 @@ struct ContentView: View {
     }
 
     private var latestSeriousWorldNews: AviationTickerService.Article? {
-        // Articles de presse mondiaux : jamais confondus avec un signal ADS-B.
-        aviationTicker.news
-            .filter {
-                $0.title.range(
-                    of: "crash|accident aérien|air crash|plane crash|emergency landing|atterrissage d'urgence|mayday|détresse|distress|aviation emergency",
-                    options: [.regularExpression, .caseInsensitive]
-                ) != nil
-            }
-            .sorted { $0.date > $1.date }
-            .first
+        // Le flux contient uniquement des incidents aéronautiques sourcés.
+        // Pas de second filtre qui cacherait les alertes d'hier ou d'avant-hier.
+        aviationTicker.incidents.first
     }
 
     private var priorityProfile: TVTrafficProfile? {
@@ -1138,7 +1131,8 @@ struct ContentView: View {
                 ? "🚨 NOUVELLE URGENCE MONDIALE · PRESSE"
                 : "⚠ DERNIER INCIDENT MONDIAL · PRESSE"
             title = article.title
-            source = article.source + " · publié " + article.dateLabel
+            source = article.source + " · " + article.dateLabel
+                + " · " + (article.location ?? "Lieu non vérifié")
             date = nil
         } else if let observation = prior {
             heading = "⚠ DERNIÈRE URGENCE OBSERVÉE"
@@ -1148,8 +1142,8 @@ struct ContentView: View {
             date = nil
         } else {
             heading = "✓ SURVEILLANCE DES URGENCES"
-            title = "Aucun incident connu dans les données disponibles"
-            source = "ADS-B · couverture partielle"
+            title = "Aucun incident récent sourcé disponible"
+            source = "Recherche internationale sur 14 jours · flux parfois incomplet"
             date = nil
         }
 
@@ -2857,10 +2851,11 @@ struct ContentView: View {
 // jamais des alertes de transpondeur inventées. Aucune interaction.
 @MainActor
 private final class AviationTickerService: ObservableObject {
-    struct Article: Decodable, Identifiable {
+    struct Article: Codable, Identifiable {
         let title: String
         let source: String
         let date: String
+        let location: String?
 
         var id: String { title + "|" + date }
 
@@ -2874,10 +2869,26 @@ private final class AviationTickerService: ObservableObject {
 
     private struct Payload: Decodable {
         let news: [Article]
+        let incidents: [Article]?
     }
 
     @Published private(set) var news: [Article] = []
+    @Published private(set) var incidents: [Article] = []
     @Published private(set) var updatedAt: Date?
+
+    init() {
+        // Conserver le dernier incident vérifié lors d'une panne temporaire RSS
+        // ou d'une relance de l'application tvOS.
+        if let raw = UserDefaults.standard.data(forKey: "skyshow.lastIncidents"),
+           let cached = try? JSONDecoder().decode([Article].self, from: raw) {
+            let cutoff = Date().addingTimeInterval(-14 * 86400)
+            incidents = cached.filter { article in
+                guard let date = ISO8601DateFormatter().date(from: article.date) else { return false }
+                return date >= cutoff
+            }
+            news = incidents
+        }
+    }
 
     func refresh() async {
         guard let url = URL(string: "https://xavpac-ty3i.vercel.app/api/aviation-news") else {
@@ -2894,7 +2905,14 @@ private final class AviationTickerService: ObservableObject {
                 return
             }
             let result = try JSONDecoder().decode(Payload.self, from: data)
-            news = Array(result.news.prefix(8))
+            let fresh = Array((result.incidents ?? result.news).prefix(16))
+            if !fresh.isEmpty {
+                incidents = fresh
+                news = fresh
+                if let encoded = try? JSONEncoder().encode(fresh) {
+                    UserDefaults.standard.set(encoded, forKey: "skyshow.lastIncidents")
+                }
+            }
             updatedAt = Date()
         } catch {
             // Le diaporama, la carte et le radar ne dépendent pas des actualités.
