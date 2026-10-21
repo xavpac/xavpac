@@ -16,8 +16,10 @@ struct ContentView: View {
     // Une alerte se déclenche une seule fois par passage, pour 5 minutes maximum.
     @State private var priorityWindow: TimedFlightAlert?
     @State private var priorityAlreadyAlerted: Set<String> = []
+    @State private var priorityLostAt: Date?
     @State private var distressWindow: TimedFlightAlert?
     @State private var emergencyAlreadyAlerted: Set<String> = []
+    @State private var emergencyLostAt: Date?
     @State private var worldIncidentWindow: TimedFlightAlert?
     @State private var seenWorldNews: Set<String> = []
     @State private var hasInitializedWorldNews = false
@@ -360,11 +362,16 @@ struct ContentView: View {
         .task(id: priorityAlertKey) {
             guard priorityAlertKey != "none" else {
                 priorityWindow = nil
-                priorityAlreadyAlerted.removeAll()
+                priorityLostAt = Date()
                 return
             }
-            guard !priorityAlreadyAlerted.contains(priorityAlertKey) else { return }
             let now = Date()
+            // Un trou ADS-B de quelques secondes ne doit pas relancer la sirène.
+            if let lost = priorityLostAt, now.timeIntervalSince(lost) > 120 {
+                priorityAlreadyAlerted.removeAll()
+            }
+            priorityLostAt = nil
+            guard !priorityAlreadyAlerted.contains(priorityAlertKey) else { return }
             priorityWindow = TimedFlightAlert(key: priorityAlertKey, startedAt: now)
             priorityAlreadyAlerted.insert(priorityAlertKey)
             soundscape.playPriorityAlert()
@@ -372,11 +379,15 @@ struct ContentView: View {
         .task(id: activeEmergencyKey) {
             guard let aircraft = activeEmergency, let code = aircraft.squawk else {
                 distressWindow = nil
-                emergencyAlreadyAlerted.removeAll()
+                emergencyLostAt = Date()
                 return
             }
-            guard !emergencyAlreadyAlerted.contains(activeEmergencyKey) else { return }
             let now = Date()
+            if let lost = emergencyLostAt, now.timeIntervalSince(lost) > 120 {
+                emergencyAlreadyAlerted.removeAll()
+            }
+            emergencyLostAt = nil
+            guard !emergencyAlreadyAlerted.contains(activeEmergencyKey) else { return }
             emergencyAlreadyAlerted.insert(activeEmergencyKey)
             distressWindow = TimedFlightAlert(key: activeEmergencyKey, startedAt: now)
             lastEmergency = ObservedEmergency(
