@@ -221,7 +221,7 @@ struct ContentView: View {
 
                         // Vidéo issue des médias de la destination, démarrage
                         // automatique et muet ; photographie si aucun film.
-                        cinemaDestination
+                        cinemaVersionFourDestination
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
                         cinemaTwoClosest
@@ -281,9 +281,9 @@ struct ContentView: View {
         }
         .task(id: destinationTaskKey) {
             await mediaService.load(for: featuredEnrichment)
-            if isOverheadPass {
-                mediaService.preferVideo()
-            }
+            // Préférer la vidéo réelle de la destination dès qu'elle existe,
+            // même sans passage à moins de 12 km de HOME.
+            mediaService.preferVideo()
         }
         .task(id: mediaService.current?.id) {
             guard let media = mediaService.current else { return }
@@ -341,6 +341,78 @@ struct ContentView: View {
         .padding(.vertical, 13)
         .background(Color.white.opacity(0.97), in: RoundedRectangle(cornerRadius: 19))
         .shadow(color: .black.opacity(0.22), radius: 11, y: 4)
+    }
+
+    // Version 4 : médias réellement chargés, très peu de texte superposé
+    // pour que la séquence audiovisuelle soit clairement visible sur TV.
+    // Les films sont lus sans audio ; aucune playlist et aucun clic.
+    private var cinemaVersionFourDestination: some View {
+        let knownDestination = featuredEnrichment?.arrivalAirport != nil
+            && featuredEnrichment?.routeConfidence != "unavailable"
+        let destinationName = featuredEnrichment?.arrivalAirport?.city ?? "Prochaine escale"
+        let isVideo = knownDestination && mediaService.current?.televisionVideoURL != nil
+
+        return GeometryReader { geometry in
+            ZStack(alignment: .bottomLeading) {
+                Group {
+                    if knownDestination {
+                        cinemaMedia
+                    } else if let photo = homeScene.currentPhoto,
+                              let url = URL(string: photo.url) {
+                        CinematicDestinationImage(
+                            url: url,
+                            fallback: AnyView(homeScenicFallback)
+                        )
+                    } else {
+                        homeScenicFallback
+                    }
+                }
+                .frame(width: geometry.size.width, height: geometry.size.height)
+                .clipped()
+                .id(knownDestination ? mediaService.current?.id ?? "en-attente" : homeScene.currentPhoto?.id ?? "local")
+
+                LinearGradient(
+                    colors: [.black.opacity(0.44), .clear, .black.opacity(0.62)],
+                    startPoint: .top, endPoint: .bottom
+                )
+                .allowsHitTesting(false)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "play.rectangle.fill")
+                            .font(.system(size: 25, weight: .black))
+                        Text("VUE IMMERSIVE · VIDÉO")
+                            .font(.system(size: 22, weight: .black, design: .rounded))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
+                        Spacer(minLength: 0)
+                        Text(isVideo ? "VIDÉO AUTOMATIQUE"
+                             : "PHOTO · VIDÉO SI DISPONIBLE")
+                            .font(.system(size: 12, weight: .black))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 8)
+                            .background(.black.opacity(0.62), in: Capsule())
+                    }
+                    Spacer(minLength: 15)
+                    Text(knownDestination ? destinationName : "Bâgé-Dommartin")
+                        .font(.system(size: 41, weight: .black, design: .rounded))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                    Text(knownDestination
+                         ? (mediaService.current?.sourceName ?? "Destination aérienne")
+                         : "En attente de la prochaine destination identifiée")
+                        .font(.system(size: 15, weight: .semibold))
+                        .lineLimit(1)
+                }
+                .foregroundStyle(.white)
+                .padding(17)
+            }
+        }
+        .background(Color(red: 0.05, green: 0.22, blue: 0.38))
+        .clipShape(RoundedRectangle(cornerRadius: 20))
+        .overlay(RoundedRectangle(cornerRadius: 20).stroke(Color.white, lineWidth: 3))
     }
 
     private var cinemaVersionFourFlightOne: some View {
@@ -1436,8 +1508,7 @@ struct ContentView: View {
 
     @ViewBuilder
     private var cinemaMedia: some View {
-        if isOverheadPass,
-           let videoURL = mediaService.current?.televisionVideoURL {
+        if let videoURL = mediaService.current?.televisionVideoURL {
             LoopingVideoView(url: videoURL)
         } else if let media = mediaService.current,
                   !media.isVideo,
