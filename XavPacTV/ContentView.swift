@@ -738,9 +738,8 @@ struct ContentView: View {
                 .foregroundStyle(Color(red: 0.12, green: 0.19, blue: 0.32))
                 .frame(width: 47, height: 47)
                 .background(Color(red: 1, green: 0.77, blue: 0.22), in: Circle())
-            Image(systemName: "airplane")
-                .font(.system(size: 34, weight: .heavy))
-                .foregroundStyle(.yellow)
+            aircraftThumbnail(details)
+                .frame(width: 164, height: 81)
             VStack(alignment: .leading, spacing: 1) {
                 Text(first?.displayName ?? "AVION N° 1 EN ATTENTE")
                     .font(.system(size: 28, weight: .black, design: .rounded))
@@ -755,6 +754,46 @@ struct ContentView: View {
                 .font(.system(size: 18, weight: .black))
                 .foregroundStyle(.yellow)
         }
+    }
+
+    private func aircraftThumbnail(_ details: TVAircraftEnrichment?) -> some View {
+        ZStack(alignment: .bottomTrailing) {
+            if let url = details?.photoURL {
+                AsyncImage(url: url) { phase in
+                    if let image = phase.image {
+                        image.resizable().scaledToFill()
+                    } else {
+                        Image(systemName: "airplane")
+                            .resizable().scaledToFit()
+                            .padding(16)
+                            .foregroundStyle(.white.opacity(0.75))
+                    }
+                }
+            } else {
+                Image(systemName: "airplane")
+                    .resizable().scaledToFit()
+                    .padding(16)
+                    .foregroundStyle(.white.opacity(0.75))
+            }
+            if let logo = details?.logoURL {
+                AsyncImage(url: logo) { image in
+                    image.resizable().scaledToFit()
+                } placeholder: {
+                    Color.clear
+                }
+                .frame(width: 33, height: 29)
+                .padding(3)
+                .background(Color.white.opacity(0.94),
+                            in: RoundedRectangle(cornerRadius: 7))
+                .padding(4)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(red: 0.07, green: 0.20, blue: 0.35))
+        .clipped()
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10)
+            .stroke(Color.white.opacity(0.35), lineWidth: 1))
     }
 
     private func cinemaVersionFourMetrics(_ first: Aircraft?) -> some View {
@@ -809,9 +848,8 @@ struct ContentView: View {
 
         return VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 8) {
-                Image(systemName: "airplane")
-                    .font(.system(size: 27, weight: .heavy))
-                    .foregroundStyle(accent)
+                aircraftThumbnail(details)
+                    .frame(width: 106, height: 70)
                 Text(String(rank))
                     .font(.system(size: 23, weight: .black))
                     .frame(width: 36, height: 36)
