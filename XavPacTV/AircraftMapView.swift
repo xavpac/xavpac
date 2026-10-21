@@ -238,6 +238,8 @@ private final class AircraftAnnotationView: MKAnnotationView {
             followedLabel.frame = CGRect(x: (size - 148) / 2, y: size - 4,
                                          width: 148, height: 33)
             if item.profile.isPriorityTraffic {
+                // L'animation n'est active que pendant la fenêtre d'alerte
+                // où le moyen prioritaire est sélectionné.
                 addPriorityPulse(color: tint)
             } else {
                 addFeaturedPulse(color: rankColor)
@@ -261,9 +263,8 @@ private final class AircraftAnnotationView: MKAnnotationView {
                                      width: badgeSize, height: badgeSize)
             rankBadge.layer.cornerRadius = badgeSize / 2
             followedLabel.frame = .zero
-            if item.profile.isPriorityTraffic {
-                addPriorityPulse(color: tint)
-            }
+            // Moyens prioritaires hors passage : marqueur coloré mais stable.
+            // Un clignotement sans fin provoquerait une fausse alerte.
         }
     }
 
@@ -317,10 +318,12 @@ private final class AircraftAnnotationView: MKAnnotationView {
     private func color(for kind: TVTrafficKind) -> UIColor {
         switch kind {
         case .civilSecurity:
-            return UIColor(red: 1.00, green: 0.62, blue: 0.03, alpha: 1)
+            return UIColor(red: 1.00, green: 0.08, blue: 0.13, alpha: 1)  // rouge secours
         case .military:
-            return UIColor(red: 0.95, green: 0.08, blue: 0.14, alpha: 1)
-        case .helicopter, .medical:
+            return UIColor(red: 1.00, green: 0.69, blue: 0.05, alpha: 1)  // ambre armée
+        case .medical:
+            return UIColor(red: 0.89, green: 0.23, blue: 0.77, alpha: 1)  // magenta médical
+        case .helicopter:
             return UIColor(red: 0.05, green: 0.78, blue: 0.36, alpha: 1)
         case .surveillance:
             return UIColor(red: 0.62, green: 0.35, blue: 0.98, alpha: 1)
